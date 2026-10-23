@@ -8,12 +8,14 @@ import {
   Plus,
   Settings,
   Archive,
-  ChevronLeft
+  ChevronLeft,
+  UserPlus,
+  X
 } from 'lucide-react';
-import { Channel } from '../../types';
+import { Channel, User } from '../../types';
 import { canAccessAdminPanel } from '../admin/adminAccess';
 
-export const ChannelList: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdmin }) => {
+export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel: (channel: Channel) => void }> = ({ onOpenAdmin, onOpenVoiceChannel }) => {
   const {
     communities,
     currentCommunityId,
@@ -27,14 +29,16 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdmin
     setIsCreateChannelModalOpen,
     isColumn1Collapsed,
     setIsColumn1Collapsed,
-    startCall,
     openUserProfile,
     addToast,
     currentUser,
+    openDirectMessage,
   } = useApp();
 
   const [collapsedCategories, setCollapsedCategories] = React.useState<Record<string, boolean>>({});
   const [showArchivedDms, setShowArchivedDms] = React.useState(false);
+  const [isAddFriendOpen, setIsAddFriendOpen] = React.useState(false);
+  const [friendQuery, setFriendQuery] = React.useState('');
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
   if (!activeCommunity) return null;
@@ -49,7 +53,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdmin
 
   const handleChannelClick = (channel: Channel) => {
     if (channel.type === 'voice') {
-      startCall(channel, 'voice');
+      onOpenVoiceChannel(channel);
     } else {
       setCurrentChannelId(channel.id);
     }
@@ -57,6 +61,24 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdmin
 
   const activeDms = dms.filter((d) => !d.isArchived);
   const archivedDms = dms.filter((d) => d.isArchived);
+
+  const addFriend = (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = friendQuery.trim().replace(/^[@#]/, '').toLowerCase();
+    const candidates: Array<{ user: User; tag?: string }> = [
+      ...dms.map((dm) => ({ user: dm.user, tag: dm.user.handle.match(/#(\d+)$/)?.[1] })),
+      ...activeCommunity.channels.flatMap((channel) => (channel.connectedUsers || []).map((user) => ({ user, tag: user.handle.match(/#(\d+)$/)?.[1] }))),
+      { user: { ...currentUser, id: 'mock-user-marina', name: 'Marina Costa', handle: 'marina', avatar: 'https://api.dicebear.com/9.x/initials/svg?seed=Marina%20Costa' }, tag: '1234' },
+      { user: { ...currentUser, id: 'mock-user-caio', name: 'Caio Nunes', handle: 'caio', avatar: 'https://api.dicebear.com/9.x/initials/svg?seed=Caio%20Nunes' }, tag: '5678' },
+    ];
+    const match = candidates.find(({ user, tag }) => user.id !== currentUser.id && (
+      user.handle.replace(/^@/, '').toLowerCase() === query || user.handle.toLowerCase().endsWith(`#${query}`) || tag === query
+    ));
+    if (!match) { addToast('Usuário não encontrado', 'Confira o @usuário ou a #tag e tente novamente.', 'warning'); return; }
+    openDirectMessage(match.user);
+    setFriendQuery('');
+    setIsAddFriendOpen(false);
+  };
 
   return (
     <aside
@@ -72,6 +94,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdmin
               {isDirectMessages ? 'Mensagens Diretas' : activeCommunity.name}
             </span>
             <div className="flex items-center gap-1">
+              {isDirectMessages && <button onClick={() => setIsAddFriendOpen(true)} title="Adicionar amigo" aria-label="Adicionar amigo" className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-slate-800 transition-colors"><UserPlus className="w-4 h-4" /></button>}
               {!isDirectMessages && (
                 <button
                   onClick={() => setIsCreateChannelModalOpen(true)}
@@ -136,12 +159,6 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdmin
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2 mb-1.5 flex items-center justify-between">
                 <span>Conversas Recentes</span>
                 <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => addToast('Nova conversa', 'Escolha um membro para iniciar.')}
-                    className="p-0.5 rounded text-slate-500 hover:text-indigo-400"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
                   <span className="text-[10px] text-indigo-400 font-semibold">{activeDms.length}</span>
                 </div>
               </div>
@@ -292,6 +309,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdmin
           </button>}
         </div>
       )}
+      {isAddFriendOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Adicionar amigo" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsAddFriendOpen(false); }}><form onSubmit={addFriend} className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold text-white">Adicionar amigo</h2><button type="button" onClick={() => setIsAddFriendOpen(false)} aria-label="Fechar" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"><X className="h-4 w-4" /></button></div><input autoFocus value={friendQuery} onChange={(event) => setFriendQuery(event.target.value)} placeholder="Digite o @usuario ou #1234 para adicionar" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-indigo-500"/><button type="submit" className="mt-3 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">Buscar e iniciar conversa</button><p className="mt-2 text-xs text-slate-500">Busca local entre contatos e usuários de demonstração.</p></form></div>}
     </aside>
   );
 };

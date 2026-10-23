@@ -15,10 +15,10 @@ export const CreateChannelModal: React.FC = () => {
   const [channelType, setChannelType] = useState<'text' | 'voice'>('text');
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
-  const defaultCategory = activeCommunity.categories[0]?.id || 'cat-general';
+  const defaultCategory = activeCommunity?.categories[0]?.id || '';
   const [categoryId, setCategoryId] = useState(defaultCategory);
 
-  if (!isCreateChannelModalOpen) return null;
+  if (!isCreateChannelModalOpen || !activeCommunity) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { KoalineWordmark } from '../brand/KoalaMascot';
+import { CallDock } from '../call/CallDock';
 import {
-  Search,
   Bell,
   ChevronDown,
   Moon,
@@ -33,8 +33,6 @@ export const TopBar: React.FC = () => {
 
   const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const commDropdownRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -55,11 +53,11 @@ export const TopBar: React.FC = () => {
   }, []);
 
   const toggleDarkMode = () => {
-    if (theme.preset === 'light') {
-      updateTheme({ preset: 'dark' });
+    if (theme.mode === 'light') {
+      updateTheme({ mode: 'dark' });
       addToast('Tema Escuro', 'Modo escuro ativado.');
     } else {
-      updateTheme({ preset: 'light' });
+      updateTheme({ mode: 'light' });
       addToast('Tema Claro', 'Modo claro ativado.');
     }
   };
@@ -137,29 +135,9 @@ export const TopBar: React.FC = () => {
         </div>
       </div>
 
-      {/* CENTER: Global Search Bar */}
-      <div className="flex-1 max-w-md mx-4 hidden md:block">
-        <div
-          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-nest-pill bg-slate-950 border transition-all ${
-            isSearchFocused
-              ? 'border-indigo-500 ring-1 ring-indigo-500/40 bg-slate-900'
-              : 'border-slate-800 hover:border-slate-700'
-          }`}
-        >
-          <Search className="w-4 h-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Buscar canais, mensagens ou pessoas... (Ctrl + K)"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-            className="w-full bg-transparent text-xs text-slate-200 placeholder-slate-500 focus:outline-none"
-          />
-          <kbd className="hidden lg:inline-block text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-            ⌘K
-          </kbd>
-        </div>
+      {/* Espaço central da TopBar, reservado para o CallDock minimizado */}
+      <div className="flex-1 min-w-0 flex justify-end px-2 sm:px-4">
+        <CallDock />
       </div>
 
       {/* RIGHT: Notifications, Theme Toggle, User Profile */}
@@ -169,7 +147,7 @@ export const TopBar: React.FC = () => {
           title="Alternar tema"
           className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
         >
-          {theme.preset === 'light' ? (
+          {theme.mode === 'light' ? (
             <Moon className="w-4 h-4" />
           ) : (
             <Sun className="w-4 h-4 text-amber-400" />
@@ -192,11 +170,11 @@ export const TopBar: React.FC = () => {
             className="flex items-center gap-2 p-1 pl-2 rounded-nest-pill bg-slate-800 hover:bg-slate-700/80 border border-border transition-all"
           >
             <div className="relative">
-              <img
+              {currentUser.avatar ? <img
                 src={currentUser.avatar}
                 alt={currentUser.name}
                 className="w-7 h-7 rounded-full object-cover ring-1 ring-border"
-              />
+              /> : <div aria-hidden="true" className="w-7 h-7 rounded-full bg-slate-700 ring-1 ring-border" />}
               <span
                 className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
                   currentUser.status === 'online'
@@ -218,11 +196,11 @@ export const TopBar: React.FC = () => {
           {isUserMenuOpen && (
             <div className="absolute top-full right-0 mt-2 w-64 p-2 rounded-nest-sm bg-slate-900 border border-slate-700 shadow-2xl z-40 animate-in fade-in zoom-in-95">
               <div className="flex items-center gap-3 p-2.5 rounded-nest-sm bg-slate-950/60 mb-2">
-                <img
+                {currentUser.avatar ? <img
                   src={currentUser.avatar}
                   alt={currentUser.name}
                   className="w-10 h-10 rounded-full object-cover"
-                />
+                /> : <div aria-hidden="true" className="w-10 h-10 rounded-full bg-slate-700" />}
                 <div className="truncate">
                   <div className="text-xs font-bold text-white truncate">
                     {currentUser.name}

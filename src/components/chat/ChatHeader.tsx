@@ -24,7 +24,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
     activeDmId,
     dms,
     isContextPanelOpen,
-    setIsContextPanelOpen,
+    closeContextPanel,
+    openMembersPanel,
     startDirectCall,
     openUserProfile,
     toggleArchiveDm,
@@ -51,7 +52,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
                 className="w-8 h-8 rounded-full object-cover group-hover:ring-2 group-hover:ring-indigo-500 transition-all"
               />
               <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
-                activeDm.user.status === 'online' ? 'bg-emerald-500' : activeDm.user.status === 'idle' ? 'bg-amber-500' : 'bg-zinc-400'
+                activeDm.user.status === 'online' ? 'bg-emerald-500 status-presence is-online' : activeDm.user.status === 'idle' ? 'bg-amber-500' : 'bg-zinc-400'
               }`} />
             </div>
             <div>
@@ -134,7 +135,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
         </button>
 
         <button
-          onClick={() => setIsContextPanelOpen(!isContextPanelOpen)}
+          onClick={() => isContextPanelOpen ? closeContextPanel() : openMembersPanel()}
           title="Painel de membros"
           className={`p-2 rounded-lg transition-colors ${
             isContextPanelOpen ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'

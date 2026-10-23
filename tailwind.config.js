@@ -33,7 +33,7 @@ export default {
         'glow-speaking': '0 0 0 3px rgba(99, 102, 241, 0.7), 0 0 16px rgba(99, 102, 241, 0.5)',
       },
       fontFamily: {
-        title: ['Poppins', 'Inter', 'sans-serif'],
+        title: ['Inter', 'system-ui', 'sans-serif'],
         body: ['Inter', 'sans-serif'],
       }
     },

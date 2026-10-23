@@ -1,5 +1,3 @@
-export type ThemePreset = 'light' | 'dark' | 'amoled' | 'neon' | 'minimalist';
-export type Density = 'compact' | 'comfortable' | 'spacious';
 export type UserStatus = 'online' | 'idle' | 'dnd' | 'offline';
 export type ChannelType = 'text' | 'voice';
 
@@ -57,7 +55,7 @@ export interface Message {
   };
   reactions: Reaction[];
   attachments?: Array<{
-    type: 'image' | 'file';
+    type: 'image' | 'video' | 'file';
     url: string;
     name: string;
     size?: string;
@@ -117,8 +115,12 @@ export interface ActiveCall {
   type: 'voice' | 'video';
   isMinimized: boolean;
   isMicMuted: boolean;
+  isDeafened: boolean;
   isCameraOn: boolean;
   isScreenSharing: boolean;
+  screenStream?: MediaStream | null;
+  isWatchingScreen?: boolean;
+  screenViewers?: User[];
   layout: 'grid' | 'spotlight' | 'audio-only';
   participants: Array<{
     user: User;
@@ -130,17 +132,9 @@ export interface ActiveCall {
 }
 
 export interface ThemeSettings {
-  preset: ThemePreset;
-  accentColor: string;
-  fontScale: number; // 0.8 to 1.5
-  density: Density;
-  glassBlur: number;
-  glassOpacity: number;
+  mode: 'light' | 'dark';
+  fontScale: number; // 80 to 150 percent
   reduceMotion: boolean;
-  highContrast: boolean;
-  iconPack: 'organic-round' | 'sharp-modern' | 'minimal';
-  bgType: 'solid' | 'gradient' | 'image';
-  syncDevices: boolean;
 }
 
 export interface ToastMessage {

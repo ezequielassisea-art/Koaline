@@ -5,8 +5,6 @@ import {
   MicOff,
   Video,
   VideoOff,
-  Monitor,
-  Maximize2,
   PhoneOff,
 } from 'lucide-react';
 import { ConfirmModal } from '../common/ConfirmModal';
@@ -17,7 +15,6 @@ export const CallDock: React.FC = () => {
     leaveCall,
     toggleMute,
     toggleCamera,
-    toggleScreenShare,
     toggleMinimizeCall,
   } = useApp();
 
@@ -27,107 +24,27 @@ export const CallDock: React.FC = () => {
 
   return (
     <>
-      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 animate-in slide-in-from-bottom-5 duration-300">
-        <div
-          onClick={toggleMinimizeCall}
-          className="flex items-center gap-3 sm:gap-4 px-4 py-2.5 rounded-nest-pill bg-slate-900/90 backdrop-blur-xl border border-indigo-500/30 shadow-2xl hover:border-indigo-500/60 transition-all cursor-pointer group"
-        >
-          {/* Channel Name & Speaking Status */}
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <div className="flex flex-col">
-              <span className="text-xs font-title font-bold text-white leading-tight">
-                {activeCall.channelName}
-              </span>
-              <span className="text-[10px] text-slate-400">
-                {activeCall.participants.length} conectados
-              </span>
-            </div>
-          </div>
-
-          <div className="h-6 w-px bg-slate-800 hidden sm:block" />
-
-          {/* Mini Avatars */}
-          <div className="flex items-center -space-x-2">
-            {activeCall.participants.slice(0, 4).map((p, idx) => (
-              <div key={idx} className="relative">
-                <img
-                  src={p.user.avatar}
-                  alt={p.user.name}
-                  className={`w-7 h-7 rounded-full object-cover ring-2 transition-all ${
-                    p.isSpeaking
-                      ? 'ring-indigo-500 shadow-glow-speaking scale-105'
-                      : 'ring-slate-900'
-                  }`}
-                />
-                {p.isMuted && (
-                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-slate-800 flex items-center justify-center text-[8px] text-slate-400 ring-1 ring-slate-700">
-                    ✕
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="h-6 w-px bg-slate-800" />
-
-          {/* Inline Quick Controls */}
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-1.5"
-          >
-            <button
-              onClick={toggleMute}
-              title={activeCall.isMicMuted ? 'Desmutar' : 'Mutar microfone'}
-              className={`p-2 rounded-full transition-colors ${
-                activeCall.isMicMuted
-                  ? 'bg-rose-500/20 text-rose-400'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-              }`}
-            >
-              {activeCall.isMicMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5 text-indigo-400" />}
-            </button>
-
-            <button
-              onClick={toggleCamera}
-              title={activeCall.isCameraOn ? 'Desligar câmera' : 'Ligar câmera'}
-              className={`p-2 rounded-full transition-colors ${
-                activeCall.isCameraOn
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-              }`}
-            >
-              {activeCall.isCameraOn ? <Video className="w-3.5 h-3.5" /> : <VideoOff className="w-3.5 h-3.5" />}
-            </button>
-
-            <button
-              onClick={toggleScreenShare}
-              title={activeCall.isScreenSharing ? 'Parar tela' : 'Compartilhar tela'}
-              className={`p-2 rounded-full transition-colors hidden sm:flex ${
-                activeCall.isScreenSharing
-                  ? 'bg-sky-500/20 text-sky-400'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-              }`}
-            >
-              <Monitor className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              onClick={toggleMinimizeCall}
-              title="Expandir chamada"
-              className="p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              onClick={() => setShowLeaveConfirm(true)}
-              title="Encerrar chamada"
-              className="p-2 rounded-full bg-rose-600 text-white hover:bg-rose-500 shadow-sm transition-colors"
-            >
-              <PhoneOff className="w-3.5 h-3.5" />
-            </button>
-          </div>
+      <div
+        role="group"
+        aria-label={`Chamada minimizada: ${activeCall.channelName}. Clique para expandir.`}
+        onClick={toggleMinimizeCall}
+        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleMinimizeCall(); } }}
+        tabIndex={0}
+        className="flex h-12 max-w-full items-center gap-2 rounded-full border border-slate-700 bg-slate-900/95 px-2 shadow-xl backdrop-blur-xl transition-all duration-300 ease-out animate-in slide-in-from-top-2 cursor-pointer hover:border-slate-500"
+      >
+        <span className="ml-1 h-2 w-2 shrink-0 rounded-full bg-emerald-400 animate-pulse" />
+        <span className="max-w-28 truncate text-xs font-semibold text-white" title={activeCall.channelName}>{activeCall.channelName}</span>
+        <span className="hidden text-[10px] text-slate-400 sm:inline">{activeCall.participants.length} na sala</span>
+        <div onClick={(event) => event.stopPropagation()} className="flex shrink-0 items-center gap-1">
+          <button type="button" onClick={toggleMute} title={activeCall.isMicMuted ? 'Ativar microfone' : 'Mutar microfone'} aria-label={activeCall.isMicMuted ? 'Ativar microfone' : 'Mutar microfone'} className={`grid h-8 w-8 place-items-center rounded-full transition-colors ${activeCall.isMicMuted ? 'bg-rose-500/20 text-rose-400' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'}`}>
+            {activeCall.isMicMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          </button>
+          <button type="button" onClick={toggleCamera} title={activeCall.isCameraOn ? 'Desligar câmera' : 'Ligar câmera'} aria-label={activeCall.isCameraOn ? 'Desligar câmera' : 'Ligar câmera'} className={`grid h-8 w-8 place-items-center rounded-full transition-colors ${activeCall.isCameraOn ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'}`}>
+            {activeCall.isCameraOn ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+          </button>
+          <button type="button" onClick={() => setShowLeaveConfirm(true)} title="Sair da chamada" aria-label="Sair da chamada" className="grid h-8 w-8 place-items-center rounded-full bg-rose-600 text-white transition-colors hover:bg-rose-500">
+            <PhoneOff className="h-4 w-4" />
+          </button>
         </div>
       </div>
 

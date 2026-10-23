@@ -33,6 +33,7 @@ interface AppContextType {
   setActiveDmId: (id: string | null) => void;
   dms: DirectMessageConversation[];
   toggleArchiveDm: (id: string) => void;
+  openDirectMessage: (user: User) => void;
   createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => void;
   updateCommunity: (id: string, updates: Partial<Community>) => void;
   updateChannel: (id: string, updates: Partial<Channel>) => void;
@@ -57,6 +58,7 @@ interface AppContextType {
   setIsContextPanelOpen: (val: boolean) => void;
   contextPanelUser: User | null;
   openUserProfile: (user: User) => void;
+  openMembersPanel: () => void;
   closeContextPanel: () => void;
 
   // Modals
@@ -69,12 +71,15 @@ interface AppContextType {
 
   // Call / Voice / Video
   activeCall: ActiveCall | null;
-  startCall: (channel: Channel, mode: 'voice' | 'video') => void;
+  startCall: (channel: Channel, mode: 'voice' | 'video', isDeafened?: boolean) => void;
   startDirectCall: (targetUser: User, mode: 'voice' | 'video') => void;
   leaveCall: () => void;
   toggleMute: () => void;
+  toggleDeafen: () => void;
   toggleCamera: () => void;
   toggleScreenShare: () => void;
+  watchScreen: () => void;
+  stopWatchingScreen: () => void;
   toggleMinimizeCall: () => void;
   setCallLayout: (layout: 'grid' | 'spotlight' | 'audio-only') => void;
   switchCallChannel: (channel: Channel) => void;
@@ -96,17 +101,25 @@ interface AppContextType {
 }
 
 const DEFAULT_THEME: ThemeSettings = {
-  preset: 'dark', // Clean slate default
-  accentColor: '#6366F1',
-  fontScale: 1,
-  density: 'comfortable',
-  glassBlur: 16,
-  glassOpacity: 0.85,
+  mode: 'dark',
+  fontScale: 100,
   reduceMotion: false,
-  highContrast: false,
-  iconPack: 'organic-round',
-  bgType: 'solid',
-  syncDevices: true,
+};
+
+const loadThemeSettings = (): ThemeSettings => {
+  try {
+    const saved = JSON.parse(localStorage.getItem('koaline_theme') || '{}') as Partial<ThemeSettings>;
+    const storedFontScale = typeof saved.fontScale === 'number' && Number.isFinite(saved.fontScale)
+      ? saved.fontScale <= 1.5 ? saved.fontScale * 100 : saved.fontScale
+      : DEFAULT_THEME.fontScale;
+    return {
+      mode: saved.mode === 'dark' || saved.mode === 'light' ? saved.mode : DEFAULT_THEME.mode,
+      fontScale: Math.min(150, Math.max(80, storedFontScale)),
+      reduceMotion: typeof saved.reduceMotion === 'boolean' ? saved.reduceMotion : DEFAULT_THEME.reduceMotion,
+    };
+  } catch {
+    return DEFAULT_THEME;
+  }
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -164,7 +177,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Messaging
-  useEffect(() => { localStorage.setItem('koaline:messages', JSON.stringify(messages)); }, [messages]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('koaline:messages', JSON.stringify(messages));
+    } catch {
+      // Mídia Base64 pode exceder a cota local; as mensagens continuam disponíveis na sessão atual.
+    }
+  }, [messages]);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
 
@@ -180,10 +199,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Active Call
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const screenStreamRef = React.useRef<MediaStream | null>(null);
 
   // Theme
   const [theme, setTheme] = useState<ThemeSettings>(() => {
-    return DEFAULT_THEME;
+    const savedTheme = loadThemeSettings();
+    document.documentElement.setAttribute('data-theme', savedTheme.mode);
+    return savedTheme;
   });
 
   // Toasts
@@ -194,12 +216,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Apply Theme to DOM
   useEffect(() => {
-    localStorage.setItem('koaline_theme', JSON.stringify(theme));
     const root = document.documentElement;
+    [
+      '--bg-primary', '--bg-secondary', '--bg-elevated', '--text-primary', '--text-secondary',
+      '--text-muted', '--border', '--border-strong', '--accent', '--accent-hover', '--color-primary',
+      '--color-primary-hover', '--color-accent', '--color-bg-app', '--color-surface',
+      '--color-surface-elevated', '--color-surface-sunken', '--color-text-main', '--color-text-muted',
+      '--color-border', '--accent-muted', '--density-padding', '--glass-opacity', '--glass-blur',
+      '--app-background-image', '--background-opacity', '--radius-sm', '--radius-md', '--radius-lg',
+      '--radius-xl', '--shadow-sm', '--shadow-md', '--shadow-lg',
+    ].forEach((property) => root.style.removeProperty(property));
+    root.removeAttribute('data-density');
+    root.classList.remove('high-contrast');
+    root.setAttribute('data-theme', theme.mode);
+    root.style.setProperty('--font-scale', String(theme.fontScale / 100));
+    root.style.fontSize = `${theme.fontScale}%`;
 
-    root.setAttribute('data-theme', theme.preset);
+    try {
+      localStorage.setItem('koaline_theme', JSON.stringify({
+        mode: theme.mode,
+        fontScale: theme.fontScale,
+        reduceMotion: theme.reduceMotion,
+      }));
+    } catch { /* O tema segue aplicado mesmo se o armazenamento local estiver indisponível. */ }
 
-    if (theme.preset === 'dark' || theme.preset === 'amoled' || theme.preset === 'neon' || theme.preset === 'minimalist') {
+    if (theme.mode === 'dark') {
       root.classList.add('dark');
     } else {
       root.classList.remove('dark');
@@ -207,18 +248,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (theme.reduceMotion) {
       root.classList.add('reduced-motion');
+      root.setAttribute('data-reduce-motion', 'true');
     } else {
       root.classList.remove('reduced-motion');
+      root.removeAttribute('data-reduce-motion');
     }
 
-    if (theme.highContrast) {
-      root.classList.add('high-contrast');
-    } else {
-      root.classList.remove('high-contrast');
-    }
-
-    root.style.setProperty('--font-scale', theme.fontScale.toString());
-    root.style.setProperty('--color-accent', theme.accentColor);
   }, [theme]);
 
   // Simulated speaking glow
@@ -240,11 +275,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [activeCall?.channelId]);
 
   const updateCurrentUser = (updates: Partial<User>) => {
-    setCurrentUser((prev) => {
-      const next = { ...prev, ...updates };
-      localStorage.setItem('koaline:current-user', JSON.stringify(next));
-      return next;
-    });
+    const next = { ...currentUser, ...updates };
+    setCurrentUser(next);
+    try { localStorage.setItem('koaline:current-user', JSON.stringify(next)); }
+    catch { addToast('Armazenamento cheio', 'Não foi possível salvar a imagem. Remova alguns dados locais e tente novamente.', 'warning'); return; }
     addToast('Perfil Atualizado', 'Suas alterações foram salvas com sucesso.', 'success');
   };
 
@@ -320,6 +354,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     closeUserMenu();
   };
 
+  const openMembersPanel = () => {
+    setContextPanelUser(null);
+    setIsContextPanelOpen(true);
+  };
+
   const closeContextPanel = () => {
     setIsContextPanelOpen(false);
   };
@@ -341,6 +380,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((dm) => (dm.id === id ? { ...dm, isArchived: !dm.isArchived } : dm))
     );
     addToast('Conversa Atualizada', 'O status de arquivamento foi modificado.');
+  };
+
+  const openDirectMessage = (user: User) => {
+    const existing = dms.find((dm) => dm.user.id === user.id || dm.user.handle.toLowerCase() === user.handle.toLowerCase());
+    const id = existing?.id || `dm-${user.id}`;
+    if (!existing) {
+      setDms((prev) => [...prev, { id, user, lastMessage: '', lastMessageTime: '', unread: false, isArchived: false }]);
+    } else if (existing.isArchived) {
+      setDms((prev) => prev.map((dm) => dm.id === existing.id ? { ...dm, isArchived: false } : dm));
+    }
+    setActiveDmId(id);
+    setIsDirectMessages(true);
+    setIsColumn1Collapsed(false);
   };
 
   const createChannel = (name: string, type: 'text' | 'voice', categoryId: string) => {
@@ -551,8 +603,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Call management
-  const startCall = (channel: Channel, mode: 'voice' | 'video') => {
+  const startCall = (channel: Channel, mode: 'voice' | 'video', isDeafened = false) => {
     const currentComm = communities.find((c) => c.id === currentCommunityId);
+    const otherParticipants = (channel.connectedUsers || [])
+      .filter((user) => user.id !== currentUser.id)
+      .map((user) => ({ user, isSpeaking: false, isMuted: false, isCameraOn: false }));
     setActiveCall({
       channelId: channel.id,
       channelName: channel.name,
@@ -560,10 +615,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       type: mode,
       isMinimized: false,
       isMicMuted: false,
+      isDeafened,
       isCameraOn: mode === 'video',
       isScreenSharing: false,
+      screenStream: null,
+      isWatchingScreen: false,
+      screenViewers: [],
       layout: mode === 'video' ? 'grid' : 'audio-only',
       participants: [
+        ...otherParticipants,
         { user: currentUser, isSpeaking: false, isMuted: false, isCameraOn: mode === 'video' },
       ],
     });
@@ -578,8 +638,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       type: mode,
       isMinimized: false,
       isMicMuted: false,
+      isDeafened: false,
       isCameraOn: mode === 'video',
       isScreenSharing: false,
+      screenStream: null,
+      isWatchingScreen: false,
+      screenViewers: [],
       layout: mode === 'video' ? 'grid' : 'audio-only',
       participants: [
         { user: currentUser, isSpeaking: false, isMuted: false, isCameraOn: mode === 'video' },
@@ -590,6 +654,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const leaveCall = () => {
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
     setActiveCall(null);
     addToast('Chamada Encerrada', 'Você saiu da sala.');
   };
@@ -609,6 +675,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const toggleDeafen = () => {
+    setActiveCall((prev) => (prev ? { ...prev, isDeafened: !prev.isDeafened } : null));
+  };
+
   const toggleCamera = () => {
     setActiveCall((prev) => {
       if (!prev) return null;
@@ -626,17 +696,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const toggleScreenShare = () => {
-    setActiveCall((prev) => {
-      if (!prev) return null;
-      const nextState = !prev.isScreenSharing;
-      return {
-        ...prev,
-        isScreenSharing: nextState,
-        layout: nextState ? 'spotlight' : prev.layout,
-      };
-    });
+  const stopScreenShare = () => {
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    setActiveCall((prev) => prev ? { ...prev, isScreenSharing: false, screenStream: null, isWatchingScreen: false, screenViewers: [] } : null);
   };
+
+  const toggleScreenShare = async () => {
+    if (screenStreamRef.current) { stopScreenShare(); return; }
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      addToast('Compartilhamento indisponível', 'Este navegador não oferece captura de tela.', 'warning');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screenStreamRef.current = stream;
+      const track = stream.getVideoTracks()[0];
+      if (track) track.onended = stopScreenShare;
+      setActiveCall((prev) => prev ? { ...prev, isScreenSharing: true, screenStream: stream, isWatchingScreen: false, screenViewers: [], layout: 'spotlight' } : null);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotAllowedError') return;
+      addToast('Falha ao compartilhar', 'Não foi possível iniciar a captura de tela.', 'warning');
+    }
+  };
+
+  const watchScreen = () => setActiveCall((prev) => prev?.screenStream ? { ...prev, isWatchingScreen: true, screenViewers: prev.screenViewers?.some((user) => user.id === currentUser.id) ? prev.screenViewers : [...(prev.screenViewers || []), currentUser] } : prev);
+  const stopWatchingScreen = () => setActiveCall((prev) => prev ? { ...prev, isWatchingScreen: false, screenViewers: (prev.screenViewers || []).filter((user) => user.id !== currentUser.id) } : null);
 
   const toggleMinimizeCall = () => {
     setActiveCall((prev) => (prev ? { ...prev, isMinimized: !prev.isMinimized } : null));
@@ -680,6 +765,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveDmId,
         dms,
         toggleArchiveDm,
+        openDirectMessage,
         createChannel,
         updateCommunity,
         updateChannel,
@@ -700,6 +786,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsContextPanelOpen,
         contextPanelUser,
         openUserProfile,
+        openMembersPanel,
         closeContextPanel,
         isProfileEditorOpen,
         setIsProfileEditorOpen,
@@ -712,8 +799,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         startDirectCall,
         leaveCall,
         toggleMute,
+        toggleDeafen,
         toggleCamera,
         toggleScreenShare,
+        watchScreen,
+        stopWatchingScreen,
         toggleMinimizeCall,
         setCallLayout,
         switchCallChannel,

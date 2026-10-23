@@ -91,13 +91,20 @@ export const ChatView: React.FC = () => {
               <div className="h-px bg-slate-800 flex-1" />
             </div>
 
-            {filteredMessages.map((msg) => (
-              <MessageItem
-                key={msg.id}
-                message={msg}
-                onReply={(target) => setReplyTarget(target)}
-              />
-            ))}
+            {filteredMessages.map((msg, index) => {
+              const previousMessage = filteredMessages[index - 1];
+              const isGrouped = !!previousMessage
+                && !previousMessage.isDeleted
+                && previousMessage.senderId === msg.senderId;
+              return (
+                <MessageItem
+                  key={msg.id}
+                  message={msg}
+                  isGrouped={isGrouped}
+                  onReply={(target) => setReplyTarget(target)}
+                />
+              );
+            })}
           </>
         )}
 

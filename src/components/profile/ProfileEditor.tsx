@@ -5,16 +5,19 @@ import {
   Camera,
   Image as ImageIcon,
   Check,
-  RotateCcw
+  RotateCcw,
+  User
 } from 'lucide-react';
 import { UserStatus } from '../../types';
+import { ImageCropperModal } from '../common/ImageCropperModal';
 
 export const ProfileEditor: React.FC = () => {
   const {
     currentUser,
     updateCurrentUser,
     isProfileEditorOpen,
-    setIsProfileEditorOpen
+    setIsProfileEditorOpen,
+    addToast
   } = useApp();
 
   const [name, setName] = useState(currentUser.name);
@@ -28,6 +31,25 @@ export const ProfileEditor: React.FC = () => {
   const [banner, setBanner] = useState(currentUser.banner || '');
   const [interests, setInterests] = useState<string[]>(currentUser.interests || []);
   const [newInterest, setNewInterest] = useState('');
+  const [cropImage, setCropImage] = useState('');
+  const [cropTarget, setCropTarget] = useState<'avatar' | 'banner' | null>(null);
+
+  const handleImageFile = (event: React.ChangeEvent<HTMLInputElement>, target: 'avatar' | 'banner') => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return addToast('Imagem inválida', 'Escolha uma imagem válida.', 'warning');
+    if (file.size > 5 * 1024 * 1024) return addToast('Imagem muito grande', 'Imagem muito grande (máx 5MB).', 'warning');
+    const reader = new FileReader();
+    reader.onerror = () => addToast('Falha ao carregar imagem', 'Não foi possível carregar a imagem.', 'warning');
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return addToast('Falha ao carregar imagem', 'Não foi possível carregar a imagem.', 'warning');
+      setCropImage(reader.result);
+      setCropTarget(target);
+    };
+    try { reader.readAsDataURL(file); }
+    catch { addToast('Falha ao carregar imagem', 'Não foi possível carregar a imagem.', 'warning'); }
+  };
 
   if (!isProfileEditorOpen) return null;
 
@@ -57,7 +79,7 @@ export const ProfileEditor: React.FC = () => {
     setInterests(interests.filter((i) => i !== item));
   };
 
-  return (
+  return <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in select-none">
       <div className="w-full max-w-xl max-h-[90vh] bg-slate-900 rounded-nest-lg border border-slate-700 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
         {/* Header */}
@@ -82,17 +104,15 @@ export const ProfileEditor: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* Banner & Avatar Preview */}
           <div>
-            <div className="relative h-28 rounded-nest-sm bg-gradient-to-r from-indigo-600 via-indigo-700 to-slate-800 overflow-hidden group">
+            <div className="relative h-28 rounded-nest-sm profile-banner-gradient overflow-hidden group">
               {banner && (
                 <img src={banner} alt="Banner" className="w-full h-full object-cover" />
               )}
+              <input type="file" accept="image/*" className="hidden" aria-label="Escolher banner" onChange={(event) => handleImageFile(event, 'banner')} id="profile-banner-file" />
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   type="button"
-                  onClick={() => {
-                    const newUrl = prompt('Insira o link da imagem para seu banner:', banner);
-                    if (newUrl) setBanner(newUrl);
-                  }}
+                  onClick={() => document.getElementById('profile-banner-file')?.click()}
                   className="px-3 py-1.5 rounded-nest-pill bg-slate-900 text-xs font-semibold text-slate-200 shadow-md flex items-center gap-1.5"
                 >
                   <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
@@ -103,17 +123,11 @@ export const ProfileEditor: React.FC = () => {
               {/* Avatar position */}
               <div className="absolute bottom-2 left-4 group/avatar">
                 <div className="relative">
-                  <img
-                    src={avatar}
-                    alt={name}
-                    className="w-14 h-14 rounded-full object-cover ring-4 ring-slate-900 shadow-xl"
-                  />
+                  {avatar ? <img src={avatar} alt={name} className="w-14 h-14 rounded-full object-cover ring-4 ring-slate-900 shadow-xl" /> : <div aria-label={name || 'Avatar padrão'} className="w-14 h-14 rounded-full bg-slate-700 ring-4 ring-slate-900 shadow-xl grid place-items-center text-white">{name.trim().charAt(0).toUpperCase() || <User />}</div>}
+                  <input type="file" accept="image/*" className="hidden" aria-label="Escolher avatar" onChange={(event) => handleImageFile(event, 'avatar')} id="profile-avatar-file" />
                   <button
                     type="button"
-                    onClick={() => {
-                      const newAv = prompt('Insira o link da imagem para seu avatar:', avatar);
-                      if (newAv) setAvatar(newAv);
-                    }}
+                    onClick={() => document.getElementById('profile-avatar-file')?.click()}
                     className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity"
                   >
                     <Camera className="w-4 h-4" />
@@ -273,5 +287,6 @@ export const ProfileEditor: React.FC = () => {
         </div>
       </div>
     </div>
-  );
+  <ImageCropperModal open={!!cropTarget && !!cropImage} imageSrc={cropImage} aspectRatio={cropTarget === 'banner' ? 3 : 1} cropShape={cropTarget === 'banner' ? 'rect' : 'round'} targetWidth={cropTarget === 'banner' ? 1920 : 512} targetHeight={cropTarget === 'banner' ? 640 : 512} onCancel={() => { setCropTarget(null); setCropImage(''); }} onConfirm={(cropped) => { if (cropTarget === 'banner') { setBanner(cropped); updateCurrentUser({ banner: cropped }); } else { setAvatar(cropped); updateCurrentUser({ avatar: cropped }); } setCropTarget(null); setCropImage(''); }} />
+  </>;
 };

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   X,
@@ -8,7 +8,9 @@ import {
   ExternalLink,
   Edit3,
   Palette,
-  Award
+  Award,
+  Users,
+  Plus
 } from 'lucide-react';
 
 export const ContextPanel: React.FC = () => {
@@ -17,6 +19,10 @@ export const ContextPanel: React.FC = () => {
     closeContextPanel,
     contextPanelUser,
     currentUser,
+    currentCommunityId,
+    dms,
+    addToast,
+    openUserProfile,
     setIsProfileEditorOpen,
     setIsThemeCustomizerOpen,
     startDirectCall,
@@ -27,14 +33,80 @@ export const ContextPanel: React.FC = () => {
   const user = contextPanelUser || currentUser;
   const isSelf = user.id === currentUser.id;
 
+  const memberMap = new Map<string, typeof currentUser>();
+  [currentUser, ...dms.filter((dm) => !dm.isArchived).map((dm) => dm.user)].forEach((member) => {
+    if (member.id) memberMap.set(member.id, member);
+  });
+  const panelMembers = [...memberMap.values()];
+  const onlineMembers = panelMembers.filter((member) => member.status === 'online');
+  const offlineMembers = panelMembers.filter((member) => member.status !== 'online');
+
+  const handleInviteClick = () => {
+    try {
+      const adminState = JSON.parse(localStorage.getItem('koaline:admin:' + currentCommunityId) || '{}') as {
+        invites?: Array<{ code: string; revoked?: boolean; expiresAt?: number; uses?: number; maxUses?: number }>;
+      };
+      const invite = adminState.invites?.find((item) =>
+        !item.revoked && (!item.expiresAt || item.expiresAt > Date.now()) && (!item.maxUses || (item.uses || 0) < item.maxUses)
+      );
+      if (!invite) {
+        addToast('Nenhum convite ativo', 'Gere um link na aba Convites da administração da comunidade.', 'warning');
+        return;
+      }
+      const inviteUrl = window.location.origin + '/invite/' + invite.code;
+      if (!navigator.clipboard?.writeText) {
+        addToast('Convite disponível', inviteUrl);
+        return;
+      }
+      navigator.clipboard.writeText(inviteUrl).then(
+        () => addToast('Convite copiado', 'O link foi copiado para a área de transferência.', 'success'),
+        () => addToast('Convite disponível', inviteUrl)
+      );
+    } catch {
+      addToast('Convite indisponível', 'Tente novamente pelo painel de administração.', 'warning');
+    }
+  };
+
   if (!isContextPanelOpen) return null;
+
+  if (!contextPanelUser) {
+    const renderMember = (member: typeof currentUser) => (
+      <button key={member.id} className="member-roster-person" onClick={() => openUserProfile(member)}>
+        {member.avatar ? <img className="member-roster-avatar" src={member.avatar} alt="" /> : <span className="member-roster-avatar member-roster-fallback">{member.name.trim().charAt(0).toUpperCase() || '◇'}</span>}
+        <span className="member-roster-copy"><strong>{member.name || 'Membro'}</strong><small>@{member.handle || 'koaline'}</small></span>
+        <span className={'member-roster-status ' + (member.status === 'online' ? 'is-online' : 'is-offline')} aria-label={member.status === 'online' ? 'Online' : 'Offline'} />
+      </button>
+    );
+
+    return (
+      <aside className="member-roster-panel h-full bg-slate-900 border-l border-border flex flex-col z-20 overflow-y-auto animate-in slide-in-from-right duration-200 select-none">
+        <header className="member-roster-header">
+          <div><h2><Users /> Membros</h2><p>{panelMembers.length} {panelMembers.length === 1 ? 'membro ou amigo' : 'membros e amigos'}</p></div>
+          <button className="member-roster-invite" onClick={handleInviteClick} title="Copiar um convite ativo" aria-label="Copiar convite ativo"><Plus /></button>
+          <button className="member-roster-close" onClick={closeContextPanel} title="Fechar painel" aria-label="Fechar painel"><X /></button>
+        </header>
+        <div className="member-roster-groups">
+          <section>
+            <h3><span className="member-roster-status is-online" /> Online <small>{onlineMembers.length}</small></h3>
+            {onlineMembers.map(renderMember)}
+            {onlineMembers.length === 0 && <p className="member-roster-empty">Ninguém online agora.</p>}
+          </section>
+          <section>
+            <h3><span className="member-roster-status is-offline" /> Offline <small>{offlineMembers.length}</small></h3>
+            {offlineMembers.map(renderMember)}
+            {offlineMembers.length === 0 && <p className="member-roster-empty">Todos estão online.</p>}
+          </section>
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside
       className="w-72 sm:w-80 h-full bg-slate-900 border-l border-border flex flex-col z-20 shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200 select-none"
     >
       {/* Top Banner with Close button */}
-      <div className="relative h-28 bg-gradient-to-r from-indigo-600 via-indigo-700 to-slate-900 flex-shrink-0">
+      <div className="relative h-28 context-banner-gradient flex-shrink-0">
         {user.banner && (
           <img
             src={user.banner}
@@ -54,15 +126,11 @@ export const ContextPanel: React.FC = () => {
       <div className="px-5 pb-5 -mt-12 flex-1">
         <div className="flex items-end justify-between mb-3">
           <div className="relative">
-            <img
-              src={user.avatar}
-              alt={user.name}
-              className="w-20 h-20 rounded-full object-cover ring-4 ring-slate-900 shadow-xl"
-            />
+            {user.avatar ? <img src={user.avatar} alt={user.name} className="w-20 h-20 rounded-full object-cover ring-4 ring-slate-900 shadow-xl" /> : <div aria-label={user.name || 'Avatar padrão'} className="w-20 h-20 rounded-full bg-slate-700 ring-4 ring-slate-900 shadow-xl grid place-items-center text-xl text-white">{user.name.trim().charAt(0).toUpperCase() || '◇'}</div>}
             <span
-              className={`absolute bottom-1 right-1 w-4 h-4 rounded-full ring-2 ring-slate-900 ${
+              className={`status-presence absolute bottom-1 right-1 w-4 h-4 rounded-full ring-2 ring-slate-900 ${
                 user.status === 'online'
-                  ? 'bg-emerald-500'
+                  ? 'bg-emerald-500 is-online'
                   : user.status === 'idle'
                   ? 'bg-amber-500'
                   : user.status === 'dnd'
@@ -158,7 +226,7 @@ export const ContextPanel: React.FC = () => {
           </div>
           <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-indigo-500 to-sky-400 rounded-full transition-all duration-500"
+              className="h-full bg-gradient-to-r from-violet-500 to-violet-400 rounded-full transition-all duration-500"
               style={{ width: `${Math.min(100, (user.xp / user.xpMax) * 100)}%` }}
             />
           </div>
