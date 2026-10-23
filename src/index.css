@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Default Modern Dark Slate Theme (Tech, Clean, Premium) */
+  --color-primary: #6366F1; /* Indigo vibrant */
+  --color-primary-hover: #4F46E5;
+  --color-accent: #38BDF8; /* Sky Blue */
+
+  --color-bg-app: #0F172A; /* Slate 900 */
+  --color-surface: #1E293B; /* Slate 800 */
+  --color-surface-elevated: #334155; /* Slate 700 */
+  --color-surface-sunken: #0B1120; /* Slate 950 */
+  
+  --color-text-main: #F8FAFC; /* Slate 50 */
+  --color-text-muted: #94A3B8; /* Slate 400 */
+  --color-border: rgba(148, 163, 184, 0.14);
+
+  --font-scale: 1;
+  --radius-nest: 16px;
+  --radius-nest-sm: 10px;
+  --radius-nest-lg: 24px;
+  --density-padding: 1rem;
+  --glass-blur: 20px;
+  --glass-opacity: 0.85;
+}
+
+[data-theme='light'] {
+  --color-primary: #6366F1;
+  --color-primary-hover: #4F46E5;
+  --color-accent: #0284C7;
+
+  --color-bg-app: #F8FAFC;
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #F1F5F9;
+  --color-surface-sunken: #E2E8F0;
+
+  --color-text-main: #0F172A;
+  --color-text-muted: #64748B;
+  --color-border: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme='amoled'] {
+  --color-primary: #6366F1;
+  --color-primary-hover: #4F46E5;
+  --color-accent: #38BDF8;
+
+  --color-bg-app: #000000;
+  --color-surface: #090D14;
+  --color-surface-elevated: #141A24;
+  --color-surface-sunken: #040608;
+
+  --color-text-main: #FFFFFF;
+  --color-text-muted: #8896AB;
+  --color-border: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme='neon'] {
+  --color-primary: #8B5CF6;
+  --color-primary-hover: #7C3AED;
+  --color-accent: #EC4899;
+
+  --color-bg-app: #0B0A1A;
+  --color-surface: #14122B;
+  --color-surface-elevated: #1F1C42;
+  --color-surface-sunken: #06050E;
+
+  --color-text-main: #FFFFFF;
+  --color-text-muted: #A5B4FC;
+  --color-border: rgba(139, 92, 246, 0.2);
+}
+
+[data-theme='minimalist'] {
+  --color-primary: #27272A;
+  --color-primary-hover: #18181B;
+  --color-accent: #71717A;
+
+  --color-bg-app: #09090B;
+  --color-surface: #18181B;
+  --color-surface-elevated: #27272A;
+  --color-surface-sunken: #000000;
+
+  --color-text-main: #FAFAFA;
+  --color-text-muted: #A1A1AA;
+  --color-border: rgba(255, 255, 255, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.reduced-motion * {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+.high-contrast {
+  --color-border: currentColor !important;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--color-bg-app);
+  color: var(--color-text-main);
+  overflow-x: hidden;
+  user-select: none;
+  font-size: calc(14px * var(--font-scale, 1));
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
