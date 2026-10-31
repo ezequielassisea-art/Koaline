@@ -14,6 +14,7 @@ export function canDeleteCommunityChannel(communityId: string, user: User, commu
   } catch { return false; }
 }
 export function canAccessAdminPanel(communityId: string, user: User, creatorId?: string) {
+  if (user.communityRole === 'admin' || user.communityRole === 'owner') return true;
   try {
     const saved = JSON.parse(localStorage.getItem(`koaline:admin:${communityId}`) || '{}');
     if ((saved.ownerId || creatorId) && (saved.ownerId || creatorId) === user.id) return true;
@@ -26,8 +27,6 @@ export function canAccessAdminPanel(communityId: string, user: User, creatorId?:
 export function canModerateCommunity(communityId: string, user: User, creatorId?: string) {
   if (creatorId && creatorId === user.id) return true;
   try {
-    const members: Array<{ communityId: string; userId: string; role: string }> = JSON.parse(localStorage.getItem('koaline:members') || '[]');
-    if (members.some((member) => member.communityId === communityId && member.userId === user.id && /owner|admin|moderator|mod/i.test(member.role))) return true;
     const saved = JSON.parse(localStorage.getItem(`koaline:admin:${communityId}`) || '{}');
     if (saved.ownerId && saved.ownerId === user.id) return true;
     const roles: Array<{ id: string; name: string; permissions: string[] }> = saved.roles || [];

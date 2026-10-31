@@ -20,11 +20,11 @@ export const CreateChannelModal: React.FC = () => {
 
   if (!isCreateChannelModalOpen || !activeCommunity) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (channelName.trim()) {
-      createChannel(channelName, channelType, categoryId);
-      setChannelName('');
+      const created = await createChannel(channelName, channelType, categoryId);
+      if (created) setChannelName('');
     }
   };
 

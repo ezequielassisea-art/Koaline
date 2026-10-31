@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { CallDock } from '../call/CallDock';
 import {
   Bell,
+  X,
   ChevronDown,
   Moon,
   Sun,
@@ -11,13 +12,16 @@ import {
   LogOut,
   Sparkles,
   MessageSquare,
-  Globe,
-  ArrowLeft,
+
+
   Volume2,
   VolumeX,
 } from 'lucide-react';
 import { parseAppDate } from '../../utils/time';
 import { audioManager } from '../../services/AudioManager';
+import { supabase } from '../../services/supabaseClient';
+
+type CommunityInviteNotification = { id: string; sender_id: string; user_id: string; type: string; payload: Record<string, unknown>; read_at: string | null; created_at: string };
 
 export const TopBar: React.FC = () => {
   const {
@@ -37,11 +41,17 @@ export const TopBar: React.FC = () => {
     setIsThemeCustomizerOpen,
     setIsProfileEditorOpen,
     setIsLoggedIn,
-    addToast
+    addToast,
+    openDirectMessage,
+    openSystemConversation,
+    notifications,
+    markNotificationRead,
   } = useApp();
 
 const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [openingNotificationId, setOpeningNotificationId] = useState<string | null>(null);
   const [audioPreferences, setAudioPreferences] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('koaline:audio-settings') || '{}');
@@ -58,6 +68,7 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
   const unreadDirectMessages = dms.filter((dm) => dm.unread && !dm.isArchived).length;
+  const inviteNotifications = notifications.filter((notification) => notification.type === 'community_invite');
   const unreadMentions = Object.entries(messages).reduce((count, [channelId, channelMessages]) => {
     const lastReadAt = lastReadAtByChannel[channelId];
     const normalizedHandle = currentUser.handle.replace(/^@/, '').split('#')[0].toLowerCase();
@@ -75,7 +86,26 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
       return mentionsUser || /@(?:everyone|all)\b/i.test(content);
     }).length;
   }, 0);
-  const notificationCount = unreadDirectMessages + unreadMentions;
+  const notificationCount = unreadDirectMessages + unreadMentions + inviteNotifications.filter((item) => !item.read_at).length;
+
+  const openInviteNotification = async (notification: CommunityInviteNotification) => {
+    const client = supabase;
+    if (!client || openingNotificationId) return;
+    setOpeningNotificationId(notification.id);
+    try {
+      const { data: profile, error } = await client.from('profiles').select('id,username,full_name,avatar_url').eq('id', notification.sender_id).maybeSingle();
+      if (error) throw error;
+      const username = profile?.username || 'Membro Koaline';
+      const inviter = { ...currentUser, id: notification.sender_id, name: profile?.full_name || username, handle: username, avatar: profile?.avatar_url || '', status: 'offline' as const };
+      const conversationId = String(notification.payload.conversation_id || '');
+      if (conversationId) openSystemConversation(conversationId, inviter);
+      else if (!await openDirectMessage(inviter)) return;
+      await markNotificationRead(notification.id);
+      setIsNotificationsOpen(false);
+    } catch (error) {
+      addToast('Convite não aberto', error instanceof Error ? error.message : 'Tente novamente.', 'error');
+    } finally { setOpeningNotificationId(null); }
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -104,8 +134,8 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
     <header className="h-16 px-4 md:px-6 bg-slate-900 border-b border-border flex items-center justify-between sticky top-0 z-30 transition-colors">
       {/* LEFT: Wordmark + Community Selector Pill */}
       <div className="flex items-center gap-3 sm:gap-4">
-        <button type="button" className="orbit-nav-trigger" title={window.location.pathname === '/orbit' ? 'Voltar ao Koaline' : 'Abrir Orbit'} aria-label={window.location.pathname === '/orbit' ? 'Voltar ao Koaline' : 'Abrir feed Orbit'} onClick={() => { const nextPath = window.location.pathname === '/orbit' ? '/' : '/orbit'; if (window.location.pathname !== nextPath) window.history.pushState({}, '', nextPath); window.dispatchEvent(new PopStateEvent('popstate')); }}>{window.location.pathname === '/orbit' ? <ArrowLeft size={18} strokeWidth={2} /> : <Globe size={18} strokeWidth={2} />}<span>{window.location.pathname === '/orbit' ? 'Voltar ao Koaline' : 'Orbit'}</span></button>
-        <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+
+
 
 
         {/* Community Selector Pill */}
@@ -192,15 +222,18 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           )}
         </button>
 
+        <div className="relative">
         <button
-          onClick={markNotificationsRead}
+          onClick={() => { setIsNotificationsOpen((value) => !value); markNotificationsRead(); }}
           title={notificationCount ? `${notificationCount} notificações não lidas. Marcar como lidas` : 'Nenhuma notificação não lida'}
           aria-label={notificationCount ? `${notificationCount} notificações não lidas. Marcar como lidas` : 'Nenhuma notificação não lida'}
-          className={`relative p-2 rounded-full hover:bg-slate-800 transition-colors ${notificationCount ? 'text-primary' : 'text-slate-400 hover:text-slate-200'}`}
+          className={`relative p-2 rounded-full hover:bg-slate-800 transition-colors ${notificationCount ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
         >
           <Bell className="w-4 h-4" />
-          {notificationCount > 0 && <span className="notification-badge" aria-hidden="true">{notificationCount}</span>}
+          {notificationCount > 0 && <span className="notification-badge !bg-red-500 !text-white" aria-hidden="true">{notificationCount}</span>}
         </button>
+        {isNotificationsOpen && <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl"><div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><strong className="text-sm text-white">Notificações</strong><button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button></div><div className="max-h-80 overflow-y-auto">{inviteNotifications.length === 0 ? <p className="p-4 text-sm text-slate-400">Nenhum convite por enquanto.</p> : inviteNotifications.map((notification) => <button key={notification.id} disabled={openingNotificationId === notification.id} onClick={() => void openInviteNotification(notification)} className={`w-full border-b border-slate-800 px-4 py-3 text-left transition-colors hover:bg-slate-900 ${notification.read_at ? 'opacity-70' : 'bg-indigo-500/5'}`}><span className="block text-sm text-slate-200">{String(notification.payload.inviter_name || '@membro')} te convidou para {String(notification.payload.community_name || 'uma comunidade')}</span><span className="mt-1 block text-xs text-slate-400">Clique para abrir o convite na DM.</span><span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span></button>)}</div></div>}
+        </div>
 
         {/* User Pill */}
         <div className="relative" ref={userMenuRef}>

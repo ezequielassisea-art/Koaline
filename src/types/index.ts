@@ -7,6 +7,8 @@ export interface User {
   handle: string;
   email?: string;
   onboarding_completed?: boolean;
+  communityRole?: 'owner' | 'admin' | 'moderator' | 'member';
+  statusKnown?: boolean;
   avatar: string;
   banner?: string;
   status: UserStatus;
@@ -33,6 +35,7 @@ export interface User {
     visible: boolean;
   }>;
   isSelf?: boolean;
+  voiceMuted?: boolean;
 }
 
 export interface Reaction {
@@ -75,6 +78,7 @@ export interface Channel {
   ownerId?: string;
   unreadCount?: number;
   connectedUsers?: User[];
+  voiceStartedAt?: number | null;
   isPrivate?: boolean;
   isArchived?: boolean;
   isDefault?: boolean;
@@ -111,10 +115,12 @@ export interface DirectMessageConversation {
   unread: boolean;
   lastReadAt?: string;
   isArchived: boolean;
+  isSystem?: boolean;
 }
 
 export interface ActiveCall {
   channelId: string;
+  startedAt?: number;
   channelName: string;
   communityName: string;
   type: 'voice' | 'video';

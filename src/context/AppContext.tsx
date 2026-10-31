@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   User,
   Community,
@@ -12,8 +12,84 @@ import {
 import { canDeleteCommunityChannel, canModerateCommunity } from '../components/admin/adminAccess';
 import { audioManager } from '../services/AudioManager';
 import { supabase } from '../services/supabaseClient';
+import { getOrCreateConversation } from '../services/directMessageService';
 
-const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'online', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
+
+const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'offline', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
+
+type SupabaseMessageRow = {
+  id: string;
+  channel_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+  author?: { username?: string | null; avatar_url?: string | null } | Array<{ username?: string | null; avatar_url?: string | null }> | null;
+  profiles?: { username?: string | null; avatar_url?: string | null } | Array<{ username?: string | null; avatar_url?: string | null }> | null;
+  community_role?: 'admin' | 'moderator' | 'member';
+};
+
+type SupabaseCommunityRow = {
+  id: string;
+  name: string;
+  description?: string | null;
+  banner_url?: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+type SupabaseChannelRow = {
+  id: string;
+  community_id: string;
+  name: string;
+  type: 'text' | 'voice';
+  created_at?: string;
+};
+
+type AppNotification = {
+  id: string;
+  user_id: string;
+  sender_id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+};
+
+const toCommunityChannel = (row: SupabaseChannelRow, categoryId: string, ownerId?: string): Channel => ({
+  id: row.id,
+  communityId: row.community_id,
+  name: row.name,
+  type: row.type,
+  categoryId,
+  ownerId,
+  connectedUsers: row.type === 'voice' ? [] : undefined,
+});
+
+const toChatMessage = (row: SupabaseMessageRow, currentUser: User, communityRole?: 'admin' | 'moderator' | 'member'): Message => {
+  const relation = row.author ?? row.profiles;
+  const profile = Array.isArray(relation) ? relation[0] : relation;
+  const isCurrentUser = row.author_id === currentUser.id;
+  const authorName = profile?.username || (isCurrentUser ? currentUser.name : 'Usuário');
+  const author: User = isCurrentUser ? currentUser : {
+    ...EMPTY_USER,
+    id: row.author_id,
+    name: authorName,
+    handle: profile?.username || '',
+    avatar: profile?.avatar_url || '',
+    communityRole,
+    statusKnown: false,
+  };
+
+  return {
+    id: row.id,
+    channelId: row.channel_id,
+    senderId: row.author_id,
+    sender: author,
+    content: row.content,
+    timestamp: row.created_at,
+    reactions: [],
+  };
+};
 
 const getDefaultTextChannel = (community?: Community) => {
   const textChannels = community?.channels.filter((channel) => channel.type === 'text') || [];
@@ -23,6 +99,9 @@ const getDefaultTextChannel = (community?: Community) => {
     || null;
 };
 
+const getDirectCallRoomId = (firstUserId: string, secondUserId: string) =>
+  `dm-call-${[firstUserId, secondUserId].sort().join('-')}`;
+
 type PendingCallRequest =
   | { type: 'channel'; channel: Channel; mode: 'voice' | 'video'; isDeafened: boolean }
   | { type: 'direct'; targetUser: User; mode: 'voice' | 'video' };
@@ -31,13 +110,18 @@ interface AppContextType {
   // User & Auth
   currentUser: User;
   updateCurrentUser: (updates: Partial<User>) => void;
+  completeOnboarding: (updates?: Partial<User>) => Promise<boolean>;
   isLoggedIn: boolean;
   setIsLoggedIn: (val: boolean) => void;
+  isAuthLoading: boolean;
+  authLoadError: string | null;
+  retryAuthProfileLoad: () => void;
   createCommunity: (input: { name: string; icon?: string; visibility: 'public' | 'private' }) => Promise<Community | null>;
   joinCommunityByInvite: (code: string) => boolean;
   
   // Communities & Channels
   communities: Community[];
+  members: Array<{id:string;communityId:string;userId:string;role:'owner'|'admin'|'moderator'|'member';joinedAt:string}>;
   currentCommunityId: string;
   setCurrentCommunityId: (id: string) => void;
   currentChannelId: string;
@@ -48,23 +132,26 @@ interface AppContextType {
   setActiveDmId: (id: string | null) => void;
   dms: DirectMessageConversation[];
   toggleArchiveDm: (id: string) => void;
-  openDirectMessage: (user: User) => void;
-  createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => Promise<void>;
+  isDmLoading: boolean;
+  openDirectMessage: (user: User) => Promise<boolean>;
+  openSystemConversation: (conversationId: string, user: User) => void;
+  acceptCommunityInvite: (communityId: string, notificationId?: string) => Promise<boolean>;
+  createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => Promise<boolean>;
   updateCommunity: (id: string, updates: Partial<Community>) => void;
   updateChannel: (id: string, updates: Partial<Channel>) => void;
   deleteChannel: (id: string) => boolean;
-  removeCommunity: (id: string) => void;
+  removeCommunity: (id: string) => Promise<boolean>;
 
   // Messaging
   messages: Record<string, Message[]>;
-  sendMessage: (content: string, replyTo?: Message['replyTo'], attachments?: Message['attachments']) => void;
+  sendMessage: (content: string, replyTo?: Message['replyTo'], attachments?: Message['attachments']) => Promise<boolean>;
   editMessage: (messageId: string, newContent: string) => void;
   deleteMessage: (messageId: string) => void;
   toggleReaction: (messageId: string, emoji: string) => void;
   togglePinMessage: (messageId: string) => void;
   isTyping: boolean;
   typingUser: string | null;
-  simulateTyping: (userName: string) => void;
+  setTypingStatus: (channelId: string, isTyping: boolean) => void;
 
   // UI Panels
   isColumn1Collapsed: boolean;
@@ -102,7 +189,7 @@ interface AppContextType {
   setCallLayout: (layout: 'grid' | 'spotlight' | 'audio-only') => void;
   switchCallChannel: (channel: Channel) => void;
   moveVoiceUser: (userId: string, channelId: string) => boolean;
-  syncVoiceParticipants: (channelId: string, users: User[]) => void;
+  syncVoiceParticipants: (channelId: string, users: User[], startedAt?: number) => void;
 
   // Themes
   theme: ThemeSettings;
@@ -117,6 +204,8 @@ interface AppContextType {
   resumeToast: () => void;
   notify: { success: (message: string, duration?: number) => void; error: (message: string, duration?: number) => void; warning: (message: string, duration?: number) => void; info: (message: string, duration?: number) => void };
   markNotificationsRead: () => void;
+  notifications: AppNotification[];
+  markNotificationRead: (notificationId: string) => Promise<void>;
   lastReadAtByChannel: Record<string, string>;
   markChannelRead: (channelId: string) => void;
 
@@ -154,22 +243,124 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Auth & Profile
   const [currentUser, setCurrentUser] = useState<User>(() => { try { return { ...EMPTY_USER, ...JSON.parse(localStorage.getItem('koaline:current-user') || '{}') }; } catch { return EMPTY_USER; } });
   const [isLoggedIn, setLoggedIn] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [authLoadError, setAuthLoadError] = useState<string | null>(null);
+  const [profileLoadAttempt, setProfileLoadAttempt] = useState(0);
+  const lastProfileUserIdRef = useRef('');
+  const retryAuthProfileLoad = () => {
+    lastProfileUserIdRef.current = '';
+    setAuthLoadError(null);
+    setIsAuthLoading(true);
+    setProfileLoadAttempt((attempt) => attempt + 1);
+  };
 
   useEffect(() => {
     const client = supabase;
-    if (!client) { setLoggedIn(false); return; }
-    const applySession = (session: Awaited<ReturnType<typeof client.auth.getSession>>['data']['session']) => {
+    if (!client) {
+      setLoggedIn(false);
+      setCurrentUser(EMPTY_USER);
+      setIsAuthLoading(false);
+      return;
+    }
+
+    let active = true;
+    let requestId = 0;
+    const applySession = async (session: Awaited<ReturnType<typeof client.auth.getSession>>['data']['session']) => {
+      const currentRequestId = ++requestId;
       const authUser = session?.user;
-      if (!authUser) { setLoggedIn(false); return; }
+      if (!authUser) {
+        lastProfileUserIdRef.current = '';
+        setLoggedIn(false);
+        setCurrentUser(EMPTY_USER);
+        setAuthLoadError(null);
+        setIsAuthLoading(false);
+        return;
+      }
+
+      if (lastProfileUserIdRef.current === authUser.id) {
+        setLoggedIn(true);
+        setIsAuthLoading(false);
+        return;
+      }
+
       const metadata = authUser.user_metadata || {};
-      setCurrentUser((previous) => ({ ...previous, id: authUser.id, email: authUser.email || '', name: String(metadata.full_name || metadata.name || previous.name || authUser.email?.split('@')[0] || 'Usuário'), handle: String(metadata.username || metadata.user_name || previous.handle || authUser.email?.split('@')[0] || ''), avatar: String(metadata.avatar_url || metadata.picture || previous.avatar || ''), onboarding_completed: Boolean(metadata.onboarding_completed) }));
       setLoggedIn(true);
+      setAuthLoadError(null);
+      setIsAuthLoading(true);
+      setCurrentUser((previous) => ({
+        ...previous,
+        id: authUser.id,
+        email: authUser.email || '',
+        name: String(metadata.full_name || metadata.name || previous.name || authUser.email?.split('@')[0] || 'Usuário'),
+        handle: String(metadata.username || metadata.user_name || previous.handle || ''),
+        avatar: String(metadata.avatar_url || metadata.picture || previous.avatar || ''),
+        onboarding_completed: undefined,
+      }));
+
+      try {
+        const selected = await client.from('profiles')
+          .select('id,username,full_name,avatar_url,onboarding_completed')
+          .eq('id', authUser.id)
+          .maybeSingle();
+        if (selected.error) throw selected.error;
+
+        let profile = selected.data;
+        if (!profile) {
+          const inserted = await client.from('profiles').upsert({
+            id: authUser.id,
+            username: String(metadata.username || metadata.user_name || ''),
+            full_name: String(metadata.full_name || metadata.name || authUser.email?.split('@')[0] || 'Usuário'),
+            avatar_url: String(metadata.avatar_url || metadata.picture || '') || null,
+            onboarding_completed: false,
+          }, { onConflict: 'id' }).select('id,username,full_name,avatar_url,onboarding_completed').single();
+          if (inserted.error) throw inserted.error;
+          profile = inserted.data;
+        }
+
+        if (!active || currentRequestId !== requestId) return;
+        lastProfileUserIdRef.current = authUser.id;
+        setCurrentUser((previous) => ({
+          ...previous,
+          id: authUser.id,
+          email: authUser.email || '',
+          name: String(profile.full_name || metadata.full_name || metadata.name || authUser.email?.split('@')[0] || 'Usuário'),
+          handle: String(profile.username || metadata.username || metadata.user_name || authUser.email?.split('@')[0] || ''),
+          avatar: String(profile.avatar_url || metadata.avatar_url || metadata.picture || ''),
+          onboarding_completed: profile.onboarding_completed === true && Boolean(profile.username && /^[a-z0-9_]{3,20}$/i.test(profile.username)),
+        }));
+        setIsAuthLoading(false);
+      } catch (error) {
+        if (!active || currentRequestId !== requestId) return;
+        setAuthLoadError(error instanceof Error ? error.message : 'Não foi possível carregar seu perfil.');
+        setIsAuthLoading(false);
+      }
     };
-    let alive = true;
-    void client.auth.getSession().then(({ data }) => { if (alive) applySession(data.session); });
-    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => { if (alive) applySession(session); });
-    return () => { alive = false; subscription.unsubscribe(); };
-  }, []);
+
+    void client.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        setAuthLoadError(error.message);
+        setIsAuthLoading(false);
+        return;
+      }
+      void applySession(data.session);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setAuthLoadError(error instanceof Error ? error.message : 'Não foi possível verificar a sessão.');
+      setIsAuthLoading(false);
+    });
+
+    const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+      if (!active) return;
+      if (event === 'TOKEN_REFRESHED' && session?.user.id === lastProfileUserIdRef.current) return;
+      window.setTimeout(() => { if (active) void applySession(session); }, 0);
+    });
+    return () => {
+      active = false;
+      requestId += 1;
+      subscription.unsubscribe();
+    };
+  }, [profileLoadAttempt]);
 
   // Navigation
   const [communities, setCommunities] = useState<Community[]>([]);
@@ -177,145 +368,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentChannelId, setCurrentChannelId] = useState<string>('');
   const [isDirectMessages, setIsDirectMessages] = useState<boolean>(false);
   const [activeDmId, setActiveDmId] = useState<string | null>(null);
+  const [isDmLoading, setIsDmLoading] = useState<boolean>(false);
   const [dms, setDms] = useState<DirectMessageConversation[]>([]);
-  const [members, setMembers] = useState<Array<{id:string;communityId:string;userId:string;role:'owner'|'admin'|'moderator'|'member';joinedAt:string}>>(() => { try { return JSON.parse(localStorage.getItem('koaline:members') || '[]'); } catch { return []; } });
-  const [flatChannels, setFlatChannels] = useState<Array<{id:string;communityId:string;name:string;type:'text'|'voice';category:string;position:number;isPrivate:boolean;isArchived:boolean;createdAt:string}>>(() => { try { return JSON.parse(localStorage.getItem('koaline:channels') || '[]'); } catch { return []; } });
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [members, setMembers] = useState<Array<{id:string;communityId:string;userId:string;role:'owner'|'admin'|'moderator'|'member';joinedAt:string}>>([]);
   const [invites, setInvites] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:invites') || '[]'); } catch { return []; } });
   const [logs, setLogs] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:logs') || '[]'); } catch { return []; } });
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
 
-  // Load community and channel state from Supabase. The browser only keeps navigation preferences.
-  useEffect(() => {
-    let cancelled = false;
-    const loadCommunities = async () => {
-      if (!supabase || !isLoggedIn || !currentUser.id) {
-        setCommunities([]); setMembers([]); setFlatChannels([]); setMessages({});
-        return;
-      }
-      const sb = supabase; // TypeScript narrow
-      try {
-        const membershipResult = await sb.from('community_members').select('community_id,role,joined_at').eq('user_id', currentUser.id);
-        if (membershipResult.error) throw membershipResult.error;
-        const memberships = membershipResult.data || [];
-        const ids = memberships.map((row) => row.community_id as string);
-        if (!ids.length) {
-          if (!cancelled) { setCommunities([]); setMembers([]); setFlatChannels([]); }
-          return;
-        }
-        const [communityResult, categoryResult, channelResult] = await Promise.all([
-          sb.from('communities').select('id,name,description,icon_url,visibility,created_by,owner_id,created_at').in('id', ids).order('created_at'),
-          sb.from('community_categories').select('id,community_id,name,position').in('community_id', ids).order('position'),
-          sb.from('channels').select('id,community_id,category_id,name,type,topic,position,is_private,is_archived,is_default,created_by').in('community_id', ids).order('position'),
-        ]);
-        if (communityResult.error) throw communityResult.error;
-        if (categoryResult.error) throw categoryResult.error;
-        if (channelResult.error) throw channelResult.error;
-        const nextCommunities: Community[] = (communityResult.data || []).map((row) => {
-          const categories = (categoryResult.data || []).filter((category) => category.community_id === row.id).map((category) => ({ id: category.id, communityId: category.community_id, name: category.name }));
-          const channels = (channelResult.data || []).filter((channel) => channel.community_id === row.id).map((channel) => ({ id: channel.id, communityId: channel.community_id, name: channel.name, topic: channel.topic, type: channel.type as 'text'|'voice', categoryId: channel.category_id || categories[0]?.id || '', isPrivate: channel.is_private, isArchived: channel.is_archived, isDefault: channel.is_default, ownerId: channel.created_by || undefined, connectedUsers: channel.type === 'voice' ? [] : undefined }));
-          const membership = memberships.find((item) => item.community_id === row.id);
-          return { id: row.id, name: row.name, tagline: '', description: row.description || '', icon: row.icon_url || '◇', visibility: row.visibility, ownerId: row.owner_id || row.created_by, creatorId: row.created_by, createdAt: row.created_at, membersCount: 1, categories, channels };
-        });
-        if (!cancelled) {
-          setCommunities(nextCommunities);
-          setMembers(memberships.map((item) => ({ id: `${item.community_id}:${currentUser.id}`, communityId: item.community_id, userId: currentUser.id, role: item.role, joinedAt: item.joined_at })));
-          setFlatChannels((channelResult.data || []).map((channel) => ({ id: channel.id, communityId: channel.community_id, name: channel.name, type: channel.type as 'text'|'voice', category: categoryResult.data?.find((category) => category.id === channel.category_id)?.name || 'Geral', position: channel.position, isPrivate: channel.is_private, isArchived: channel.is_archived, createdAt: '' })));
-          if (!currentCommunityId || !nextCommunities.some((community) => community.id === currentCommunityId)) {
-            const firstCommunity = nextCommunities[0];
-            setCurrentCommunityId(firstCommunity?.id || '');
-            setCurrentChannelId(getDefaultTextChannel(firstCommunity)?.id || '');
-          } else {
-            const selectedCommunity = nextCommunities.find((community) => community.id === currentCommunityId);
-            if (!selectedCommunity?.channels.some((channel) => channel.id === currentChannelId)) setCurrentChannelId(getDefaultTextChannel(selectedCommunity)?.id || '');
-          }
-        }
-      } catch (error) {
-        if (!cancelled) addToast('Falha ao carregar comunidades', error instanceof Error ? error.message : 'Verifique as permissões e o schema do Supabase.', 'error');
-      }
-    };
-    void loadCommunities();
-    return () => { cancelled = true; };
-  }, [isLoggedIn, currentUser.id]);
+  const activateDm = (conversationId: string | null) => {
+    if (conversationId) setMessages((previous) => ({ ...previous, [conversationId]: [] }));
+    setActiveDmId(conversationId);
+  };
 
   useEffect(() => {
-    if (!supabase || !isLoggedIn || !currentUser.id) { setDms([]); return; }
-    const sb = supabase; // TypeScript narrow
-    let cancelled = false;
-    const loadDms = async () => {
-      const { data: mine, error: mineError } = await sb.from('direct_conversation_members').select('conversation_id').eq('user_id', currentUser.id);
-      if (mineError) throw mineError;
-      const conversationIds = (mine || []).map((row) => row.conversation_id as string);
-      if (!conversationIds.length) { if (!cancelled) setDms([]); return; }
-      const [memberResult, messageResult] = await Promise.all([
-        sb.from('direct_conversation_members').select('conversation_id,user_id').in('conversation_id', conversationIds),
-        sb.from('direct_messages').select('conversation_id,content,created_at').in('conversation_id', conversationIds).order('created_at', { ascending: false }),
-      ]);
-      if (memberResult.error) throw memberResult.error;
-      if (messageResult.error) throw messageResult.error;
-      const peerIds = [...new Set((memberResult.data || []).filter((row) => row.user_id !== currentUser.id).map((row) => row.user_id))];
-      const profileResult = peerIds.length ? await sb.from('profiles').select('id,username,full_name,avatar_url').in('id', peerIds) : { data: [], error: null };
-      if (profileResult.error) throw profileResult.error;
-      const profiles = new Map((profileResult.data || []).map((profile) => [profile.id, profile]));
-      const nextDms = conversationIds.flatMap((id) => {
-        const peerId = memberResult.data?.find((row) => row.conversation_id === id && row.user_id !== currentUser.id)?.user_id;
-        const profile = peerId && profiles.get(peerId);
-        if (!peerId || !profile) return [];
-        const lastMessage = messageResult.data?.find((row) => row.conversation_id === id);
-        const user: User = { ...EMPTY_USER, id: peerId, name: profile.full_name || profile.username || 'Usuário', handle: profile.username || '', avatar: profile.avatar_url || '' };
-        return [{ id, user, lastMessage: lastMessage?.content || '', lastMessageTime: lastMessage?.created_at || '', unread: false, isArchived: false }];
-      });
-      if (!cancelled) setDms(nextDms);
-    };
-    void loadDms().catch((error) => { if (!cancelled) addToast('Falha ao carregar conversas', error instanceof Error ? error.message : 'Não foi possível consultar as DMs.', 'error'); });
-    return () => { cancelled = true; };
-  }, [isLoggedIn, currentUser.id]);
-
-  const activeChannelKey = isDirectMessages && activeDmId ? activeDmId : currentChannelId;
-  useEffect(() => {
-    if (!supabase || !isLoggedIn || !currentUser.id || !activeChannelKey) return;
-    const sb = supabase; // TypeScript narrow: sb é non-null aqui
-    let cancelled = false;
-    const isDm = isDirectMessages;
-
-    // 1️⃣ Limpa o estado do canal atual ANTES de buscar (evita vazamento de mensagens antigas ao trocar DMs)
-    setMessages((previous) => {
-      const next = { ...previous };
-      delete next[activeChannelKey];
-      return next;
-    });
-
-    const loadMessages = async () => {
-      const query = isDm
-        ? sb.from('direct_messages').select('*').eq('conversation_id', activeChannelKey).order('created_at', { ascending: true }).limit(200)
-        : sb.from('messages').select('*').eq('channel_id', activeChannelKey).order('created_at', { ascending: true }).limit(200);
-      const { data, error } = await query;
-      if (error) throw error;
-      const rows = data || [];
-      const authorIds = [...new Set(rows.map((row) => row.author_id as string))];
-      const profileResult = authorIds.length ? await sb.from('profiles').select('id,username,full_name,avatar_url').in('id', authorIds) : { data: [], error: null };
-      if (profileResult.error) throw profileResult.error;
-      const profiles = new Map((profileResult.data || []).map((profile) => [profile.id, profile]));
-      const reactionResult = !isDm && rows.length ? await sb.from('message_reactions').select('message_id,user_id,emoji').in('message_id', rows.map((row) => row.id)) : { data: [], error: null };
-      if (reactionResult.error) throw reactionResult.error;
-      const mapped: Message[] = rows.map((row) => {
-        const profile = profiles.get(row.author_id);
-        const messageReactions = (reactionResult.data || []).filter((reaction) => reaction.message_id === row.id);
-        const reactions = [...new Set(messageReactions.map((reaction) => reaction.emoji))].map((emoji) => {
-          const users = messageReactions.filter((reaction) => reaction.emoji === emoji).map((reaction) => reaction.user_id);
-          return { emoji, users, count: users.length };
-        });
-        const reply = rows.find((candidate) => candidate.id === row.reply_to);
-        const replyProfile = reply && profiles.get(reply.author_id);
-        return { id: row.id, channelId: activeChannelKey, senderId: row.author_id, sender: { ...EMPTY_USER, id: row.author_id, name: profile?.full_name || profile?.username || 'Usuário', handle: profile?.username || '', avatar: profile?.avatar_url || '' }, content: row.deleted_at ? 'Mensagem apagada' : row.content, timestamp: row.created_at, edited: Boolean(row.edited_at), isDeleted: Boolean(row.deleted_at), pinned: Boolean(row.pinned), reactions, attachments: row.attachments || [], replyTo: reply ? { id: reply.id, senderName: replyProfile?.full_name || replyProfile?.username || 'Usuário', content: reply.content } : undefined };
-      });
-      if (!cancelled) setMessages((previous) => ({ ...previous, [activeChannelKey]: mapped }));
-    };
-    loadMessages().catch((error) => { if (!cancelled) addToast('Falha ao carregar mensagens', error instanceof Error ? error.message : 'Não foi possível consultar o histórico.', 'error'); });
-    const table = isDm ? 'direct_messages' : 'messages';
-    const filter = isDm ? `conversation_id=eq.${activeChannelKey}` : `channel_id=eq.${activeChannelKey}`;
-    const subscription = sb.channel(`chat:${table}:${activeChannelKey}`).on('postgres_changes', { event: '*', schema: 'public', table, filter }, () => { loadMessages().catch(() => undefined); }).subscribe();
-    return () => { cancelled = true; void sb.removeChannel(subscription); };
-  }, [isLoggedIn, currentUser.id, activeChannelKey, isDirectMessages]);
+    try {
+      localStorage.setItem('koaline:invites', JSON.stringify(invites));
+      localStorage.setItem('koaline:logs', JSON.stringify(logs));
+    } catch {}
+  }, [invites, logs]);
   // A persisted voice-channel selection is not a call session. Return to text on reload/deep link.
   useEffect(() => {
     if (activeCallRef.current) return;
@@ -327,9 +398,368 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveDmId(null);
   }, [communities, currentCommunityId, currentChannelId]);
 
-  // Chat content is fetched from Supabase and kept only in memory.
-  const [isTyping, setIsTyping] = useState(false);
-  const [typingUser, setTypingUser] = useState<string | null>(null);
+  const currentChannelCommunityId = communities.find((community) => community.channels.some((channel) => channel.id === currentChannelId))?.id || '';
+
+  // Text channel messages are loaded from Supabase and kept current through Realtime.
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !currentChannelId || isDirectMessages) return;
+
+    let active = true;
+    setMessages((previous) => ({ ...previous, [currentChannelId]: [] }));
+
+    const loadMessages = async () => {
+      const { data, error } = await client
+        .from('messages')
+        .select('*, author:profiles!messages_author_id_fkey(username, avatar_url)')
+        .eq('channel_id', currentChannelId)
+        .order('created_at', { ascending: true });
+
+      if (!active) return;
+      if (error) {
+        addToast('Não foi possível carregar as mensagens', error.message, 'error');
+        return;
+      }
+
+      const rows = (data || []) as SupabaseMessageRow[];
+      const authorIds = [...new Set(rows.map((row) => row.author_id).filter(Boolean))];
+      let roleByUserId = new Map<string, 'admin' | 'moderator' | 'member'>();
+      if (currentChannelCommunityId && authorIds.length) {
+        const rolesResult = await client.from('community_members').select('user_id,role').eq('community_id', currentChannelCommunityId).in('user_id', authorIds);
+        if (!rolesResult.error) roleByUserId = new Map((rolesResult.data || []).map((row) => [row.user_id as string, row.role as 'admin' | 'moderator' | 'member']));
+      }
+      if (!active) return;
+      const loadedMessages = rows.map((row) => toChatMessage(row, currentUser, roleByUserId.get(row.author_id)));
+      setMessages((previous) => {
+        const merged = new Map(loadedMessages.map((message) => [message.id, message]));
+        (previous[currentChannelId] || []).forEach((message) => merged.set(message.id, message));
+        return { ...previous, [currentChannelId]: Array.from(merged.values()) };
+      });
+    };
+
+    void loadMessages();
+
+    const channel = client
+      .channel(`chat_${currentChannelId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `channel_id=eq.${currentChannelId}`,
+      }, (payload) => {
+        const row = payload.new as SupabaseMessageRow;
+        if (!active || !row?.id) return;
+        void (async () => {
+          const [profileResult, roleResult] = await Promise.all([
+            client.from('profiles').select('username,avatar_url').eq('id', row.author_id).maybeSingle(),
+            currentChannelCommunityId
+              ? client.from('community_members').select('role').eq('community_id', currentChannelCommunityId).eq('user_id', row.author_id).maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
+          ]);
+          if (!active) return;
+          const enrichedRow: SupabaseMessageRow = {
+            ...row,
+            profiles: profileResult.data,
+            community_role: roleResult.data?.role as 'admin' | 'moderator' | 'member' | undefined,
+          };
+          const message = toChatMessage(enrichedRow, currentUser, enrichedRow.community_role);
+          setMessages((previous) => {
+            const channelMessages = previous[currentChannelId] || [];
+            if (channelMessages.some((item) => item.id === message.id)) return previous;
+            return { ...previous, [currentChannelId]: [...channelMessages, message] };
+          });
+        })().catch(() => {
+          if (!active) return;
+          const message = toChatMessage(row, currentUser);
+          setMessages((previous) => ({ ...previous, [currentChannelId]: previous[currentChannelId]?.some((item) => item.id === message.id) ? previous[currentChannelId] : [...(previous[currentChannelId] || []), message] }));
+        });
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      void client.removeChannel(channel);
+    };
+  }, [currentChannelId, currentChannelCommunityId, currentUser, isDirectMessages, isLoggedIn]);
+
+  // Direct Messages (DMs) loaded from Supabase and kept current through Realtime.
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !isDirectMessages || !activeDmId) return;
+
+    let active = true;
+    setMessages((previous) => ({ ...previous, [activeDmId]: [] }));
+
+    const loadDmMessages = async () => {
+      try {
+        const { data, error } = await client
+          .from('direct_messages')
+          .select('*')
+          .eq('conversation_id', activeDmId)
+          .order('created_at', { ascending: true });
+
+        if (!active || error) return;
+
+        const rows = (data || []) as Array<{ id: string; conversation_id: string; sender_id?: string; author_id?: string; content: string; created_at: string }>;
+        const userIds = [...new Set(rows.map((r) => r.sender_id || r.author_id).filter(Boolean))] as string[];
+
+        const profileMap = new Map<string, { username?: string | null; avatar_url?: string | null }>();
+        if (userIds.length > 0) {
+          const { data: profData } = await client.from('profiles').select('id, username, avatar_url').in('id', userIds);
+          (profData || []).forEach((p) => profileMap.set(p.id, { username: p.username, avatar_url: p.avatar_url }));
+        }
+
+        if (!active) return;
+        const loadedMessages: Message[] = rows.map((r) => {
+          const senderId = r.sender_id || r.author_id || '';
+          const prof = profileMap.get(senderId);
+          const isMe = senderId === currentUser.id;
+          const senderUser: User = isMe
+            ? currentUser
+            : {
+                ...currentUser,
+                id: senderId,
+                name: prof?.username || 'Membro Koaline',
+                handle: prof?.username || 'koaline',
+                avatar: prof?.avatar_url || '',
+                status: 'online',
+              };
+
+          return {
+            id: r.id,
+            channelId: activeDmId,
+            senderId,
+            sender: senderUser,
+            content: r.content,
+            timestamp: r.created_at,
+            reactions: [],
+          };
+        });
+
+        if (loadedMessages.length > 0) {
+          setMessages((previous) => ({
+            ...previous,
+            [activeDmId]: loadedMessages,
+          }));
+        }
+      } catch {
+        // Fallback gracioso
+      }
+    };
+
+    void loadDmMessages();
+
+    const dmChannel = client
+      .channel(`direct_messages:${activeDmId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'direct_messages',
+        filter: `conversation_id=eq.${activeDmId}`,
+      }, (payload) => {
+        const row = payload.new as { id: string; conversation_id: string; sender_id?: string; author_id?: string; content: string; created_at: string };
+        if (!active || !row?.id) return;
+        const senderId = row.sender_id || row.author_id || '';
+        if (senderId === currentUser.id) return;
+
+        void (async () => {
+          const { data: prof } = await client.from('profiles').select('username, avatar_url').eq('id', senderId).maybeSingle();
+          if (!active) return;
+          const senderUser: User = {
+            ...currentUser,
+            id: senderId,
+            name: prof?.username || 'Membro Koaline',
+            handle: prof?.username || 'koaline',
+            avatar: prof?.avatar_url || '',
+            status: 'online',
+          };
+          const newMsg: Message = {
+            id: row.id,
+            channelId: activeDmId,
+            senderId,
+            sender: senderUser,
+            content: row.content,
+            timestamp: row.created_at,
+            reactions: [],
+          };
+          setMessages((previous) => {
+            const currentMsgs = previous[activeDmId] || [];
+            if (currentMsgs.some((m) => m.id === newMsg.id)) return previous;
+            return { ...previous, [activeDmId]: [...currentMsgs, newMsg] };
+          });
+          setDms((previous) =>
+            previous.map((dm) =>
+              dm.id === activeDmId
+                ? { ...dm, lastMessage: row.content, lastMessageTime: 'Agora', unread: true }
+                : dm
+            )
+          );
+        })();
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      void client.removeChannel(dmChannel);
+    };
+  }, [activeDmId, isDirectMessages, isLoggedIn, currentUser]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || isAuthLoading || !currentUser.id) {
+      setNotifications([]);
+      return;
+    }
+    let active = true;
+    const loadNotifications = async () => {
+      const { data, error } = await client.from('notifications')
+        .select('id,user_id,sender_id,type,payload,read_at,created_at')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (active && !error) setNotifications((data || []) as AppNotification[]);
+    };
+    void loadNotifications();
+    const channel = client.channel(`notifications:${currentUser.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` }, (event) => {
+        if (!active) return;
+        if (event.eventType === 'DELETE') {
+          const deletedId = (event.old as Partial<AppNotification>).id;
+          if (deletedId) setNotifications((previous) => previous.filter((notification) => notification.id !== deletedId));
+          return;
+        }
+        const notification = event.new as AppNotification;
+        if (!notification?.id) return;
+        setNotifications((previous) => [notification, ...previous.filter((item) => item.id !== notification.id)].slice(0, 50));
+        if (event.eventType === 'INSERT') void audioManager.play('notification');
+      })
+      .subscribe();
+    return () => {
+      active = false;
+      void client.removeChannel(channel);
+    };
+  }, [isLoggedIn, isAuthLoading, currentUser.id]);
+
+  // Carrega lista de conversas diretas do usuário do Supabase
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !currentUser.id) return;
+    let active = true;
+
+    const loadUserConversations = async () => {
+      try {
+        const { data: myMembers, error: memError } = await client
+          .from('direct_conversation_members')
+          .select('conversation_id')
+          .eq('user_id', currentUser.id);
+
+        if (memError || !myMembers?.length) return;
+        const convIds = myMembers.map((m) => m.conversation_id).filter(Boolean);
+
+        const { data: conversationRows } = await client
+          .from('direct_conversations')
+          .select('id,is_system')
+          .in('id', convIds);
+        const systemConversationIds = new Set((conversationRows || []).filter((row) => row.is_system).map((row) => row.id));
+
+        const { data: otherMembers, error: otherError } = await client
+          .from('direct_conversation_members')
+          .select('conversation_id, user_id')
+          .in('conversation_id', convIds)
+          .neq('user_id', currentUser.id);
+
+        if (otherError || !otherMembers?.length) return;
+        const otherUserIds = [...new Set(otherMembers.map((m) => m.user_id))];
+
+        const { data: profiles } = await client
+          .from('profiles')
+          .select('id, username, avatar_url')
+          .in('id', otherUserIds);
+
+        if (!active) return;
+        const profMap = new Map((profiles || []).map((p) => [p.id, p]));
+
+        const loadedDms: DirectMessageConversation[] = otherMembers.map((m) => {
+          const prof = profMap.get(m.user_id);
+          const name = prof?.username || 'Membro Koaline';
+          const user: User = {
+            id: m.user_id,
+            name,
+            handle: prof?.username || 'koaline',
+            avatar: prof?.avatar_url || '',
+            status: 'offline',
+            level: 1,
+            xp: 0,
+            xpMax: 100,
+            badges: [],
+            socials: [],
+          };
+          return {
+            id: m.conversation_id,
+            user,
+            lastMessage: '',
+            lastMessageTime: '',
+            unread: false,
+            isArchived: false,
+            isSystem: systemConversationIds.has(m.conversation_id),
+          };
+        });
+
+        setDms((prev) => {
+          const merged = [...prev];
+          loadedDms.forEach((dm) => {
+            const idx = merged.findIndex((item) => item.id === dm.id);
+            if (idx >= 0) {
+              merged[idx] = { ...dm, ...merged[idx], user: dm.user };
+            } else {
+              merged.push(dm);
+            }
+          });
+          return merged;
+        });
+      } catch {
+        // Silencioso
+      }
+    };
+
+    void loadUserConversations();
+    return () => { active = false; };
+  }, [isLoggedIn, currentUser.id]);
+
+  // Keep the signed-in user's active-community role fresh for permission-gated UI.
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !currentUser.id || !currentCommunityId) return;
+    let active = true;
+    const refreshCurrentRole = async () => {
+      const { data, error } = await client.from('community_members')
+        .select('role')
+        .eq('community_id', currentCommunityId)
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+      if (!active || error) return;
+      const role = data?.role === 'admin' || data?.role === 'moderator' || data?.role === 'owner' ? data.role : 'member';
+      setCurrentUser((previous) => previous.communityRole === role ? previous : { ...previous, communityRole: role });
+      setMembers((previous) => {
+        const exists = previous.some((member) => member.communityId === currentCommunityId && member.userId === currentUser.id);
+        if (!data && !exists) return previous;
+        if (!data) return previous.filter((member) => !(member.communityId === currentCommunityId && member.userId === currentUser.id));
+        const nextMember = { id: `${currentCommunityId}:${currentUser.id}`, communityId: currentCommunityId, userId: currentUser.id, role: role as 'admin' | 'moderator' | 'member', joinedAt: new Date().toISOString() };
+        return exists
+          ? previous.map((member) => member.communityId === currentCommunityId && member.userId === currentUser.id ? { ...member, role: nextMember.role } : member)
+          : [...previous, nextMember];
+      });
+    };
+    void refreshCurrentRole();
+    const channel = client.channel(`community-role:${currentCommunityId}:${currentUser.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_members', filter: `user_id=eq.${currentUser.id}` }, (payload) => {
+        const row = payload.new as { community_id?: string; role?: string };
+        if (row.community_id === currentCommunityId) void refreshCurrentRole();
+      })
+      .subscribe();
+    return () => { active = false; void client.removeChannel(channel); };
+  }, [isLoggedIn, currentUser.id, currentCommunityId]);
+  const [typingUsersByChannel, setTypingUsersByChannel] = useState<Record<string, Record<string, string>>>({});
 
   // UI Panels
   const [isColumn1Collapsed, setIsColumn1Collapsed] = useState(false);
@@ -345,8 +775,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const activeCallRef = useRef(activeCall);
   activeCallRef.current = activeCall;
+  const globalPresenceChannelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null);
   const [pendingCallRequest, setPendingCallRequest] = useState<PendingCallRequest | null>(null);
   const screenStreamRef = React.useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || isAuthLoading || !currentUser.id) {
+      globalPresenceChannelRef.current = null;
+      return;
+    }
+
+    let active = true;
+    const channel = client.channel('koaline:presence:global', {
+      config: { presence: { key: currentUser.id } },
+    });
+    globalPresenceChannelRef.current = channel;
+    const applyPresence = () => {
+      const presence = channel.presenceState<{ user_id?: string; status?: User['status'] }>();
+      const statusById = new Map<string, User['status']>();
+      Object.entries(presence).forEach(([key, entries]) => {
+        const entry = entries[entries.length - 1];
+        const userId = entry?.user_id || key;
+        if (userId) statusById.set(userId, entry?.status === 'idle' || entry?.status === 'dnd' || entry?.status === 'offline' ? entry.status : 'online');
+      });
+
+      setDms((previous) => previous.map((dm) => ({
+        ...dm,
+        user: { ...dm.user, status: statusById.get(dm.user.id) || 'offline', statusKnown: true },
+      })));
+      setCommunities((previous) => previous.map((community) => ({
+        ...community,
+        channels: community.channels.map((voiceChannel) => voiceChannel.connectedUsers
+          ? { ...voiceChannel, connectedUsers: voiceChannel.connectedUsers.map((user) => ({ ...user, status: statusById.get(user.id) || 'offline', statusKnown: true })) }
+          : voiceChannel),
+      })));
+      setActiveCall((previous) => previous ? {
+        ...previous,
+        participants: previous.participants.map((participant) => ({
+          ...participant,
+          user: { ...participant.user, status: statusById.get(participant.user.id) || 'offline', statusKnown: true },
+        })),
+      } : previous);
+    };
+
+    channel.on('presence', { event: 'sync' }, applyPresence).subscribe(async (status) => {
+      if (status !== 'SUBSCRIBED' || !active) return;
+      await channel.track({
+        user_id: currentUser.id,
+        username: currentUser.handle || undefined,
+        full_name: currentUser.name || undefined,
+        avatar_url: currentUser.avatar || undefined,
+        status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
+      });
+      applyPresence();
+    });
+
+    return () => {
+      active = false;
+      if (globalPresenceChannelRef.current === channel) globalPresenceChannelRef.current = null;
+      void client.removeChannel(channel);
+    };
+  }, [isLoggedIn, isAuthLoading, currentUser.id]);
+
+  useEffect(() => {
+    const channel = globalPresenceChannelRef.current;
+    if (!channel || !currentUser.id) return;
+    void channel.track({
+      user_id: currentUser.id,
+      username: currentUser.handle || undefined,
+      full_name: currentUser.name || undefined,
+      avatar_url: currentUser.avatar || undefined,
+      status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
+    });
+  }, [currentUser.name, currentUser.handle, currentUser.avatar, currentUser.status, currentUser.id]);
 
   // Theme
   const [theme, setTheme] = useState<ThemeSettings>(() => {
@@ -436,6 +938,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('Perfil Atualizado', 'Suas alterações foram salvas com sucesso.', 'success');
   };
 
+  const completeOnboarding = async (updates: Partial<User> = {}): Promise<boolean> => {
+    const client = supabase;
+    if (!client || !currentUser.id) {
+      addToast('Não foi possível salvar o perfil', 'Sua sessão não está disponível. Entre novamente e tente outra vez.', 'error');
+      return false;
+    }
+
+    const next = { ...currentUser, ...updates, onboarding_completed: true };
+    const username = next.handle.trim().replace(/^@/, '').toLowerCase();
+    if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+      addToast('Escolha seu @', 'Informe um username válido para concluir o perfil.', 'warning');
+      return false;
+    }
+    const { data: usernameMatches, error: usernameCheckError } = await client.from('profiles').select('id').eq('username', username).neq('id', currentUser.id).limit(1);
+    if (usernameCheckError || usernameMatches?.length) {
+      addToast('Username indisponível', usernameCheckError?.message || 'Esse @ já está em uso. Escolha outro.', 'error');
+      return false;
+    }
+    const { data, error } = await client.from('profiles').update({
+      username,
+      full_name: next.name,
+      avatar_url: next.avatar || null,
+      onboarding_completed: true,
+    }).eq('id', currentUser.id).select('onboarding_completed').single();
+
+    if (error || data?.onboarding_completed !== true) {
+      addToast('Não foi possível salvar o perfil', error?.message || 'O Supabase não confirmou a conclusão do perfil.', 'error');
+      return false;
+    }
+
+    setCurrentUser(next);
+    try { localStorage.setItem('koaline:current-user', JSON.stringify(next)); }
+    catch { addToast('Perfil salvo', 'Seu perfil foi salvo no servidor, mas a imagem não pôde ser mantida neste dispositivo.', 'warning'); return true; }
+    addToast('Perfil concluído', 'Suas preferências foram salvas.', 'success');
+    return true;
+  };
+
   const setIsLoggedIn = (value: boolean) => {
     if (!value) {
       setLoggedIn(false);
@@ -446,32 +985,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const createCommunity = async ({ name, icon = '', visibility }: { name: string; icon?: string; visibility: 'public' | 'private' }): Promise<Community | null> => {
-    if (!supabase || !currentUser.id || !name.trim()) return null;
-    try {
-      const slug = `${name.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${crypto.randomUUID().slice(0, 6)}`;
-      const { data, error } = await supabase.rpc('create_orbit_community', { p_name: name.trim(), p_slug: slug, p_description: '', p_banner_url: null });
-      if (error) throw error;
-      const row = (Array.isArray(data) ? data[0] : data) as { id: string; created_at: string; created_by: string } | null;
-      if (!row?.id) throw new Error('O Supabase não retornou a comunidade criada.');
-      const { error: communityUpdateError } = await supabase.from('communities').update({ visibility, icon_url: icon.startsWith('http') ? icon : null }).eq('id', row.id);
-      if (communityUpdateError) throw communityUpdateError;
-      const { data: category, error: categoryError } = await supabase.from('community_categories').insert({ community_id: row.id, name: 'Geral', position: 0 }).select('id').single();
-      if (categoryError) throw categoryError;
-      const { data: channelRows, error: channelError } = await supabase.from('channels').insert([
-        { community_id: row.id, category_id: category.id, name: 'geral', type: 'text', position: 0, is_default: true, created_by: currentUser.id },
-        { community_id: row.id, category_id: category.id, name: 'Sala de voz', type: 'voice', position: 1, created_by: currentUser.id },
-      ]).select('id,community_id,category_id,name,type,topic,position,is_private,is_archived,is_default,created_by');
-      if (channelError) throw channelError;
-      const community: Community = { id: row.id, name: name.trim(), icon: icon.startsWith('http') ? icon : '◇', tagline: '', description: '', visibility, ownerId: currentUser.id, creatorId: currentUser.id, createdAt: row.created_at, membersCount: 1, categories: [{ id: category.id, communityId: row.id, name: 'Geral' }], channels: (channelRows || []).map((channel) => ({ id: channel.id, communityId: row.id, name: channel.name, type: channel.type as 'text'|'voice', categoryId: channel.category_id || '', topic: channel.topic, isDefault: channel.is_default, ownerId: channel.created_by || undefined, connectedUsers: channel.type === 'voice' ? [] : undefined })) };
-      setCommunities((previous) => [...previous, community]);
-      setMembers((previous) => [...previous, { id: `${row.id}:${currentUser.id}`, communityId: row.id, userId: currentUser.id, role: 'admin', joinedAt: row.created_at }]);
-      setCurrentCommunityId(row.id); setCurrentChannelId(community.channels[0]?.id || ''); setIsDirectMessages(false);
-      addToast('Comunidade criada', 'A comunidade e seus canais foram salvos.', 'success');
-      return community;
-    } catch (error) {
-      addToast('Não foi possível criar a comunidade', error instanceof Error ? error.message : 'Verifique as permissões do Supabase.', 'error');
+    const cleanName = name.trim();
+    const client = supabase;
+    if (!client || !currentUser.id || !cleanName) {
+      addToast('Não foi possível criar a comunidade', 'Entre na sua conta e informe um nome para continuar.', 'error');
       return null;
     }
+
+    const slugBase = cleanName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'comunidade';
+    const slug = `${slugBase}-${crypto.randomUUID().slice(0, 8)}`;
+    const { data, error } = await client.rpc('create_orbit_community', {
+      p_name: cleanName,
+      p_slug: slug,
+      p_description: '',
+      p_banner_url: icon || null,
+    });
+
+    if (error) {
+      addToast('Não foi possível criar a comunidade', error.message, 'error');
+      return null;
+    }
+
+    const row = (Array.isArray(data) ? data[0] : data) as SupabaseCommunityRow | null;
+    if (!row?.id) {
+      addToast('Não foi possível criar a comunidade', 'O Supabase não retornou a comunidade criada.', 'error');
+      return null;
+    }
+
+    const categoryId = `${row.id}:geral`;
+    const defaultChannelResults = await Promise.all([
+      { name: 'geral', type: 'text' as const },
+      { name: 'Sala de voz', type: 'voice' as const },
+    ].map(({ name: channelName, type }) => client
+      .from('channels')
+      .insert({ community_id: row.id, name: channelName, type })
+      .select('*')
+      .single()));
+
+    const channelRows = defaultChannelResults.flatMap((result) => result.error || !result.data ? [] : [result.data as SupabaseChannelRow]);
+    const channels = channelRows.map((channel) => toCommunityChannel(channel, categoryId, row.created_by));
+    if (defaultChannelResults.some((result) => result.error)) {
+      const channelError = defaultChannelResults.find((result) => result.error)?.error;
+      addToast('Comunidade criada com aviso', `Não foi possível criar todos os canais iniciais: ${channelError?.message || 'erro desconhecido'}.`, 'warning');
+    }
+
+    const community: Community = {
+      id: row.id,
+      name: row.name,
+      tagline: row.description || '',
+      description: row.description || '',
+      icon: row.banner_url || '◇',
+      banner: row.banner_url || undefined,
+      visibility,
+      ownerId: row.created_by,
+      creatorId: row.created_by,
+      createdAt: row.created_at,
+      membersCount: 1,
+      categories: [{ id: categoryId, communityId: row.id, name: 'Geral' }],
+      channels,
+    };
+    setCommunities((previous) => previous.some((item) => item.id === community.id) ? previous : [...previous, community]);
+    setMembers((previous) => [...previous, { id: `${row.id}:${currentUser.id}`, communityId: row.id, userId: currentUser.id, role: 'admin', joinedAt: row.created_at }]);
+    setLogs((previous) => [{ id: crypto.randomUUID(), communityId: row.id, userId: currentUser.id, action: 'community_created', targetId: row.id, metadata: {}, createdAt: row.created_at }, ...previous]);
+    setCurrentCommunityId(row.id);
+    setCurrentChannelId(channels.find((channel) => channel.type === 'text')?.id || '');
+    setIsDirectMessages(false);
+    addToast('Comunidade criada', `${cleanName} está pronta.`, 'success');
+    return community;
   };
 
   const joinCommunityByInvite = (code: string) => {
@@ -510,6 +1090,98 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       toastTimerRef.current = window.setTimeout(() => removeToast(id), duration);
     }
   };
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !currentUser.id) {
+      setCommunities([]);
+      setMembers([]);
+      return;
+    }
+
+    let active = true;
+    const loadCommunitiesAndChannels = async () => {
+      try {
+        const [communitiesResult, membershipResult] = await Promise.all([
+          client.from('communities').select('id,name,slug,description,banner_url,created_by,created_at').order('created_at', { ascending: false }),
+          client.from('community_members').select('community_id,user_id,role,joined_at').eq('user_id', currentUser.id),
+        ]);
+        if (communitiesResult.error) throw communitiesResult.error;
+        if (membershipResult.error) throw membershipResult.error;
+
+        const joinedIdSet = new Set((membershipResult.data || []).map((item) => item.community_id as string));
+        const joinedCommunities = ((communitiesResult.data || []) as SupabaseCommunityRow[]).filter((community) => joinedIdSet.has(community.id));
+        const mappedCommunities = await Promise.all(joinedCommunities.map(async (community): Promise<Community> => {
+          const categoryId = `${community.id}:geral`;
+          const { data, error } = await client.from('channels').select('*').eq('community_id', community.id);
+          if (error) throw error;
+          const channels = ((data || []) as SupabaseChannelRow[]).map((row) => toCommunityChannel(row, categoryId, community.created_by));
+          return {
+            id: community.id,
+            name: community.name,
+            tagline: community.description || '',
+            description: community.description || '',
+            icon: community.banner_url || '◇',
+            banner: community.banner_url || undefined,
+            visibility: 'public',
+            ownerId: community.created_by,
+            creatorId: community.created_by,
+            createdAt: community.created_at,
+            membersCount: 1,
+            categories: [{ id: categoryId, communityId: community.id, name: 'Geral' }],
+            channels,
+          };
+        }));
+        if (!active) return;
+
+        setMembers(((membershipResult.data || []) as Array<{ community_id: string; user_id: string; role: string; joined_at: string }>).map((row) => ({
+          id: `${row.community_id}:${row.user_id}`,
+          communityId: row.community_id,
+          userId: row.user_id,
+          role: row.role === 'admin' ? 'admin' : row.role === 'moderator' ? 'moderator' : 'member',
+          joinedAt: row.joined_at,
+        })));
+        setCommunities(mappedCommunities);
+
+        const selectedCommunity = mappedCommunities.find((community) => community.id === currentCommunityId) || mappedCommunities[0];
+        const selectedChannel = selectedCommunity?.channels.find((channel) => channel.id === currentChannelId)
+          || getDefaultTextChannel(selectedCommunity || undefined);
+        setCurrentCommunityId(selectedCommunity?.id || '');
+        setCurrentChannelId(selectedChannel?.id || '');
+      } catch (error) {
+        if (active) addToast('Não foi possível carregar as comunidades', error instanceof Error ? error.message : 'Tente novamente.', 'error');
+      }
+    };
+
+    void loadCommunitiesAndChannels();
+    return () => { active = false; };
+  }, [isLoggedIn, currentUser.id]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !currentCommunityId) return;
+    const community = communities.find((item) => item.id === currentCommunityId);
+    if (!community) return;
+
+    const channel = client
+      .channel(`channels:${currentCommunityId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'channels',
+        filter: `community_id=eq.${currentCommunityId}`,
+      }, (payload) => {
+        const row = payload.new as SupabaseChannelRow;
+        if (!row?.id) return;
+        const newChannel = toCommunityChannel(row, community.categories[0]?.id || `${community.id}:geral`, community.ownerId);
+        setCommunities((previous) => previous.map((item) => item.id !== community.id || item.channels.some((existing) => existing.id === newChannel.id)
+          ? item
+          : { ...item, channels: [...item.channels, newChannel] }));
+      })
+      .subscribe();
+
+    return () => { void client.removeChannel(channel); };
+  }, [communities, currentCommunityId, isLoggedIn]);
 
   const removeToast = (id: string) => {
     clearToastTimer();
@@ -560,6 +1232,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try { localStorage.setItem('koaline:last-read', JSON.stringify(next)); } catch { /* Mantém o estado na sessão atual. */ }
   };
 
+  const markNotificationRead = async (notificationId: string) => {
+    const client = supabase;
+    if (!client || !currentUser.id) return;
+    const readAt = new Date().toISOString();
+    const { error } = await client.from('notifications').update({ read_at: readAt }).eq('id', notificationId).eq('user_id', currentUser.id);
+    if (!error) setNotifications((previous) => previous.map((notification) => notification.id === notificationId ? { ...notification, read_at: readAt } : notification));
+  };
+
   const moveVoiceUser = (userId: string, channelId: string) => {
     if (!userId.trim()) return false;
     const destinationCommunity = communities.find((community) => community.channels.some((channel) => channel.id === channelId));
@@ -583,13 +1263,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const syncVoiceParticipants = (channelId: string, users: User[]) => {
+  const syncVoiceParticipants = (channelId: string, users: User[], startedAt?: number) => {
     const validUsers = [...new Map(users.filter((user) => (user.id || '').trim() && ((user.avatar || '').trim() || (user.name || '').trim() || (user.handle || '').trim())).map((user) => [user.id, user])).values()];
     setCommunities((prev) => prev.map((community) => ({
       ...community,
-      channels: community.channels.map((channel) => channel.id === channelId
-        ? { ...channel, connectedUsers: validUsers }
-        : channel),
+      channels: community.channels.map((channel) => {
+        if (channel.id !== channelId) return channel;
+        const wasOccupied = (channel.connectedUsers || []).length > 0;
+        const isOccupied = validUsers.length > 0;
+        return {
+          ...channel,
+          connectedUsers: validUsers,
+          voiceStartedAt: !isOccupied ? null : startedAt ?? (wasOccupied ? channel.voiceStartedAt || Date.now() : Date.now()),
+        };
+      }),
     })));
   };
 
@@ -620,8 +1307,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const openUserMenu = (user: User, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const x = Math.min(e.clientX, window.innerWidth - 240);
-    const y = Math.min(e.clientY, window.innerHeight - 340);
+    const anchor = e.currentTarget.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 24);
+    const height = Math.min(560, window.innerHeight - 24);
+    const x = Math.max(12, Math.min(anchor.left, window.innerWidth - width - 12));
+    const below = anchor.bottom + 8;
+    const y = below + height <= window.innerHeight - 12
+      ? below
+      : Math.max(12, anchor.top - height - 8);
     setActiveUserMenu({ user, position: { x, y } });
   };
 
@@ -636,51 +1329,149 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('Conversa Atualizada', 'O status de arquivamento foi modificado.');
   };
 
-  const openDirectMessage = (user: User) => {
-    setIsDirectMessages(true);
-    setIsColumn1Collapsed(false);
-    if (!supabase || !currentUser.id || !user.id) { addToast('DM indisponível', 'Entre com uma conta para abrir uma conversa.', 'error'); return; }
-    const existing = dms.find((dm) => dm.user.id === user.id);
-    if (existing) { setActiveDmId(existing.id); setDms((prev) => prev.map((dm) => dm.id === existing.id ? { ...dm, isArchived: false } : dm)); return; }
-    (async () => {
-      try {
-        const { data, error } = await supabase.rpc('get_or_create_direct_conversation', { p_other_user: user.id });
-        if (error) throw error;
-        const conversationId = String(data || '');
-        if (!conversationId) throw new Error('O banco não retornou o identificador da conversa.');
-        setDms((prev) => [...prev.filter((dm) => dm.id !== conversationId), { id: conversationId, user, lastMessage: '', lastMessageTime: '', unread: false, isArchived: false }]);
-        setActiveDmId(conversationId);
-      } catch (error: unknown) {
-        setIsDirectMessages(false);
-        addToast('Não foi possível abrir a DM', error instanceof Error ? error.message : 'Aplique a atualização de conversas diretas no Supabase.', 'error');
+  const openDirectMessage = async (user: User) => {
+    const existing = dms.find((dm) => !dm.isSystem && (dm.user.id === user.id || dm.user.handle.toLowerCase() === user.handle.toLowerCase()));
+    if (existing && !existing.id.startsWith('dm-')) {
+      if (existing.isArchived) {
+        setDms((prev) => prev.map((dm) => dm.id === existing.id ? { ...dm, isArchived: false } : dm));
       }
-    })();
+      activateDm(existing.id);
+      setIsDirectMessages(true);
+      setIsColumn1Collapsed(false);
+      return true;
+    }
+
+    setIsDmLoading(true);
+    try {
+      const conversationId = await getOrCreateConversation(user.id);
+      setDms((previous) => {
+        const existingConversation = previous.find((dm) => dm.id === conversationId);
+        if (existingConversation) {
+          return previous.map((dm) => dm.id === conversationId ? { ...dm, user, isArchived: false } : dm);
+        }
+        return [...previous, {
+          id: conversationId,
+          user,
+          lastMessage: '',
+          lastMessageTime: '',
+          unread: false,
+          isArchived: false,
+        }];
+      });
+      activateDm(conversationId);
+      setIsDirectMessages(true);
+      setIsColumn1Collapsed(false);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+          ? error.message
+          : 'Não foi possível abrir a conversa direta.';
+      addToast('Conversa não aberta', message, 'error');
+      return false;
+    } finally {
+      setIsDmLoading(false);
+    }
   };
 
-  const createChannel = async (name: string, type: 'text' | 'voice', categoryId: string) => {
+  const openSystemConversation = (conversationId: string, user: User) => {
+    if (!conversationId) return;
+    setDms((previous) => {
+      const existing = previous.find((dm) => dm.id === conversationId);
+      if (existing) return previous.map((dm) => dm.id === conversationId ? { ...dm, user, isArchived: false, isSystem: true } : dm);
+      return [...previous, { id: conversationId, user, lastMessage: 'Convite personalizado', lastMessageTime: '', unread: false, isArchived: false, isSystem: true }];
+    });
+    activateDm(conversationId);
+    setIsDirectMessages(true);
+    setIsColumn1Collapsed(false);
+  };
+
+  const acceptCommunityInvite = async (communityId: string, notificationId?: string): Promise<boolean> => {
+    const client = supabase;
+    if (!client || !currentUser.id) {
+      addToast('Não foi possível entrar', 'Sua sessão não está disponível.', 'error');
+      return false;
+    }
+    const { error: joinError } = await client.rpc('join_orbit_community', { p_community_id: communityId });
+    if (joinError) {
+      addToast('Não foi possível entrar na comunidade', joinError.message, 'error');
+      return false;
+    }
+    if (notificationId) {
+      await client.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', notificationId).eq('user_id', currentUser.id);
+    }
+
+    const [{ data: row, error: communityError }, { data: channelRows, error: channelsError }] = await Promise.all([
+      client.from('communities').select('id,name,description,banner_url,created_by,created_at').eq('id', communityId).single(),
+      client.from('channels').select('*').eq('community_id', communityId),
+    ]);
+    if (communityError || !row || channelsError) {
+      addToast('Você entrou na comunidade', 'Atualize a página para carregar seus canais.', 'success');
+      return true;
+    }
+    const categoryId = `${row.id}:geral`;
+    const joined: Community = {
+      id: row.id,
+      name: row.name,
+      tagline: row.description || '',
+      description: row.description || '',
+      icon: row.banner_url || '◇',
+      banner: row.banner_url || undefined,
+      visibility: 'public',
+      ownerId: row.created_by,
+      creatorId: row.created_by,
+      createdAt: row.created_at,
+      membersCount: 1,
+      categories: [{ id: categoryId, communityId: row.id, name: 'Geral' }],
+      channels: ((channelRows || []) as SupabaseChannelRow[]).map((channel) => toCommunityChannel(channel, categoryId, row.created_by)),
+    };
+    setCommunities((previous) => previous.some((community) => community.id === joined.id)
+      ? previous.map((community) => community.id === joined.id ? { ...community, ...joined } : community)
+      : [joined, ...previous]);
+    setMembers((previous) => previous.some((member) => member.communityId === communityId && member.userId === currentUser.id)
+      ? previous
+      : [...previous, { id: `${communityId}:${currentUser.id}`, communityId, userId: currentUser.id, role: 'member', joinedAt: new Date().toISOString() }]);
+    setCurrentCommunityId(communityId);
+    setCurrentChannelId(getDefaultTextChannel(joined)?.id || '');
+    setIsDirectMessages(false);
+    setActiveDmId(null);
+    setIsColumn1Collapsed(false);
+    addToast('Bem-vindo à comunidade', `Você entrou em ${joined.name}.`, 'success');
+    return true;
+  };
+
+  const createChannel = async (name: string, type: 'text' | 'voice', categoryId: string): Promise<boolean> => {
     const cleanName = name.trim().toLowerCase().replace(/\s+/g, '-');
     const activeCommunity = communities.find((community) => community.id === currentCommunityId);
     if (!/^[a-z0-9_-]+$/.test(cleanName)) {
       addToast('Nome inválido', 'Use letras, números, hífen ou sublinhado.', 'warning');
-      return;
+      return false;
     }
     if (activeCommunity?.channels.some((channel) => channel.name === cleanName)) {
       addToast('Nome em uso', 'Já existe um canal com esse nome nesta comunidade.', 'warning');
-      return;
+      return false;
     }
-    if (!supabase || !currentUser.id) { addToast('Supabase indisponível', 'Entre novamente para criar canais no banco.', 'error'); return; }
-    const { data: insertedChannel, error } = await supabase.from('channels').insert({ community_id: currentCommunityId, category_id: categoryId || null, name: cleanName, type, topic: `Canal ${type === 'voice' ? 'de voz' : 'de texto'} criado recentemente`, position: activeCommunity?.channels.length || 0, created_by: currentUser.id }).select('id').single();
-    if (error) { addToast('Não foi possível criar o canal', error.message, 'error'); return; }
+    const client = supabase;
+    if (!client || !activeCommunity || !currentUser.id) {
+      addToast('Canal não criado', 'A sessão do Supabase ou a comunidade não está disponível.', 'error');
+      return false;
+    }
+
+    const { data, error } = await client
+      .from('channels')
+      .insert({ community_id: currentCommunityId, name: cleanName, type })
+      .select('*')
+      .single();
+    if (error || !data) {
+      addToast('Canal não criado', error?.message || 'O Supabase não retornou o canal criado.', 'error');
+      return false;
+    }
+
     const newChan: Channel = {
-      id: insertedChannel.id,
-      communityId: currentCommunityId,
-      ownerId: currentUser.id,
-      name: cleanName,
-      type,
-      categoryId,
+      ...toCommunityChannel(data as SupabaseChannelRow, categoryId, currentUser.id),
       topic: `Canal ${type === 'voice' ? 'de voz' : 'de texto'} criado recentemente`,
       unreadCount: 0,
-      connectedUsers: type === 'voice' ? [] : undefined,
     };
 
     setCommunities((prev) =>
@@ -688,53 +1479,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         c.id === currentCommunityId ? { ...c, channels: [...c.channels, newChan] } : c
       )
     );
-    setFlatChannels((prev) => [...prev, { id: newChan.id, communityId: currentCommunityId, name: cleanName, type, category: activeCommunity?.categories.find((item) => item.id === categoryId)?.name || 'Geral', position: activeCommunity?.channels.length || 0, isPrivate: false, isArchived: false, createdAt: new Date().toISOString() }]);
     setLogs((prev) => [{ id: crypto.randomUUID(), communityId: currentCommunityId, userId: currentUser.id, action: 'channel_created', targetId: newChan.id, metadata: { name: cleanName, type }, createdAt: new Date().toISOString() }, ...prev]);
-    try {
-      const key = `koaline:admin:${currentCommunityId}`;
-      const saved = JSON.parse(localStorage.getItem(key) || '{}');
-      const entry = { id: `audit-${Date.now()}`, actor: currentUser.name, action: 'Canal criado', target: cleanName, time: Date.now(), type: 'channel' };
-      localStorage.setItem(key, JSON.stringify({ ...saved, audit: [entry, ...(saved.audit || [])] }));
-    } catch { /* A criação continua disponível mesmo se o armazenamento local estiver indisponível. */ }
     setIsCreateChannelModalOpen(false);
     setCurrentChannelId(newChan.id);
-    addToast('Canal Criado', `#${cleanName} foi salvo no Supabase.`, 'success');
+    addToast('Canal Criado', `#${cleanName} foi criado com sucesso!`, 'success');
+    return true;
   };
 
   const updateCommunity = (id: string, updates: Partial<Community>) => {
-    if (supabase) {
-      const payload: Record<string, unknown> = {};
-      if (updates.name !== undefined) payload.name = updates.name;
-      if (updates.description !== undefined) payload.description = updates.description;
-      if (updates.banner !== undefined) payload.banner_url = updates.banner;
-      if (updates.icon !== undefined) payload.icon_url = updates.icon;
-      if (updates.visibility !== undefined) payload.visibility = updates.visibility;
-      if (Object.keys(payload).length) void supabase.from('communities').update(payload).eq('id', id).then(({ error }) => { if (error) addToast('Alterações não salvas', error.message, 'error'); });
-    }
     setCommunities((prev) => prev.map((community) => community.id === id ? { ...community, ...updates } : community));
   };
 
   const updateChannel = (id: string, updates: Partial<Channel>) => {
-    if (supabase) {
-      const payload: Record<string, unknown> = {};
-      if (updates.name !== undefined) payload.name = updates.name;
-      if (updates.topic !== undefined) payload.topic = updates.topic;
-      if (updates.categoryId !== undefined) payload.category_id = updates.categoryId || null;
-      if (updates.isPrivate !== undefined) payload.is_private = updates.isPrivate;
-      if (updates.isArchived !== undefined) payload.is_archived = updates.isArchived;
-      if (updates.isDefault !== undefined) payload.is_default = updates.isDefault;
-      if (Object.keys(payload).length) void supabase.from('channels').update(payload).eq('id', id).then(({ error }) => { if (error) addToast('Canal não atualizado', error.message, 'error'); });
-    }
     setCommunities((prev) => prev.map((community) => ({
       ...community,
       channels: community.channels.map((channel) => channel.id === id ? { ...channel, ...updates } : channel),
     })));
-    setFlatChannels((prev) => prev.map((channel) => {
-      if (channel.id !== id) return channel;
-      const community = communities.find((item) => item.id === channel.communityId);
-      const category = updates.categoryId ? community?.categories.find((item) => item.id === updates.categoryId)?.name : channel.category;
-      return { ...channel, ...(updates.name ? { name: updates.name } : {}), ...(category ? { category } : {}), ...(updates.isPrivate !== undefined ? { isPrivate: updates.isPrivate } : {}), ...(updates.isArchived !== undefined ? { isArchived: updates.isArchived } : {}) };
-    }));
   };
 
   const deleteChannel = (id: string): boolean => {
@@ -742,14 +1502,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const channel = community?.channels.find((item) => item.id === id);
     if (!community || !channel || !canDeleteCommunityChannel(community.id, currentUser, community.ownerId || community.creatorId, channel.ownerId)) return false;
 
-    if (supabase) void supabase.from('channels').delete().eq('id', id).then(({ error }) => { if (error) addToast('Canal não excluído no banco', error.message, 'error'); });
-
     if (activeCallRef.current?.channelId === id) leaveCall(id, true);
     setCommunities((prev) => prev.map((item) => ({
       ...item,
       channels: item.channels.filter((itemChannel) => itemChannel.id !== id),
     })));
-    setFlatChannels((prev) => prev.filter((item) => item.id !== id));
     setMessages((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setLastReadAtByChannel((prev) => { const next = { ...prev }; delete next[id]; return next; });
     try {
@@ -771,12 +1528,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const removeCommunity = (id: string) => {
-    if (supabase) void supabase.from('communities').delete().eq('id', id).then(({ error }) => { if (error) addToast('Comunidade não excluída no banco', error.message, 'error'); });
+  const removeCommunity = async (id: string): Promise<boolean> => {
+    const client = supabase;
+    if (!client) { addToast('Comunidade não excluída', 'Supabase não está configurado.', 'error'); return false; }
+    const { error } = await client.from('communities').delete().eq('id', id);
+    if (error) { addToast('Comunidade não excluída', error.message, 'error'); return false; }
     const remaining = communities.filter((community) => community.id !== id);
     const removedChannelIds = new Set(communities.find((community) => community.id === id)?.channels.map((channel) => channel.id) || []);
     setCommunities(remaining);
-    setFlatChannels((prev) => prev.filter((channel) => channel.communityId !== id));
     setMembers((prev) => prev.filter((member) => member.communityId !== id));
     setInvites((prev) => (prev as Array<{ communityId?: string }>).filter((item) => item.communityId !== id));
     setLogs((prev) => (prev as Array<{ communityId?: string }>).filter((item) => item.communityId !== id));
@@ -787,87 +1546,259 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentCommunityId(nextCommunity?.id || '');
       setCurrentChannelId(nextCommunity?.channels.find((channel) => channel.type === 'text')?.id || '');
     }
+    addToast('Comunidade excluída', 'A comunidade e os dados relacionados foram removidos.', 'success');
     return true;
   };
 
-  const simulateTyping = (userName: string) => {
-    setIsTyping(true);
-    setTypingUser(userName);
-    setTimeout(() => {
-      setIsTyping(false);
-      setTypingUser(null);
-    }, 3000);
+  const activeChannelKey = isDirectMessages && activeDmId ? activeDmId : currentChannelId;
+
+  const typingChannelRef = useRef<{ id: string; channel: ReturnType<NonNullable<typeof supabase>['channel']>; ready: boolean } | null>(null);
+  const typingExpiryTimersRef = useRef<Map<string, number>>(new Map());
+  const activeTypingUsers = Object.values(typingUsersByChannel[activeChannelKey] || {});
+  const isTyping = activeTypingUsers.length > 0;
+  const typingUser = activeTypingUsers[0] || null;
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !activeChannelKey || !currentUser.id) return;
+    let active = true;
+    const removeTypingUser = (userId: string) => {
+      const timerKey = `${activeChannelKey}:${userId}`;
+      const timer = typingExpiryTimersRef.current.get(timerKey);
+      if (timer !== undefined) window.clearTimeout(timer);
+      typingExpiryTimersRef.current.delete(timerKey);
+      setTypingUsersByChannel((previous) => {
+        if (!previous[activeChannelKey]?.[userId]) return previous;
+        const nextChannel = { ...previous[activeChannelKey] };
+        delete nextChannel[userId];
+        return { ...previous, [activeChannelKey]: nextChannel };
+      });
+    };
+    const channel = client.channel(`typing_${activeChannelKey}`)
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        const userId = typeof payload?.userId === 'string' ? payload.userId : '';
+        const username = typeof payload?.username === 'string' && payload.username.trim() ? payload.username : 'Alguém';
+        if (!active || !userId || userId === currentUser.id) return;
+        setTypingUsersByChannel((previous) => ({ ...previous, [activeChannelKey]: { ...(previous[activeChannelKey] || {}), [userId]: username } }));
+        const timerKey = `${activeChannelKey}:${userId}`;
+        const existingTimer = typingExpiryTimersRef.current.get(timerKey);
+        if (existingTimer !== undefined) window.clearTimeout(existingTimer);
+        typingExpiryTimersRef.current.set(timerKey, window.setTimeout(() => removeTypingUser(userId), 4000));
+      })
+      .on('broadcast', { event: 'typing_stop' }, ({ payload }) => {
+        const userId = typeof payload?.userId === 'string' ? payload.userId : '';
+        if (active && userId) removeTypingUser(userId);
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED' && typingChannelRef.current?.channel === channel) typingChannelRef.current.ready = true;
+      });
+    typingChannelRef.current = { id: activeChannelKey, channel, ready: false };
+    return () => {
+      active = false;
+      if (typingChannelRef.current?.channel === channel) typingChannelRef.current = null;
+      for (const [key, timer] of typingExpiryTimersRef.current) {
+        if (key.startsWith(`${activeChannelKey}:`)) {
+          window.clearTimeout(timer);
+          typingExpiryTimersRef.current.delete(key);
+        }
+      }
+      setTypingUsersByChannel((previous) => {
+        if (!previous[activeChannelKey]) return previous;
+        const next = { ...previous };
+        delete next[activeChannelKey];
+        return next;
+      });
+      void client.removeChannel(channel);
+    };
+  }, [activeChannelKey, currentUser.id, isLoggedIn]);
+
+  const setTypingStatus = (channelId: string, typing: boolean) => {
+    const channel = typingChannelRef.current;
+    if (!channel || !channel.ready || channel.id !== channelId || !currentUser.id) return;
+    const username = (currentUser.handle || currentUser.name || 'Membro').replace(/^@/, '').trim();
+    void channel.channel.send({
+      type: 'broadcast',
+      event: typing ? 'typing' : 'typing_stop',
+      payload: { userId: currentUser.id, username },
+    });
   };
 
-  const sendMessage = (
+  const sendMessage = async (
     content: string,
     replyTo?: Message['replyTo'],
     attachments?: Message['attachments']
   ) => {
-    if (!supabase || !currentUser.id || !activeChannelKey || (!content.trim() && (!attachments || attachments.length === 0))) return;
-    const sb = supabase; // TypeScript narrow
-
-    const newMessage: Message = {
-      id: `pending-${crypto.randomUUID()}`,
-      channelId: activeChannelKey,
-      senderId: currentUser.id,
-      sender: currentUser,
-      content: content.trim(),
-      timestamp: new Date().toISOString(),
-      reactions: [],
-      replyTo,
-      attachments,
-    };
-
-    setMessages((prev) => ({ ...prev, [activeChannelKey]: [...(prev[activeChannelKey] || []), newMessage] }));
-    (async () => {
-      const table = isDirectMessages ? 'direct_messages' : 'messages';
-      const payload = isDirectMessages
-        ? { conversation_id: activeChannelKey, author_id: currentUser.id, content: content.trim(), attachments: attachments || [], reply_to: replyTo?.id || null }
-        : { channel_id: activeChannelKey, author_id: currentUser.id, content: content.trim(), attachments: attachments || [], reply_to: replyTo?.id || null };
-      const { data, error } = await sb.from(table).insert(payload as any).select('id,created_at').single();
-      if (error) {
-        setMessages((prev) => ({ ...prev, [activeChannelKey]: (prev[activeChannelKey] || []).filter((message) => message.id !== newMessage.id) }));
-        addToast('Mensagem não enviada', error.message, 'error');
-        return;
-      }
-      setMessages((prev) => ({ ...prev, [activeChannelKey]: (prev[activeChannelKey] || []).map((message) => message.id === newMessage.id ? { ...message, id: data.id, timestamp: data.created_at } : message) }));
-    })();
-    if (isDirectMessages && activeDmId) {
-      setDms((prev) => prev.map((dm) => dm.id === activeDmId
-        ? { ...dm, lastMessage: content.trim() || 'Anexo', lastMessageTime: newMessage.timestamp, unread: false }
-        : dm));
+    const messageContent = content.trim();
+    if (!messageContent) return false;
+    const client = supabase;
+    if (!client) {
+      notify.error('A conexão com o Supabase não está configurada.');
+      return false;
     }
 
+    let authUser: { id: string; email?: string } | null = null;
+    try {
+      const { data, error } = await client.auth.getUser();
+      if (!error && data.user) {
+        authUser = data.user;
+      } else {
+        const refreshed = await client.auth.refreshSession();
+        if (!refreshed.error && refreshed.data.session?.user) {
+          authUser = refreshed.data.session.user;
+        }
+      }
+    } catch {
+      authUser = null;
+    }
+
+    if (!authUser && currentUser?.id) {
+      authUser = { id: currentUser.id, email: currentUser.email };
+    }
+
+    if (!authUser) {
+      notify.error('Sua sessão expirou. Faça login novamente.');
+      return false;
+    }
+
+    // Se for DM (Direct Messages)
+    if (isDirectMessages) {
+      const conversationId = activeDmId;
+      if (dms.find((dm) => dm.id === conversationId)?.isSystem) {
+        notify.warning('Você não pode responder a este chat de notificações.');
+        return false;
+      }
+      if (!conversationId) {
+        notify.error('Selecione uma conversa para enviar a mensagem.');
+        return false;
+      }
+
+      let data: any = null;
+      try {
+        const res = await client
+          .from('direct_messages')
+          .insert({
+            conversation_id: conversationId,
+            author_id: authUser.id,
+            content: messageContent,
+          })
+          .select('*')
+          .single();
+        if (res.error) throw res.error;
+        data = res.data;
+      } catch (reason) {
+        notify.error('Não foi possível enviar a mensagem direta.');
+        return false;
+      }
+
+      const sender = { ...currentUser, id: authUser.id, email: authUser.email || currentUser.email };
+      const newMessage: Message = {
+        id: data?.id || crypto.randomUUID(),
+        channelId: conversationId,
+        senderId: authUser.id,
+        sender,
+        content: messageContent,
+        timestamp: data?.created_at || new Date().toISOString(),
+        reactions: [],
+        replyTo,
+        attachments,
+      };
+
+      setMessages((previous) => {
+        const dmMessages = previous[conversationId] || [];
+        if (dmMessages.some((item) => item.id === newMessage.id)) return previous;
+        return { ...previous, [conversationId]: [...dmMessages, newMessage] };
+      });
+
+      setDms((previous) =>
+        previous.map((dm) =>
+          dm.id === conversationId
+            ? { ...dm, lastMessage: messageContent, lastMessageTime: 'Agora' }
+            : dm
+        )
+      );
+
+      return true;
+    }
+
+    // Canal normal de texto
+    let channelId = currentChannelId || activeChannelKey;
+    if (!channelId) {
+      const activeComm = communities.find((c) => c.id === currentCommunityId) || communities[0];
+      const textChannel = activeComm?.channels.find((c) => c.type === 'text');
+      if (textChannel) {
+        channelId = textChannel.id;
+        setCurrentChannelId(channelId);
+      } else {
+        notify.error('Selecione um canal de texto antes de enviar.');
+        return false;
+      }
+    }
+
+    const selectedChannel = communities.flatMap((community) => community.channels).find((channel) => channel.id === channelId);
+    if (selectedChannel && selectedChannel.type !== 'text') {
+      notify.error('Mensagens só podem ser enviadas em canais de texto.');
+      return false;
+    }
+
+    let data: SupabaseMessageRow | null = null;
+    let error: { message: string } | null = null;
+    try {
+      const result = await client
+        .from('messages')
+        .insert({ channel_id: channelId, author_id: authUser.id, content: messageContent })
+        .select('*, author:profiles!messages_author_id_fkey(username, avatar_url)')
+        .single();
+      data = result.data as SupabaseMessageRow | null;
+      error = result.error;
+    } catch (reason) {
+      notify.error(reason instanceof Error ? reason.message : 'Não foi possível conectar ao Supabase.');
+      return false;
+    }
+
+    if (error && !data) {
+      notify.error(error.message || 'Não foi possível salvar a mensagem.');
+      return false;
+    }
+
+    if (data) {
+      const sender = { ...currentUser, id: authUser.id, email: authUser.email || currentUser.email };
+      const newMessage = { ...toChatMessage(data, sender), replyTo, attachments };
+      setMessages((previous) => {
+        const channelMessages = previous[channelId] || [];
+        if (channelMessages.some((item) => item.id === newMessage.id)) return previous;
+        return { ...previous, [channelId]: [...channelMessages, newMessage] };
+      });
+    }
+    return Boolean(data);
   };
 
   const editMessage = (messageId: string, newContent: string) => {
-    if (!supabase) return;
-    const table = isDirectMessages ? 'direct_messages' : 'messages';
-    void supabase.from(table).update({ content: newContent, edited_at: new Date().toISOString() }).eq('id', messageId).then(({ error }) => {
-      if (error) { addToast('Mensagem não editada', error.message, 'error'); return; }
-      setMessages((prev) => ({ ...prev, [activeChannelKey]: (prev[activeChannelKey] || []).map((message) => message.id === messageId ? { ...message, content: newContent, edited: true } : message) }));
+    setMessages((prev) => {
+      const channelMsgs = prev[activeChannelKey] || [];
+      return {
+        ...prev,
+        [activeChannelKey]: channelMsgs.map((m) =>
+          m.id === messageId ? { ...m, content: newContent, edited: true } : m
+        ),
+      };
     });
+    addToast('Mensagem Editada', 'Alteração salva com sucesso.');
   };
 
   const deleteMessage = (messageId: string) => {
-    if (!supabase) return;
-    const table = isDirectMessages ? 'direct_messages' : 'messages';
-    void supabase.from(table).update({ deleted_at: new Date().toISOString() }).eq('id', messageId).then(({ error }) => {
-      if (error) { addToast('Mensagem não apagada', error.message, 'error'); return; }
-      setMessages((prev) => ({ ...prev, [activeChannelKey]: (prev[activeChannelKey] || []).map((message) => message.id === messageId ? { ...message, isDeleted: true, content: 'Mensagem apagada' } : message) }));
+    setMessages((prev) => {
+      const channelMsgs = prev[activeChannelKey] || [];
+      return {
+        ...prev,
+        [activeChannelKey]: channelMsgs.map((m) =>
+          m.id === messageId ? { ...m, isDeleted: true, content: 'Mensagem apagada' } : m
+        ),
+      };
     });
     addToast('Mensagem Apagada', 'Mensagem removida.');
   };
 
   const toggleReaction = (messageId: string, emoji: string) => {
-    if (!supabase || isDirectMessages || !currentUser.id) return;
-    const currentMessage = (messages[activeChannelKey] || []).find((message) => message.id === messageId);
-    const alreadyReacted = currentMessage?.reactions.some((reaction) => reaction.emoji === emoji && reaction.users.includes(currentUser.id));
-    const request = alreadyReacted
-      ? supabase.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', currentUser.id).eq('emoji', emoji)
-      : supabase.from('message_reactions').insert({ message_id: messageId, user_id: currentUser.id, emoji });
-    void request.then(({ error }) => { if (error) addToast('Reação não salva', error.message, 'error'); });
     setMessages((prev) => {
       const channelMsgs = prev[activeChannelKey] || [];
       const updated = channelMsgs.map((m) => {
@@ -911,9 +1842,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const togglePinMessage = (messageId: string) => {
-    if (!supabase) return;
-    const message = (messages[activeChannelKey] || []).find((item) => item.id === messageId);
-    void supabase.from('messages').update({ pinned: !message?.pinned }).eq('id', messageId).then(({ error }) => { if (error) addToast('Não foi possível fixar', error.message, 'error'); });
     setMessages((prev) => {
       const channelMsgs = prev[activeChannelKey] || [];
       return {
@@ -941,6 +1869,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     })));
     const nextCall: ActiveCall = {
       channelId: channel.id,
+      startedAt: channel.voiceStartedAt || Date.now(),
       channelName: channel.name,
       communityName: currentComm ? currentComm.name : 'Geral',
       type: mode,
@@ -965,7 +1894,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const connectToDirectCall = (targetUser: User, mode: 'voice' | 'video') => {
     const nextCall: ActiveCall = {
-      channelId: `dm-call-${targetUser.id}`,
+      channelId: getDirectCallRoomId(currentUser.id, targetUser.id),
       channelName: targetUser.name,
       communityName: 'Chamada Direta',
       type: mode,
@@ -997,7 +1926,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const startDirectCall = (targetUser: User, mode: 'voice' | 'video') => {
-    const targetCallId = `dm-call-${targetUser.id}`;
+    const targetCallId = getDirectCallRoomId(currentUser.id, targetUser.id);
     if (activeCallRef.current && activeCallRef.current.channelId !== targetCallId) {
       setPendingCallRequest({ type: 'direct', targetUser, mode });
       return;
@@ -1127,11 +2056,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentUser,
         updateCurrentUser,
+        completeOnboarding,
         isLoggedIn,
         setIsLoggedIn,
+        isAuthLoading,
+        authLoadError,
+        retryAuthProfileLoad,
         createCommunity,
         joinCommunityByInvite,
         communities,
+        members,
         currentCommunityId,
         setCurrentCommunityId,
         currentChannelId,
@@ -1139,10 +2073,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isDirectMessages,
         setIsDirectMessages,
         activeDmId,
-        setActiveDmId,
+        setActiveDmId: activateDm,
         dms,
         toggleArchiveDm,
+        isDmLoading,
         openDirectMessage,
+        openSystemConversation,
+        acceptCommunityInvite,
         createChannel,
         updateCommunity,
         updateChannel,
@@ -1156,7 +2093,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         togglePinMessage,
         isTyping,
         typingUser,
-        simulateTyping,
+        setTypingStatus,
         isColumn1Collapsed,
         setIsColumn1Collapsed,
         isContextPanelOpen,
@@ -1199,6 +2136,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resumeToast,
         notify,
         markNotificationsRead,
+        notifications,
+        markNotificationRead,
         lastReadAtByChannel,
         markChannelRead,
         activeUserMenu,

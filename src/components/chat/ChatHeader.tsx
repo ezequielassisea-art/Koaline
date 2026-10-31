@@ -32,47 +32,62 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
     toggleArchiveDm,
   } = useApp();
 
-  const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
-  const activeChannel = activeCommunity.channels.find((c) => c.id === currentChannelId);
-  const activeDm = dms.find((d) => d.id === activeDmId);
+  const activeCommunity = communities.find((c) => c && c.id === currentCommunityId) || communities[0] || null;
+  const activeChannel = activeCommunity?.channels?.find((c) => c && c.id === currentChannelId) || null;
+  const activeDm = dms.find((d) => d && d.id === activeDmId) || null;
   const activeKey = isDirectMessages && activeDmId ? activeDmId : currentChannelId;
-  const hasPinnedMessages = !!messages[activeKey]?.some((message) => message.pinned && !message.isDeleted);
+  const hasPinnedMessages = !!(activeKey && messages[activeKey]?.some((message) => message && message.pinned && !message.isDeleted));
 
   return (
     <div className="h-14 px-4 border-b border-slate-800/60 flex items-center justify-between sticky top-0 z-10 select-none koaline-solid-panel">
       {/* Left: Channel / DM Info */}
       <div className="flex items-center gap-3 min-w-0">
-        {isDirectMessages && activeDm ? (
-          <div
-            onClick={() => openUserProfile(activeDm.user)}
-            className="flex items-center gap-2.5 cursor-pointer group"
-          >
-            <div className="relative">
-              <img
-                src={activeDm.user.avatar}
-                alt={activeDm.user.name}
-                className="w-8 h-8 rounded-full object-cover group-hover:ring-2 group-hover:ring-indigo-500 transition-all"
-              />
-              <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
-                activeDm.user.status === 'online' ? 'bg-emerald-500 status-presence is-online' : activeDm.user.status === 'idle' ? 'bg-amber-500' : 'bg-zinc-400'
-              }`} />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-title font-bold text-white group-hover:text-indigo-400 transition-colors">
-                  {activeDm.user.name}
-                </span>
-                <span className="text-[10px] text-slate-400">@{activeDm.user.handle}</span>
+        {isDirectMessages ? (
+          activeDm && activeDm.user ? (
+            <div
+              onClick={() => openUserProfile(activeDm.user)}
+              className="flex items-center gap-2.5 cursor-pointer group"
+            >
+              <div className="relative">
+                {activeDm.user.avatar ? (
+                  <img
+                    src={activeDm.user.avatar}
+                    alt={activeDm.user.name || 'Usuário'}
+                    className="w-8 h-8 rounded-full object-cover group-hover:ring-2 group-hover:ring-indigo-500 transition-all"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white group-hover:ring-2 group-hover:ring-indigo-500 transition-all">
+                    {(activeDm.user.name || '?').slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
+                  activeDm.user.status === 'online' ? 'bg-emerald-500 status-presence is-online' : activeDm.user.status === 'idle' ? 'bg-amber-500' : 'bg-zinc-400'
+                }`} />
               </div>
-              <div className="text-[11px] text-emerald-400 font-medium">
-                {activeDm.user.status === 'online' ? '● Online' : activeDm.user.status === 'idle' ? '● Ausente' : '○ Offline'}
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm font-title font-bold text-white group-hover:text-indigo-400 transition-colors">
+                    {activeDm.user.name || 'Membro Koaline'}
+                  </span>
+                  <span className="text-[10px] text-slate-400">@{activeDm.user.handle || 'usuario'}</span>
+                </div>
+                <div className="text-[11px] text-emerald-400 font-medium">
+                  {activeDm.user.status === 'online' ? '● Online' : activeDm.user.status === 'idle' ? '● Ausente' : '○ Offline'}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="min-w-0">
+              <h2 className="text-sm font-title font-bold text-white truncate">
+                Mensagem Direta
+              </h2>
+              <p className="text-[11px] text-slate-400 truncate">Conversa privada</p>
+            </div>
+          )
         ) : (
           <div className="min-w-0">
             <h2 className="text-sm font-title font-bold text-white truncate">
-              {activeChannel?.name || 'chat-geral'}
+              {activeChannel?.name ? `#${activeChannel.name}` : 'chat-geral'}
             </h2>
             {activeChannel?.topic && (
               <p className="text-[11px] text-slate-400 truncate hidden sm:block max-w-md">
@@ -85,7 +100,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
 
       {/* Right: Actions */}
       <div className="flex items-center gap-1">
-        {isDirectMessages && activeDm && (
+        {isDirectMessages && activeDm && activeDm.user && (
           <>
             <button
               onClick={() => startDirectCall(activeDm.user, 'voice')}
@@ -144,6 +159,3 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
     </div>
   );
 };
-
-
-

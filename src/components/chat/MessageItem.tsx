@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Message } from '../../types';
 import { formatRelativeTime } from '../../utils/time';
@@ -27,6 +27,22 @@ interface MessageItemProps {
 
 const COMMON_EMOJIS = ['🔥', '⚡', '✨', '🚀', '👍', '❤️', '👀'];
 const YOUTUBE_URL_REGEX = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
+const renderLinkedText = (value: string, isMine: boolean) => {
+  const parts: React.ReactNode[] = [];
+  const matcher = /https?:\/\/[^\s<>"']+/gi;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = matcher.exec(value))) {
+    let url = match[0];
+    let punctuation = '';
+    while (/[.,!?;:)\]]$/.test(url)) { punctuation = url.slice(-1) + punctuation; url = url.slice(0, -1); }
+    if (match.index > lastIndex) parts.push(value.slice(lastIndex, match.index));
+    parts.push(<a key={`${match.index}-${url}`} href={url} target="_blank" rel="noopener noreferrer" style={{ color: isMine ? '#FFFFFF' : 'var(--primary)', textDecoration: 'underline' }} className="hover:opacity-80">{url}</a>, punctuation);
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < value.length) parts.push(value.slice(lastIndex));
+  return parts;
+};
 
 const getImageSource = (content: string): string | null => {
   const value = content.trim();
@@ -92,7 +108,6 @@ const AudioMessagePlayer: React.FC<{ src: string }> = ({ src }) => {
 export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = false, isUnread = false, timeLabel, onReply }) => {
   const {
     currentUser,
-    openUserProfile,
     openUserMenu,
     editMessage,
     deleteMessage,
@@ -100,6 +115,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
     togglePinMessage,
     communities,
     currentCommunityId,
+    acceptCommunityInvite,
   } = useApp();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -123,6 +139,14 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
         avatar: typeof message.sender?.avatar === 'string' ? message.sender.avatar : '',
       };
   const content = typeof message.content === 'string' ? message.content : '';
+  let inviteCard: { type: 'invite_card'; communityId: string; communityName?: string; message?: string; notificationId?: string; system_log?: boolean } | null = null;
+  if (content.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed?.type === 'invite_card' && typeof parsed.communityId === 'string') inviteCard = parsed;
+    } catch { /* Mensagem comum em texto. */ }
+  }
+  const isSystemInvite = !!inviteCard?.system_log;
   const imageSource = getImageSource(content);
   const audioSource = getMediaSource(content, 'audio');
   const videoSource = getMediaSource(content, 'video');
@@ -131,7 +155,8 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
   const messageText = youtubeMatch
     ? content.replace(/https?:\/\/(?=(?:www\.)?(?:youtube\.com|youtu\.be))/i, '').replace(youtubeMatch[0], '').trim()
     : content.trim();
-  const senderInitials = sender.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '◇';
+  const senderName = sender?.name || 'Membro Koaline';
+  const senderInitials = senderName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '◇';
 
   useEffect(() => {
     if (!isYouTubeModalOpen) return;
@@ -164,16 +189,18 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
   return (
     <div
       id={`message-${message.id}`}
-      className={`koaline-message group relative flex gap-3 px-4 py-2 transition-colors rounded-nest-sm ${isGrouped ? 'is-grouped' : 'mt-2'} ${
+      className={`koaline-message group relative flex gap-3 px-4 py-2 transition-colors rounded-nest-sm ${isSystemInvite ? 'justify-center' : ''} ${isGrouped ? 'is-grouped' : 'mt-2'} ${
         message.pinned ? 'bg-indigo-950 border-l-2 border-indigo-500' : ''
       }`}
     >
       {/* Sender Avatar */}
       <div className="koaline-message-avatar flex-shrink-0 mt-0.5" data-grouped={isGrouped} data-self={isSelf}>
-        {!isGrouped && (
-          sender.avatar
-            ? <img src={sender.avatar} alt={sender.name} onClick={() => openUserProfile(sender)} className="w-10 h-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all ring-1 ring-border shadow-sm" />
-            : <button type="button" aria-label={'Perfil de ' + sender.name} onClick={() => openUserProfile(sender)} className="w-10 h-10 rounded-full bg-slate-700 text-white font-semibold">{senderInitials}</button>
+        {!isGrouped && !isSystemInvite && (
+          <button type="button" aria-label={`Abrir opções de ${sender.name}`} onClick={(event) => openUserMenu(sender, event)} className="block rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+            {sender.avatar
+              ? <img src={sender.avatar} alt="" className="w-10 h-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all ring-1 ring-border shadow-sm" />
+              : <span className="grid w-10 h-10 place-items-center rounded-full bg-slate-700 text-white font-semibold">{senderInitials}</span>}
+          </button>
         )}
       </div>
 
@@ -182,12 +209,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
         {/* Sender Name, Time, Badges */}
         <div className="flex items-center gap-2">
           {isSelf && !isGrouped && sender.avatar && <img src={sender.avatar} alt="" className="h-6 w-6 rounded-full object-cover" />}
-          {!isGrouped && <span
-            onClick={(e) => openUserMenu(sender, e)}
-          className={`koaline-message-author font-title hover:text-indigo-400 hover:underline cursor-pointer transition-colors ${isSelf ? 'self-message-author' : ''}`}
-          >
+          {!isGrouped && !isSystemInvite && <button type="button" onClick={(e) => openUserMenu(sender, e)} className={`koaline-message-author font-title hover:text-indigo-400 hover:underline cursor-pointer transition-colors ${isSelf ? 'self-message-author' : ''}`}>
             {sender.name}
-          </span>}
+          </button>}
 
           {isUnread && <span className="message-unread-dot" title="Mensagem não lida" aria-label="Mensagem não lida" />}
 
@@ -238,7 +262,14 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                 <span className="truncate"><strong>{message.replyTo.senderName}</strong>: {message.replyTo.content}</span>
               </div>
             )}
-            {imageSource ? (
+            {inviteCard ? (
+              <div className={`my-2 max-w-lg p-5 ${isSystemInvite ? 'w-full rounded-xl border-y border-dashed border-slate-700 bg-slate-900/40 text-center' : 'rounded-2xl border border-[var(--primary)]/60 bg-[var(--surface)] shadow-lg'}`}>
+                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--primary)]">{isSystemInvite ? `Convite personalizado de ${sender.name}` : 'Convite para comunidade'}</div>
+                <h3 className="text-lg font-bold text-white">{inviteCard.communityName || communities.find((item) => item.id === inviteCard?.communityId)?.name || 'Comunidade Koaline'}</h3>
+                {inviteCard.message && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{inviteCard.message}</p>}
+                <button type="button" onClick={() => void acceptCommunityInvite(inviteCard!.communityId, inviteCard!.notificationId)} className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-110">Entrar na Comunidade</button>
+              </div>
+            ) : imageSource ? (
               <a href={imageSource} target="_blank" rel="noreferrer" aria-label="Abrir imagem em nova aba" className="inline-block">
                 <img src={imageSource} alt="Imagem enviada" className="max-w-[300px] max-h-[300px] rounded-xl object-cover cursor-pointer" />
               </a>
@@ -260,7 +291,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                 </button>
               </>
             ) : content.trim() ? (
-              <p className={`message-content-text whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{content}</p>
+              <p className={`message-content-text whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{renderLinkedText(content, isSelf)}</p>
             ) : null}
             <time className="koaline-message-time" dateTime={message.timestamp} title={formatRelativeTime(message.timestamp)}>{timeLabel || ''}</time>
             {!imageSource && !audioSource && !videoSource && content.length > 400 && <button type="button" className="message-expand-button" onClick={() => setIsExpanded((expanded) => !expanded)}>{isExpanded ? 'Ver menos' : 'Ver mais'}</button>}
@@ -354,7 +385,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
       </div>
 
       {/* Floating Hover Actions Bar */}
-      <div className="absolute right-4 -top-3 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 border border-slate-700 shadow-xl rounded-nest-pill p-1 flex items-center gap-1 z-10">
+      {!isSystemInvite && <div className="absolute right-4 -top-3 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 border border-slate-700 shadow-xl rounded-nest-pill p-1 flex items-center gap-1 z-10">
         {/* Quick Emojis */}
         <div className="relative">
           <button
@@ -424,7 +455,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         )}
-      </div>
+      </div>}
     </div>
   );
 };

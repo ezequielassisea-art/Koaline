@@ -10,16 +10,17 @@ import {
   Archive,
   ChevronLeft,
   UserPlus,
-  X
+  X,
+  MicOff,
 } from 'lucide-react';
 import { Channel, User } from '../../types';
 import { canAccessAdminPanel } from '../admin/adminAccess';
 import { canModerateCommunity } from '../admin/adminAccess';
 import { DraggableUserCard, DropZoneCall } from '../call/VoiceDragDrop';
 import { formatRelativeTime } from '../../utils/time';
-import { requireSupabase } from '../../services/supabaseClient';
+import { supabase } from '../../services/supabaseClient';
 
-export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel: (channel: Channel) => void }> = ({ onOpenAdmin, onOpenVoiceChannel }) => {
+const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdmin }) => {
   const {
     communities,
     currentCommunityId,
@@ -40,58 +41,85 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
     currentUser,
     openDirectMessage,
     moveVoiceUser,
+    syncVoiceParticipants,
+    startCall,
   } = useApp();
 
   const [collapsedCategories, setCollapsedCategories] = React.useState<Record<string, boolean>>({});
   const [showArchivedDms, setShowArchivedDms] = React.useState(false);
   const [isAddFriendOpen, setIsAddFriendOpen] = React.useState(false);
   const [friendQuery, setFriendQuery] = React.useState('');
-  const [userSearchResults, setUserSearchResults] = React.useState<User[]>([]);
-  const [isUserSearchLoading, setIsUserSearchLoading] = React.useState(false);
-  const [userSearchError, setUserSearchError] = React.useState('');
-  const cleanFriendQuery = friendQuery.trim().replace(/^@+/, '').trim();
-
+  const [clockNow, setClockNow] = React.useState(Date.now());
   React.useEffect(() => {
-    if (!isAddFriendOpen || cleanFriendQuery.length < 2) {
-      setUserSearchResults([]);
-      setUserSearchError('');
-      setIsUserSearchLoading(false);
-      return;
-    }
-    let cancelled = false;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const [userSearchResults, setUserSearchResults] = React.useState<User[]>([]);
+  const [userSearchLoading, setUserSearchLoading] = React.useState(false);
+  const cleanUserQuery = friendQuery.trim().replace(/^@/, '').trim();
+  React.useEffect(() => {
+    if (!isAddFriendOpen || !supabase || cleanUserQuery.length < 2) { setUserSearchResults([]); return; }
+    const client = supabase;
+    let active = true;
+    setUserSearchLoading(true);
     const timer = window.setTimeout(async () => {
-      setIsUserSearchLoading(true);
-      setUserSearchError('');
-      try {
-        const client = requireSupabase();
-        const { data, error } = await client.from('profiles').select('id, username, full_name, avatar_url').ilike('username', `%${cleanFriendQuery}%`).limit(10);
-        if (error) throw error;
-        if (!cancelled) setUserSearchResults((data || []).filter((profile) => profile.id !== currentUser.id).map((profile) => ({
-          ...currentUser,
-          id: profile.id,
-          name: profile.full_name || profile.username || 'Usuário',
-          handle: profile.username || '',
-          avatar: profile.avatar_url || '',
-          status: 'offline' as const,
-          level: 1,
-          xp: 0,
-          xpMax: 100,
-          badges: [],
-          socials: [],
-        })));
-      } catch (error) {
-        if (!cancelled) {
-          setUserSearchResults([]);
-          setUserSearchError(error instanceof Error ? error.message : 'Não foi possível buscar usuários.');
-        }
-      } finally {
-        if (!cancelled) setIsUserSearchLoading(false);
-      }
-    }, 300);
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [isAddFriendOpen, cleanFriendQuery, currentUser.id]);
+      const { data, error } = await client.from('profiles')
+        .select('id, username, avatar_url, full_name')
+        .ilike('username', `%${cleanUserQuery}%`)
+        .limit(5);
+      if (!active) return;
+      setUserSearchResults(error ? [] : (data || []).filter((profile) => profile.username).map((profile) => ({
+        ...currentUser,
+        id: profile.id,
+        name: profile.full_name || profile.username || 'Membro Koaline',
+        handle: profile.username,
+        avatar: profile.avatar_url || '',
+        status: 'offline' as const,
+      })).filter((user) => user.id !== currentUser.id));
+      setUserSearchLoading(false);
+    }, 250);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [isAddFriendOpen, cleanUserQuery, currentUser.id]);
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
+  const voiceChannels = activeCommunity?.channels.filter((channel) => channel.type === 'voice') || [];
+  const voiceChannelKey = voiceChannels.map((channel) => channel.id).join('|');
+  React.useEffect(() => {
+    const client = supabase;
+    if (!client || !currentUser.id || isDirectMessages || !activeCommunity || !voiceChannelKey) return;
+    let active = true;
+    const channels = voiceChannelKey.split('|').map((channelId) => {
+      const presenceChannel = client.channel(`koaline:voice-room:${channelId}`);
+      const syncPresence = () => {
+        if (!active) return;
+        const entries = Object.entries(presenceChannel.presenceState<{ user_id?: string; username?: string; full_name?: string; avatar_url?: string; status?: User['status']; muted?: boolean; joined_at?: number }>())
+          .flatMap(([key, metas]) => metas.map((meta) => ({ ...meta, user_id: meta.user_id || key })))
+          .filter((entry) => !!entry.user_id);
+        const unique = [...new Map(entries.map((entry) => [entry.user_id!, entry])).values()];
+        const users: User[] = unique.map((entry) => ({
+          ...currentUser,
+          id: entry.user_id!,
+          name: entry.full_name || entry.username || 'Membro Koaline',
+          handle: entry.username || '',
+          avatar: entry.avatar_url || '',
+          status: entry.status === 'idle' || entry.status === 'dnd' ? entry.status : 'online',
+          voiceMuted: !!entry.muted,
+        }));
+        const joinTimes = unique.map((entry) => entry.joined_at).filter((value): value is number => Number.isFinite(value));
+        syncVoiceParticipants(channelId, users, joinTimes.length ? Math.min(...joinTimes) : undefined);
+      };
+      presenceChannel
+        .on('presence', { event: 'sync' }, syncPresence)
+        .on('presence', { event: 'join' }, syncPresence)
+        .on('presence', { event: 'leave' }, syncPresence)
+        .subscribe((status) => { if (status === 'SUBSCRIBED') syncPresence(); });
+      return presenceChannel;
+    });
+    return () => {
+      active = false;
+      channels.forEach((channel) => { if (channel) void client.removeChannel(channel); });
+    };
+  }, [activeCommunity?.id, currentUser.id, isDirectMessages, voiceChannelKey]);
   if (!activeCommunity) return null;
   let archivedChannelIds = new Set<string>();
   try { archivedChannelIds = new Set<string>(JSON.parse(localStorage.getItem(`koaline:admin:${currentCommunityId}`) || '{}').archived || []); }
@@ -105,7 +133,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
 
   const handleChannelClick = (channel: Channel) => {
     if (channel.type === 'voice') {
-      onOpenVoiceChannel(channel);
+      startCall(channel, 'voice');
     } else {
       setCurrentChannelId(channel.id);
       if (activeCall && !activeCall.isMinimized) toggleMinimizeCall();
@@ -115,10 +143,28 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
   const activeDms = dms.filter((d) => !d.isArchived);
   const archivedDms = dms.filter((d) => d.isArchived);
 
-  const addFriend = (user: User) => {
-    openDirectMessage(user);
+  const addFriend = (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = friendQuery.trim().replace(/^[@#]/, '').toLowerCase();
+    const result = userSearchResults.find((user) => user.handle.toLowerCase() === query);
+    if (result) {
+      openDirectMessage(result);
+      setFriendQuery('');
+      setIsAddFriendOpen(false);
+      return;
+    }
+    const candidates: Array<{ user: User; tag?: string }> = [
+      ...dms.map((dm) => ({ user: dm.user, tag: dm.user.handle.match(/#(\d+)$/)?.[1] })),
+      ...activeCommunity.channels.flatMap((channel) => (channel.connectedUsers || []).map((user) => ({ user, tag: user.handle.match(/#(\d+)$/)?.[1] }))),
+      { user: { ...currentUser, id: 'mock-user-marina', name: 'Marina Costa', handle: 'marina', avatar: 'https://api.dicebear.com/9.x/initials/svg?seed=Marina%20Costa' }, tag: '1234' },
+      { user: { ...currentUser, id: 'mock-user-caio', name: 'Caio Nunes', handle: 'caio', avatar: 'https://api.dicebear.com/9.x/initials/svg?seed=Caio%20Nunes' }, tag: '5678' },
+    ];
+    const match = candidates.find(({ user, tag }) => user.id !== currentUser.id && (
+      user.handle.replace(/^@/, '').toLowerCase() === query || user.handle.toLowerCase().endsWith(`#${query}`) || tag === query
+    ));
+    if (!match) { addToast('Usuário não encontrado', 'Confira o @usuário ou a #tag e tente novamente.', 'warning'); return; }
+    openDirectMessage(match.user);
     setFriendQuery('');
-    setUserSearchResults([]);
     setIsAddFriendOpen(false);
   };
 
@@ -302,6 +348,10 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
                         const isVoice = channel.type === 'voice';
                         const isSelected = currentChannelId === channel.id && !isVoice;
                         const connectedUsers = (channel.connectedUsers || []).filter((user) => (user.id || '').trim() && ((user.avatar || '').trim() || (user.name || '').trim() || (user.handle || '').trim()));
+                        const totalSeconds = channel.voiceStartedAt ? Math.max(0, Math.floor((clockNow - channel.voiceStartedAt) / 1000)) : 0;
+                        const channelElapsed = totalSeconds >= 3600
+                          ? `${String(Math.floor(totalSeconds / 3600)).padStart(2, '0')}:${String(Math.floor(totalSeconds / 60) % 60).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`
+                          : `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
                           return (
                           <DropZoneCall key={channel.id} callId={channel.id} permission={isVoice && canMoveUsers} onMove={(userId, callId) => {
                             if (!moveVoiceUser(userId, callId)) addToast('Movimentação negada', 'Apenas moderadores e administradores podem mover pessoas entre chamadas.', 'warning');
@@ -322,22 +372,23 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
 
                             <div className="flex items-center gap-1 flex-shrink-0">
                               {isVoice && connectedUsers.length > 0 && (
-                                <div className="flex items-center -space-x-1.5">
-                                  {connectedUsers.map((u) => (
-                                    <DraggableUserCard
-                                      key={u.id}
-                                      user={u}
-                                      permission={canMoveUsers}
-                                      onOpen={() => openUserProfile(u)}
-                                    />
-                                  ))}
-                                </div>
+                                <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">{channelElapsed}</span>
                               )}
                               {!isVoice && channel.unreadCount && channel.unreadCount > 0 ? (
                                 <span className="w-2 h-2 rounded-full bg-indigo-500" />
                               ) : null}
                             </div>
                           </div>
+                          {isVoice && connectedUsers.length > 0 && <div className="space-y-0.5 pb-1 pl-9 pr-2" onClick={(event) => event.stopPropagation()}>
+                            {connectedUsers.map((u) => <div key={u.id} className="group/member flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-[var(--text-muted)] transition-colors hover:bg-slate-800/70" title={u.name}>
+                              <button type="button" onClick={() => openUserProfile(u)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                                {u.avatar ? <img src={u.avatar} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" /> : <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-200">{u.name?.trim().charAt(0).toUpperCase() || '◇'}</span>}
+                                <span className="truncate text-[11px]">{u.name || u.handle || 'Membro Koaline'}</span>
+                              </button>
+                              {u.voiceMuted && <MicOff className="h-3.5 w-3.5 shrink-0 text-rose-400" aria-label="Microfone mutado" />}
+                              <DraggableUserCard user={u} permission={canMoveUsers} onOpen={() => openUserProfile(u)} />
+                            </div>)}
+                          </div>}
                           </DropZoneCall>
                         );
                       })}
@@ -366,10 +417,12 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
           </button>}
         </div>
       )}
-      {isAddFriendOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Adicionar amigo" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsAddFriendOpen(false); }}><form onSubmit={(event) => { event.preventDefault(); if (userSearchResults[0]) addFriend(userSearchResults[0]); }} className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold text-white">Adicionar amigo</h2><button type="button" onClick={() => setIsAddFriendOpen(false)} aria-label="Fechar" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"><X className="h-4 w-4" /></button></div><input autoFocus value={friendQuery} onChange={(event) => setFriendQuery(event.target.value)} placeholder="Digite o @usuário para buscar" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-indigo-500"/><div className="mt-3 max-h-64 space-y-1 overflow-y-auto">{cleanFriendQuery.length < 2 ? <p className="px-2 py-3 text-xs text-slate-400">Digite pelo menos 2 caracteres do @username.</p> : isUserSearchLoading ? <p className="px-2 py-3 text-xs text-slate-400">Buscando usuários…</p> : userSearchError ? <p className="px-2 py-3 text-xs text-rose-300">{userSearchError}</p> : userSearchResults.length ? userSearchResults.map((user) => <button key={user.id} type="button" onClick={() => addFriend(user)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-slate-800">{user.avatar ? <img src={user.avatar} alt="" className="h-9 w-9 rounded-full object-cover" /> : <span className="grid h-9 w-9 place-items-center rounded-full bg-slate-700 text-sm font-bold text-white">{user.name.slice(0, 1).toUpperCase()}</span>}<span className="min-w-0"><strong className="block truncate text-sm text-white">{user.name}</strong><small className="text-xs text-slate-400">@{user.handle}</small></span></button>) : <p className="px-2 py-3 text-xs text-slate-400">Nenhum usuário encontrado.</p>}</div><button type="submit" disabled={!userSearchResults.length} className="mt-3 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">Buscar e iniciar conversa</button></form></div>}
+      {isAddFriendOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Adicionar amigo" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsAddFriendOpen(false); }}><form onSubmit={addFriend} className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold text-white">Adicionar amigo</h2><button type="button" onClick={() => setIsAddFriendOpen(false)} aria-label="Fechar" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"><X className="h-4 w-4" /></button></div><input autoFocus value={friendQuery} onChange={(event) => setFriendQuery(event.target.value)} placeholder="Digite o @usuario ou #1234 para adicionar" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-indigo-500"/>{friendQuery.trim() && <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-700 bg-slate-950">{userSearchLoading ? <p className="px-3 py-2 text-xs text-slate-400">Buscando usuários…</p> : userSearchResults.map((user) => <button key={user.id} type="button" onClick={() => { void openDirectMessage(user); setFriendQuery(''); setIsAddFriendOpen(false); }} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-slate-800"><img src={user.avatar || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(user.name)}`} alt="" className="h-8 w-8 rounded-full object-cover"/><span className="min-w-0"><strong className="block truncate text-sm text-white">{user.name}</strong><small className="text-xs text-slate-400">@{user.handle}</small></span></button>)}{!userSearchLoading && cleanUserQuery.length >= 2 && userSearchResults.length === 0 && <p className="px-3 py-2 text-xs text-slate-500">Nenhum usuário encontrado.</p>}</div>}<button type="submit" className="mt-3 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">Buscar e iniciar conversa</button><p className="mt-2 text-xs text-slate-500">Busca local entre contatos e usuários de demonstração.</p></form></div>}
     </aside>
   );
 };
+
+export const ChannelList = React.memo(ChannelListComponent);
 
 
 
