@@ -369,11 +369,18 @@ const VoiceRoomConnected: React.FC = () => {
     const id = explicitId || presence?.user_id || participant?.identity || '';
     const profile = profilesById[id];
 
-    const visibleName = firstVisibleLabel(profile?.username, profile?.full_name) || 'Membro Koaline';
+    const visibleName = firstVisibleLabel(
+      profile?.username,
+      profile?.full_name,
+      id === currentUser.id ? currentUser.name : undefined
+    ) || 'Membro Koaline';
 
-    const visibleHandle = firstVisibleLabel(profile?.username) || 'koaline';
+    const visibleHandle = firstVisibleLabel(
+      profile?.username,
+      id === currentUser.id ? currentUser.handle : undefined
+    ) || 'koaline';
 
-    const avatar = profile?.avatar_url || '';
+    const avatar = profile?.avatar_url || (id === currentUser.id ? currentUser.avatar : '') || '';
 
     return {
       ...currentUser,
@@ -394,7 +401,14 @@ const VoiceRoomConnected: React.FC = () => {
   liveParticipants.forEach((p) => { if (p.identity) allParticipantIds.add(p.identity); });
   if (currentUser.id) allParticipantIds.add(currentUser.id);
 
-  const participants = Array.from(allParticipantIds).map((id) => {
+  const participantIds = Array.from(allParticipantIds).filter(Boolean).sort();
+  const participantIdsKey = participantIds.join('|');
+  useEffect(() => {
+    if (!activeCall || !participantIds.length) return;
+    void fetchProfiles(participantIds);
+  }, [activeCall?.channelId, participantIdsKey]);
+
+  const participants = participantIds.map((id) => {
     const presence = presenceParticipants.find((p) => p.user_id === id);
     const participant = liveById.get(id);
     const user = participantUser(participant, presence, id);

@@ -14,6 +14,7 @@ export function canDeleteCommunityChannel(communityId: string, user: User, commu
   } catch { return false; }
 }
 export function canAccessAdminPanel(communityId: string, user: User, creatorId?: string) {
+  if (user.communityRole === 'admin' || user.communityRole === 'owner') return true;
   try {
     const saved = JSON.parse(localStorage.getItem(`koaline:admin:${communityId}`) || '{}');
     if ((saved.ownerId || creatorId) && (saved.ownerId || creatorId) === user.id) return true;

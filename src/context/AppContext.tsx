@@ -661,6 +661,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     void loadUserConversations();
     return () => { active = false; };
   }, [isLoggedIn, currentUser.id]);
+
+  // Keep the signed-in user's active-community role fresh for permission-gated UI.
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !currentUser.id || !currentCommunityId) return;
+    let active = true;
+    const refreshCurrentRole = async () => {
+      const { data, error } = await client.from('community_members')
+        .select('role')
+        .eq('community_id', currentCommunityId)
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+      if (!active || error) return;
+      const role = data?.role === 'admin' || data?.role === 'moderator' || data?.role === 'owner' ? data.role : 'member';
+      setCurrentUser((previous) => previous.communityRole === role ? previous : { ...previous, communityRole: role });
+      setMembers((previous) => {
+        const exists = previous.some((member) => member.communityId === currentCommunityId && member.userId === currentUser.id);
+        if (!data && !exists) return previous;
+        if (!data) return previous.filter((member) => !(member.communityId === currentCommunityId && member.userId === currentUser.id));
+        const nextMember = { id: `${currentCommunityId}:${currentUser.id}`, communityId: currentCommunityId, userId: currentUser.id, role: role as 'admin' | 'moderator' | 'member', joinedAt: new Date().toISOString() };
+        return exists
+          ? previous.map((member) => member.communityId === currentCommunityId && member.userId === currentUser.id ? { ...member, role: nextMember.role } : member)
+          : [...previous, nextMember];
+      });
+    };
+    void refreshCurrentRole();
+    const channel = client.channel(`community-role:${currentCommunityId}:${currentUser.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'community_members', filter: `user_id=eq.${currentUser.id}` }, (payload) => {
+        const row = payload.new as { community_id?: string; role?: string };
+        if (row.community_id === currentCommunityId) void refreshCurrentRole();
+      })
+      .subscribe();
+    return () => { active = false; void client.removeChannel(channel); };
+  }, [isLoggedIn, currentUser.id, currentCommunityId]);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
 
