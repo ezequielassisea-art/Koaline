@@ -103,7 +103,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     ? `Conversar com @${activeDm.user.name}...`
     : `Mensagem em #${activeChannel?.name || 'geral'}...`;
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (isReadingAttachment || (!text.trim() && !attachment)) return;
 
     const attachmentsList = attachment
@@ -118,7 +118,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
         }
       : undefined;
 
-    sendMessage(text, replyData, attachmentsList);
+    const sent = await sendMessage(text, replyData, attachmentsList);
+    if (!sent) return;
 
     setText('');
     setAttachment(null);

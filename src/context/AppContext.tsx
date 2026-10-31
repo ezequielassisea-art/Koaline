@@ -15,6 +15,38 @@ import { supabase } from '../services/supabaseClient';
 
 const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'online', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
 
+type SupabaseMessageRow = {
+  id: string;
+  channel_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+  profiles?: { username?: string | null; avatar_url?: string | null } | Array<{ username?: string | null; avatar_url?: string | null }> | null;
+};
+
+const toChatMessage = (row: SupabaseMessageRow, currentUser: User): Message => {
+  const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+  const isCurrentUser = row.author_id === currentUser.id;
+  const authorName = profile?.username || (isCurrentUser ? currentUser.name : 'Usuário');
+  const author: User = isCurrentUser ? currentUser : {
+    ...EMPTY_USER,
+    id: row.author_id,
+    name: authorName,
+    handle: profile?.username || '',
+    avatar: profile?.avatar_url || '',
+  };
+
+  return {
+    id: row.id,
+    channelId: row.channel_id,
+    senderId: row.author_id,
+    sender: author,
+    content: row.content,
+    timestamp: row.created_at,
+    reactions: [],
+  };
+};
+
 const getDefaultTextChannel = (community?: Community) => {
   const textChannels = community?.channels.filter((channel) => channel.type === 'text') || [];
   return textChannels.find((channel) => channel.isDefault)
@@ -57,7 +89,7 @@ interface AppContextType {
 
   // Messaging
   messages: Record<string, Message[]>;
-  sendMessage: (content: string, replyTo?: Message['replyTo'], attachments?: Message['attachments']) => void;
+  sendMessage: (content: string, replyTo?: Message['replyTo'], attachments?: Message['attachments']) => Promise<boolean>;
   editMessage: (messageId: string, newContent: string) => void;
   deleteMessage: (messageId: string) => void;
   toggleReaction: (messageId: string, emoji: string) => void;
@@ -184,7 +216,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [flatChannels, setFlatChannels] = useState<Array<{id:string;communityId:string;name:string;type:'text'|'voice';category:string;position:number;isPrivate:boolean;isArchived:boolean;createdAt:string}>>(() => { try { return JSON.parse(localStorage.getItem('koaline:channels') || '[]'); } catch { return []; } });
   const [invites, setInvites] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:invites') || '[]'); } catch { return []; } });
   const [logs, setLogs] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:logs') || '[]'); } catch { return []; } });
-  const [messages, setMessages] = useState<Record<string, Message[]>>(() => { try { return JSON.parse(localStorage.getItem('koaline:messages') || '{}'); } catch { return {}; } });
+  const [messages, setMessages] = useState<Record<string, Message[]>>({});
 
   useEffect(() => {
     localStorage.setItem('koaline:communities', JSON.stringify(communities));
@@ -214,13 +246,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const legacyIds = new Set(stored.filter((item) => !item.ownerId && (item.id.startsWith('comm-koala-') || item.id.startsWith('comm-tech-') || (item as Community & { isDemo?: boolean; mock?: boolean }).isDemo || (item as Community & { mock?: boolean }).mock)).map((item) => item.id));
       if (legacyIds.size) {
         const valid = stored.filter((item) => !legacyIds.has(item.id) || !!item.ownerId);
-        const removedChannelIds = new Set(stored.filter((item) => legacyIds.has(item.id) && !item.ownerId).flatMap((item) => item.channels.map((channel) => channel.id)));
         setCommunities(valid);
         setFlatChannels((prev) => prev.filter((item) => !legacyIds.has(item.communityId)));
         setMembers((prev) => prev.filter((item) => !legacyIds.has(item.communityId)));
         setInvites((prev) => (prev as Array<{communityId?:string}>).filter((item) => !item.communityId || !legacyIds.has(item.communityId)));
         setLogs((prev) => (prev as Array<{communityId?:string}>).filter((item) => !item.communityId || !legacyIds.has(item.communityId)));
-        setMessages((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => !removedChannelIds.has(id))));
         if (legacyIds.has(localStorage.getItem('koaline:current-community') || '')) { setCurrentCommunityId(''); setCurrentChannelId(''); }
         setDms((prev) => prev.filter((item) => !['user-leo','user-clara','user-thiago','user-beatriz'].includes(item.user.id)));
       }
@@ -228,14 +258,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('koaline:migrated_clean', '1');
   }, []);
 
-  // Messaging
+  // Text channel messages are loaded from Supabase and kept current through Realtime.
   useEffect(() => {
-    try {
-      localStorage.setItem('koaline:messages', JSON.stringify(messages));
-    } catch {
-      // Mídia Base64 pode exceder a cota local; as mensagens continuam disponíveis na sessão atual.
-    }
-  }, [messages]);
+    const client = supabase;
+    if (!client || !isLoggedIn || !currentChannelId || isDirectMessages) return;
+
+    let active = true;
+    setMessages((previous) => ({ ...previous, [currentChannelId]: [] }));
+
+    const loadMessages = async () => {
+      const { data, error } = await client
+        .from('messages')
+        .select('*, profiles(username, avatar_url)')
+        .eq('channel_id', currentChannelId)
+        .order('created_at', { ascending: true });
+
+      if (!active) return;
+      if (error) {
+        addToast('Não foi possível carregar as mensagens', error.message, 'error');
+        return;
+      }
+
+      const loadedMessages = ((data || []) as SupabaseMessageRow[]).map((row) => toChatMessage(row, currentUser));
+      setMessages((previous) => ({ ...previous, [currentChannelId]: loadedMessages }));
+    };
+
+    void loadMessages();
+
+    const channel = client
+      .channel(`messages:${currentChannelId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `channel_id=eq.${currentChannelId}`,
+      }, (payload) => {
+        const row = payload.new as SupabaseMessageRow;
+        if (!active || !row?.id) return;
+        const message = toChatMessage(row, currentUser);
+        setMessages((previous) => {
+          const channelMessages = previous[currentChannelId] || [];
+          if (channelMessages.some((item) => item.id === message.id)) return previous;
+          return { ...previous, [currentChannelId]: [...channelMessages, message] };
+        });
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      void client.removeChannel(channel);
+    };
+  }, [currentChannelId, currentUser, isDirectMessages, isLoggedIn]);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
 
@@ -663,35 +736,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const activeChannelKey = isDirectMessages && activeDmId ? activeDmId : currentChannelId;
 
-  const sendMessage = (
+  const sendMessage = async (
     content: string,
     replyTo?: Message['replyTo'],
     attachments?: Message['attachments']
   ) => {
-    if (!content.trim() && (!attachments || attachments.length === 0)) return;
-
-    const newMessage: Message = {
-      id: `m-${Date.now()}`,
-      channelId: activeChannelKey,
-      senderId: currentUser.id,
-      sender: currentUser,
-      content: content.trim(),
-      timestamp: new Date().toISOString(),
-      reactions: [],
-      replyTo,
-      attachments,
-    };
-
-    setMessages((prev) => ({
-      ...prev,
-      [activeChannelKey]: [...(prev[activeChannelKey] || []), newMessage],
-    }));
-    if (isDirectMessages && activeDmId) {
-      setDms((prev) => prev.map((dm) => dm.id === activeDmId
-        ? { ...dm, lastMessage: content.trim() || 'Anexo', lastMessageTime: newMessage.timestamp, unread: false }
-        : dm));
+    const messageContent = content.trim();
+    if (!messageContent) return false;
+    if (!supabase || isDirectMessages || !activeChannelKey || !currentUser.id) {
+      addToast('Não foi possível enviar', 'Entre em um canal de texto com a sessão do Supabase ativa.', 'error');
+      return false;
     }
 
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({ channel_id: activeChannelKey, author_id: currentUser.id, content: messageContent })
+      .select('*, profiles(username, avatar_url)')
+      .single();
+
+    if (error) {
+      addToast('Mensagem não enviada', error.message, 'error');
+      return false;
+    }
+
+    if (data) {
+      const newMessage = { ...toChatMessage(data as SupabaseMessageRow, currentUser), replyTo, attachments };
+      setMessages((previous) => {
+        const channelMessages = previous[activeChannelKey] || [];
+        if (channelMessages.some((item) => item.id === newMessage.id)) return previous;
+        return { ...previous, [activeChannelKey]: [...channelMessages, newMessage] };
+      });
+    }
+    return Boolean(data);
   };
 
   const editMessage = (messageId: string, newContent: string) => {
