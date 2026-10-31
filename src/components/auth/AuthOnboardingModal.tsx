@@ -13,12 +13,6 @@ type AuthMode = 'home' | 'login' | 'register';
 type AuthDraft = { mode: AuthMode; step: number; handle: string; email: string; loginIdentifier: string };
 const DRAFT_KEY = 'koaline:auth-draft';
 const HANDLE_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
-const AppleBrandMark: React.FC = () => (
-  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" focusable="false">
-    <path d="M18.71 19.5c-.83 1.24-1.71 2.46-3.13 2.48-1.4.03-1.85-.79-3.45-.79s-2.09.77-3.42.82c-1.38.05-2.41-1.3-3.24-2.54-1.74-2.56-3.07-7.22-1.28-10.37.89-1.57 2.49-2.56 4.23-2.59 1.32-.03 2.56.89 3.45.89s2.39-1.1 4.04-.94c.69.03 2.63.28 3.87 2.1-.1.06-2.31 1.35-2.28 4.02.03 3.2 2.8 4.26 2.83 4.27-.03.07-.44 1.5-1.45 2.65zM13.47 3.5c.77-.93 2.05-1.64 3.09-1.7.13 1.17-.3 2.35-1.04 3.2-.69.83-1.82 1.47-2.94 1.39-.15-1.13.4-2.35.89-2.89z" />
-  </svg>
-);
-
 const readJson = <T,>(key: string, fallback: T): T => {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; }
   catch { return fallback; }
@@ -67,10 +61,13 @@ export const AuthOnboardingModal: React.FC = () => {
   const enterLogin = () => { setMode('login'); setPassword(''); };
   const enterRegister = () => { setMode('register'); setStep(1); setPassword(''); setConfirmPassword(''); };
   const loginWithGoogle = async () => {
-    try { const client = requireSupabase(); const { error } = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } }); if (error) throw error; }
-    catch (error) { addToast('Login com Google indisponível', error instanceof Error ? error.message : 'Verifique a configuração do provedor no Supabase.', 'warning'); }
+    try {
+      const { error } = await requireSupabase().auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+      if (error) addToast('Erro ao conectar com Google.', error.message, 'error');
+    } catch (error) {
+      addToast('Erro ao conectar com Google.', error instanceof Error ? error.message : 'Tente novamente.', 'error');
+    }
   };
-  const showSocialNotice = (provider: string) => addToast(`${provider} ainda não conectado`, 'Este provedor não está habilitado no Supabase.', 'warning');
 
   const finishLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -125,21 +122,17 @@ export const AuthOnboardingModal: React.FC = () => {
         <div className="auth-divider"><span>ou continue com</span></div>
         <div className="auth-social-grid">
           <Button variant="outline" onClick={() => void loginWithGoogle()}><span className="auth-google-mark" aria-hidden="true">G</span>Google</Button>
-          <Button variant="outline" onClick={() => showSocialNotice('Apple')}><AppleBrandMark />Apple</Button>
         </div>
       </div>}
 
       {mode === 'login' && <form className="auth-form" onSubmit={finishLogin}>
-        <div className="auth-social-grid">
-          <Button variant="outline" onClick={() => void loginWithGoogle()}><span className="auth-google-mark" aria-hidden="true">G</span>Google</Button>
-          <Button variant="outline" onClick={() => showSocialNotice('Apple')}><AppleBrandMark />Apple</Button>
-        </div>
-        <div className="auth-divider"><span>ou entre com e-mail</span></div>
         <Input id="auth-login-identifier" label="E-mail" startAdornment={<AtSign />} type="email" autoComplete="username" required value={loginIdentifier} onChange={(event) => setLoginIdentifier(event.target.value)} />
         <div className="auth-label-row"><span className="auth-label">Senha</span><button type="button" className="auth-inline-link" onClick={() => addToast('Recuperação de senha', 'Conecte o fluxo de recuperação ao backend de autenticação.', 'warning')}>Esqueceu a senha?</button></div>
         <Input id="auth-login-password" label="Senha" startAdornment={<LockKeyhole />} type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onCopy={(event) => event.preventDefault()} onCut={(event) => event.preventDefault()} onChange={(event) => setPassword(event.target.value)} endAdornment={<button type="button" className="auth-icon-button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>} />
         <Button type="submit" variant="primary" className="auth-submit-button" disabled={isLoading}>{isLoading ? 'Entrando…' : 'Entrar'}<ArrowRight aria-hidden="true" /></Button>
         <p className="auth-switch-copy">Ainda não tem conta? <button type="button" className="auth-inline-link" onClick={enterRegister}>Criar conta</button></p>
+        <div className="auth-divider"><span>ou entre com</span></div>
+        <Button variant="outline" className="auth-google-button" onClick={() => void loginWithGoogle()}><span className="auth-google-mark" aria-hidden="true">G</span>Continuar com Google</Button>
       </form>}
 
       {mode === 'register' && <form className="auth-form" onSubmit={step < 3 ? (event) => { event.preventDefault(); if (step === 1 && (!handleValid || handleTaken)) return; if (step === 2 && !email.trim()) return; setStep(step + 1); } : finishRegister}>

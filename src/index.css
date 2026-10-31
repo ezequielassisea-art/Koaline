@@ -233,6 +233,8 @@ html, body, #root {
   }
 .auth-social-grid .ui-button { width:100%; min-width:0; gap:8px; white-space:nowrap; }
 .auth-social-grid .auth-google-mark { flex:0 0 18px; line-height:1; }
+.auth-google-button { width:100%; justify-content:center; gap:10px; }
+.auth-google-button .auth-google-mark { flex:0 0 18px; line-height:1; }
 .auth-form .auth-divider {
   margin: 3px 0 4px;
   color: var(--muted);
