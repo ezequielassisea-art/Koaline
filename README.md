@@ -1,32 +1,18 @@
-# React + TypeScript + Vite
+# Koaline
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Interface em React 19, TypeScript, Vite e Tailwind CSS. A autenticação atual usa sessão local para demonstração; o projeto ainda não tem backend de contas ou OAuth.
 
-Currently, two official plugins are available:
+## Rodar localmente
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Para conferir a compilação, rode `npm run build`.
+
+## Conectar autenticação e upload
+
+- Substitua os handlers locais de `src/components/auth/AuthOnboardingModal.tsx` pelos endpoints do provedor de autenticação. As sugestões de usuário e a disponibilidade hoje consultam apenas identidades guardadas no navegador; senhas não são persistidas.
+- Conecte os botões Google e Apple a OAuth no backend. Eles mostram um aviso enquanto esses provedores não estiverem configurados.
+- O avatar e a capa são recortados e comprimidos no navegador em `src/components/common/ImageCropperModal.tsx`. Para produção, envie o resultado ao serviço de arquivos pelo fluxo de onboarding em `src/components/profile/ProfileOnboarding.tsx` e salve as URLs retornadas no perfil. Hoje os dados de perfil ficam em `localStorage`.

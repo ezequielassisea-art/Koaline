@@ -14,6 +14,9 @@ import {
 } from 'lucide-react';
 import { Channel, User } from '../../types';
 import { canAccessAdminPanel } from '../admin/adminAccess';
+import { canModerateCommunity } from '../admin/adminAccess';
+import { DraggableUserCard, DropZoneCall } from '../call/VoiceDragDrop';
+import { formatRelativeTime } from '../../utils/time';
 
 export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel: (channel: Channel) => void }> = ({ onOpenAdmin, onOpenVoiceChannel }) => {
   const {
@@ -21,6 +24,8 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
     currentCommunityId,
     currentChannelId,
     setCurrentChannelId,
+    activeCall,
+    toggleMinimizeCall,
     isDirectMessages,
     activeDmId,
     setActiveDmId,
@@ -33,6 +38,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
     addToast,
     currentUser,
     openDirectMessage,
+    moveVoiceUser,
   } = useApp();
 
   const [collapsedCategories, setCollapsedCategories] = React.useState<Record<string, boolean>>({});
@@ -46,6 +52,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
   try { archivedChannelIds = new Set<string>(JSON.parse(localStorage.getItem(`koaline:admin:${currentCommunityId}`) || '{}').archived || []); }
   catch { archivedChannelIds = new Set<string>(); }
   const visibleChannels = activeCommunity.channels.filter((channel) => !archivedChannelIds.has(channel.id));
+  const canMoveUsers = canModerateCommunity(activeCommunity.id, currentUser, activeCommunity.ownerId || activeCommunity.creatorId);
 
   const toggleCategory = (catId: string) => {
     setCollapsedCategories((prev) => ({ ...prev, [catId]: !prev[catId] }));
@@ -56,6 +63,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
       onOpenVoiceChannel(channel);
     } else {
       setCurrentChannelId(channel.id);
+      if (activeCall && !activeCall.isMinimized) toggleMinimizeCall();
     }
   };
 
@@ -86,6 +94,19 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
         isColumn1Collapsed ? 'w-16' : 'w-64'
       }`}
     >
+      {!isDirectMessages && !isColumn1Collapsed && (
+        <div className="community-banner-frame" aria-label={`Banner da comunidade ${activeCommunity.name}`}>
+          <div className="community-banner-visual">
+            {activeCommunity.banner && (
+              <img
+                src={activeCommunity.banner}
+                alt={`Banner de ${activeCommunity.name}`}
+                onError={(event) => { event.currentTarget.style.display = 'none'; }}
+              />
+            )}
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="h-14 px-4 border-b border-slate-800/60 flex items-center justify-between">
         {!isColumn1Collapsed ? (
@@ -168,7 +189,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
                   key={dm.id}
                   onClick={() => setActiveDmId(dm.id)}
                   className={`group flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all ${
-                    activeDmId === dm.id ? 'bg-indigo-600/20 text-white' : 'hover:bg-slate-800/60 text-slate-300'
+                    activeDmId === dm.id ? 'bg-indigo-600/20 text-white' : 'hover:bg-slate-800 text-slate-300'
                   }`}
                 >
                   <div className="relative flex-shrink-0">
@@ -180,7 +201,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between text-xs">
                       <span className="truncate font-semibold">{dm.user.name}</span>
-                      <span className="text-[10px] text-slate-500 ml-1 flex-shrink-0">{dm.lastMessageTime}</span>
+                      <span className="text-[10px] text-slate-500 ml-1 flex-shrink-0">{dm.lastMessageTime ? formatRelativeTime(dm.lastMessageTime) : ''}</span>
                     </div>
                     <p className="text-[11px] text-slate-400 truncate mt-0.5">{dm.lastMessage}</p>
                   </div>
@@ -238,7 +259,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
                   >
                     {isCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                     <span className="truncate">{cat.name}</span>
-                    <span className="ml-auto text-[9px]">{catChannels.length}</span>
+                    <span className="ml-auto text-[11px] font-bold text-slate-300">{catChannels.length}</span>
                   </button>
 
                   {!isCollapsed && (
@@ -246,12 +267,15 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
                       {catChannels.map((channel) => {
                         const isVoice = channel.type === 'voice';
                         const isSelected = currentChannelId === channel.id && !isVoice;
-                        return (
+                        const connectedUsers = (channel.connectedUsers || []).filter((user) => (user.id || '').trim() && ((user.avatar || '').trim() || (user.name || '').trim() || (user.handle || '').trim()));
+                          return (
+                          <DropZoneCall key={channel.id} callId={channel.id} permission={isVoice && canMoveUsers} onMove={(userId, callId) => {
+                            if (!moveVoiceUser(userId, callId)) addToast('Movimentação negada', 'Apenas moderadores e administradores podem mover pessoas entre chamadas.', 'warning');
+                          }}>
                           <div
-                            key={channel.id}
                             onClick={() => handleChannelClick(channel)}
                             className={`group flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-all ${
-                              isSelected ? 'bg-indigo-600/20 text-white font-semibold' : 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-200'
+                              isSelected ? 'bg-indigo-600/20 text-white font-semibold' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
                             }`}
                           >
                             <div className="flex items-center gap-2 truncate min-w-0">
@@ -263,16 +287,14 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
                             </div>
 
                             <div className="flex items-center gap-1 flex-shrink-0">
-                              {isVoice && channel.connectedUsers && channel.connectedUsers.length > 0 && (
+                              {isVoice && connectedUsers.length > 0 && (
                                 <div className="flex items-center -space-x-1.5">
-                                  {channel.connectedUsers.slice(0, 3).map((u) => (
-                                    <img
+                                  {connectedUsers.map((u) => (
+                                    <DraggableUserCard
                                       key={u.id}
-                                      src={u.avatar}
-                                      alt={u.name}
-                                      title={u.name}
-                                      onClick={(e) => { e.stopPropagation(); openUserProfile(u); }}
-                                      className="w-5 h-5 rounded-full object-cover ring-2 ring-slate-900 hover:scale-110 transition-transform cursor-pointer"
+                                      user={u}
+                                      permission={canMoveUsers}
+                                      onOpen={() => openUserProfile(u)}
                                     />
                                   ))}
                                 </div>
@@ -282,6 +304,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
                               ) : null}
                             </div>
                           </div>
+                          </DropZoneCall>
                         );
                       })}
                     </div>
@@ -295,7 +318,7 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
 
       {/* Footer */}
       {!isColumn1Collapsed && !isDirectMessages && (
-        <div className="p-3 border-t border-slate-800/60 bg-slate-950/40 flex items-center justify-between">
+        <div className="p-3 border-t border-slate-800/60 bg-slate-950 flex items-center justify-between">
           <div className="text-xs text-slate-500">
             <span className="font-semibold text-slate-300">{activeCommunity.membersCount}</span> membros
           </div>
@@ -313,3 +336,6 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
     </aside>
   );
 };
+
+
+

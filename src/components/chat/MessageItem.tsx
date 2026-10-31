@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Message } from '../../types';
+import { formatRelativeTime } from '../../utils/time';
+import { canModerateCommunity } from '../admin/adminAccess';
 import {
   Smile,
   Reply,
@@ -18,6 +20,8 @@ import {
 interface MessageItemProps {
   message: Message;
   isGrouped?: boolean;
+  isUnread?: boolean;
+  timeLabel?: string;
   onReply: (message: Message) => void;
 }
 
@@ -66,7 +70,7 @@ const AudioMessagePlayer: React.FC<{ src: string }> = ({ src }) => {
   };
 
   return (
-    <div className="flex w-full max-w-xs items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900/80 px-3 py-2.5">
+    <div className="flex w-full max-w-xs items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900 px-3 py-2.5">
       <audio ref={audioRef} src={src} preload="metadata" onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)} onLoadedMetadata={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)} onPlay={() => setIsPlaying(true)} onPause={() => setIsPlaying(false)} onEnded={() => setIsPlaying(false)} />
       <button type="button" onClick={togglePlayback} aria-label={isPlaying ? 'Pausar áudio' : 'Reproduzir áudio'} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-indigo-600 text-white transition-colors hover:bg-indigo-500">
         {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
@@ -85,7 +89,7 @@ const AudioMessagePlayer: React.FC<{ src: string }> = ({ src }) => {
   );
 };
 
-export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = false, onReply }) => {
+export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = false, isUnread = false, timeLabel, onReply }) => {
   const {
     currentUser,
     openUserProfile,
@@ -93,7 +97,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
     editMessage,
     deleteMessage,
     toggleReaction,
-    togglePinMessage
+    togglePinMessage,
+    communities,
+    currentCommunityId,
   } = useApp();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -101,8 +107,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const isSelf = message.senderId === currentUser.id;
+  const activeCommunity = communities.find((community) => community.id === currentCommunityId);
+  const canManagePins = !!activeCommunity && canModerateCommunity(activeCommunity.id, currentUser, activeCommunity.ownerId || activeCommunity.creatorId);
   const sender = isSelf
     ? currentUser
     : {
@@ -154,12 +163,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
 
   return (
     <div
-      className={`koaline-message group relative flex gap-3 px-4 py-2 hover:bg-slate-800/40 transition-colors rounded-nest-sm my-0.5 ${
-        message.pinned ? 'bg-indigo-950/20 border-l-2 border-indigo-500' : ''
+      id={`message-${message.id}`}
+      className={`koaline-message group relative flex gap-3 px-4 py-2 transition-colors rounded-nest-sm ${isGrouped ? 'is-grouped' : 'mt-2'} ${
+        message.pinned ? 'bg-indigo-950 border-l-2 border-indigo-500' : ''
       }`}
     >
       {/* Sender Avatar */}
-      <div className="koaline-message-avatar flex-shrink-0 mt-0.5" data-grouped={isGrouped}>
+      <div className="koaline-message-avatar flex-shrink-0 mt-0.5" data-grouped={isGrouped} data-self={isSelf}>
         {!isGrouped && (
           sender.avatar
             ? <img src={sender.avatar} alt={sender.name} onClick={() => openUserProfile(sender)} className="w-10 h-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all ring-1 ring-border shadow-sm" />
@@ -168,28 +178,18 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
       </div>
 
       {/* Message Body */}
-      <div className="flex-1 min-w-0">
-        {/* Reply Quote Header */}
-        {message.replyTo && (
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mb-1 bg-slate-900/60 px-2 py-0.5 rounded-nest-pill w-fit border border-border">
-            <Reply className="w-3 h-3 text-indigo-400 rotate-180" />
-            <span className="font-semibold text-slate-200">
-              {message.replyTo.senderName}
-            </span>
-            <span className="truncate max-w-xs">{message.replyTo.content}</span>
-          </div>
-        )}
-
+      <div className={`flex-1 min-w-0 ${isSelf ? 'message-body-self' : ''}`}>
         {/* Sender Name, Time, Badges */}
         <div className="flex items-center gap-2">
-          <span
+          {isSelf && !isGrouped && sender.avatar && <img src={sender.avatar} alt="" className="h-6 w-6 rounded-full object-cover" />}
+          {!isGrouped && <span
             onClick={(e) => openUserMenu(sender, e)}
-            className="koaline-message-author font-title hover:text-indigo-400 hover:underline cursor-pointer transition-colors"
+          className={`koaline-message-author font-title hover:text-indigo-400 hover:underline cursor-pointer transition-colors ${isSelf ? 'self-message-author' : ''}`}
           >
             {sender.name}
-          </span>
+          </span>}
 
-          <span className="koaline-message-time">{message.timestamp}</span>
+          {isUnread && <span className="message-unread-dot" title="Mensagem não lida" aria-label="Mensagem não lida" />}
 
           {message.edited && (
             <span className="text-[10px] text-slate-500 italic">(editada)</span>
@@ -231,7 +231,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
             </div>
           </div>
         ) : (
-          <div className="koaline-message-copy leading-relaxed mt-0.5 break-words">
+          <div className={`koaline-message-copy leading-relaxed mt-0.5 break-words ${isSelf ? 'is-self' : 'is-other'}`}>
+            {message.replyTo && (
+              <div className="koaline-reply-quote">
+                <Reply className="h-3 w-3 shrink-0" />
+                <span className="truncate"><strong>{message.replyTo.senderName}</strong>: {message.replyTo.content}</span>
+              </div>
+            )}
             {imageSource ? (
               <a href={imageSource} target="_blank" rel="noreferrer" aria-label="Abrir imagem em nova aba" className="inline-block">
                 <img src={imageSource} alt="Imagem enviada" className="max-w-[300px] max-h-[300px] rounded-xl object-cover cursor-pointer" />
@@ -254,13 +260,15 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                 </button>
               </>
             ) : content.trim() ? (
-              <p className="whitespace-pre-wrap">{content}</p>
+              <p className={`message-content-text whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{content}</p>
             ) : null}
+            <time className="koaline-message-time" dateTime={message.timestamp} title={formatRelativeTime(message.timestamp)}>{timeLabel || ''}</time>
+            {!imageSource && !audioSource && !videoSource && content.length > 400 && <button type="button" className="message-expand-button" onClick={() => setIsExpanded((expanded) => !expanded)}>{isExpanded ? 'Ver menos' : 'Ver mais'}</button>}
           </div>
         )}
 
         {isYouTubeModalOpen && youtubeVideoId && (
-          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Player do YouTube" onClick={() => setIsYouTubeModalOpen(false)}>
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4  animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Player do YouTube" onClick={() => setIsYouTubeModalOpen(false)}>
             <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl" onClick={(event) => event.stopPropagation()}>
               <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm font-semibold text-white">YouTube</span>
@@ -333,7 +341,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                   className={`flex items-center gap-1.5 px-2 py-0.5 rounded-nest-pill text-[11px] font-medium border transition-all active:scale-95 ${
                     hasReacted
                       ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300 font-semibold'
-                      : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
                   }`}
                 >
                   <span>{rx.emoji}</span>
@@ -385,7 +393,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
         </button>
 
         {/* Pin */}
-        <button
+        {canManagePins && <button
           onClick={() => togglePinMessage(message.id)}
           title={message.pinned ? 'Desafixar mensagem' : 'Fixar mensagem'}
           className={`p-1.5 rounded-full hover:bg-slate-800 transition-colors ${
@@ -393,7 +401,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
           }`}
         >
           <Pin className="w-3.5 h-3.5" />
-        </button>
+        </button>}
 
         {/* Edit */}
         {isSelf && (
@@ -420,3 +428,5 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
     </div>
   );
 };
+
+

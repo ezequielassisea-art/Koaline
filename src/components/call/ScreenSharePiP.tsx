@@ -18,3 +18,4 @@ export const ScreenSharePiP: React.FC = () => {
     {watching && <div className="px-3 py-2 text-[10px] text-slate-400">Áudio da transmissão disponível apenas com LiveKit integrado</div>}
   </div>;
 };
+

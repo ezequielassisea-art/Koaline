@@ -29,7 +29,7 @@ export const CreateChannelModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60  animate-in fade-in select-none">
       <div className="w-full max-w-md bg-slate-900 rounded-nest-lg border border-slate-700 shadow-2xl overflow-hidden animate-in zoom-in-95">
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
           <h3 className="text-base font-title font-bold text-white">
@@ -55,7 +55,7 @@ export const CreateChannelModal: React.FC = () => {
                 className={`flex items-center gap-2.5 p-3 rounded-nest-sm border text-left transition-all ${
                   channelType === 'text'
                     ? 'border-indigo-500 bg-indigo-500/15 text-indigo-400 font-bold'
-                    : 'border-slate-800 bg-slate-950/60 text-slate-400'
+                    : 'border-slate-800 bg-slate-950 text-slate-400'
                 }`}
               >
                 <Hash className="w-4 h-4" />
@@ -71,7 +71,7 @@ export const CreateChannelModal: React.FC = () => {
                 className={`flex items-center gap-2.5 p-3 rounded-nest-sm border text-left transition-all ${
                   channelType === 'voice'
                     ? 'border-sky-500 bg-sky-500/15 text-sky-400 font-bold'
-                    : 'border-slate-800 bg-slate-950/60 text-slate-400'
+                    : 'border-slate-800 bg-slate-950 text-slate-400'
                 }`}
               >
                 <Volume2 className="w-4 h-4" />
@@ -139,3 +139,4 @@ export const CreateChannelModal: React.FC = () => {
     </div>
   );
 };
+

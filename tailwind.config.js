@@ -8,17 +8,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: {
-          DEFAULT: 'var(--color-primary)',
-          hover: 'var(--color-primary-hover)',
-        },
-        accent: 'var(--color-accent)',
-        surface: 'var(--color-surface)',
-        'surface-elevated': 'var(--color-surface-elevated)',
-        'surface-sunken': 'var(--color-surface-sunken)',
-        'text-main': 'var(--color-text-main)',
-        'text-muted': 'var(--color-text-muted)',
-        border: 'var(--color-border)',
+        primary: 'rgb(var(--primary-rgb) / <alpha-value>)',
+        'primary-hover': 'rgb(var(--primary-hover-rgb) / <alpha-value>)',
+        success: 'rgb(var(--success-rgb) / <alpha-value>)',
+        warning: 'rgb(var(--warning-rgb) / <alpha-value>)',
+        error: 'rgb(var(--error-rgb) / <alpha-value>)',
+        surface: 'rgb(var(--surface-rgb) / <alpha-value>)',
+        'surface-hover': 'rgb(var(--surface-hover-rgb) / <alpha-value>)',
+        overlay: 'rgb(var(--overlay-rgb) / <alpha-value>)',
+        'text-main': 'rgb(var(--text-rgb) / <alpha-value>)',
+        'text-muted': 'rgb(var(--text-muted-rgb) / <alpha-value>)',
+        'text-inverse': 'rgb(var(--text-inverse-rgb) / <alpha-value>)',
+        border: 'rgb(var(--border-rgb) / <alpha-value>)',
+        accent: 'rgb(var(--primary-rgb) / <alpha-value>)',
+        'surface-elevated': 'rgb(var(--surface-rgb) / <alpha-value>)',
+        'surface-sunken': 'rgb(var(--bg-rgb) / <alpha-value>)',
       },
       borderRadius: {
         'nest': 'var(--radius-nest, 16px)',
@@ -27,10 +31,10 @@ export default {
         'nest-pill': '9999px',
       },
       boxShadow: {
-        'nest': '0 4px 20px -2px rgba(0, 0, 0, 0.25)',
-        'nest-elevated': '0 20px 45px -8px rgba(0, 0, 0, 0.45)',
-        'glow-primary': '0 0 25px -4px rgba(99, 102, 241, 0.4)',
-        'glow-speaking': '0 0 0 3px rgba(99, 102, 241, 0.7), 0 0 16px rgba(99, 102, 241, 0.5)',
+        'nest': '0 4px 20px -2px rgb(var(--overlay-rgb) / 0.25)',
+        'nest-elevated': '0 20px 45px -8px rgb(var(--overlay-rgb) / 0.45)',
+        'glow-primary': '0 0 25px -4px rgb(var(--primary-rgb) / 0.4)',
+        'glow-speaking': '0 0 0 3px rgb(var(--primary-rgb) / 0.7), 0 0 16px rgb(var(--primary-rgb) / 0.5)',
       },
       fontFamily: {
         title: ['Inter', 'system-ui', 'sans-serif'],

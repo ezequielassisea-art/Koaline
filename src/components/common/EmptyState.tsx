@@ -70,7 +70,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 
   return (
     <div className={`flex flex-col items-center justify-center text-center p-8 max-w-sm mx-auto select-none ${className}`}>
-      <div className="mb-4 p-4 rounded-2xl bg-surface-elevated/60 border border-border shadow-inner text-primary">
+      <div className="mb-4 p-4 rounded-2xl bg-surface-elevated border border-border shadow-inner text-primary">
         <IconComponent className="w-10 h-10" />
       </div>
       <h3 className="text-base font-title font-bold text-text-main mb-1">
@@ -90,3 +90,5 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
     </div>
   );
 };
+
+

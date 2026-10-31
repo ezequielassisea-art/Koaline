@@ -25,8 +25,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-      <div className="w-full max-w-md p-6 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl relative animate-in zoom-in-95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60  animate-in fade-in">
+      <div role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" className="koaline-solid-confirm-modal w-full max-w-md p-6 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl relative animate-in zoom-in-95">
         <button
           onClick={onCancel}
           className="absolute top-4 right-4 p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
@@ -34,7 +34,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <X className="w-5 h-5" />
         </button>
 
-        <h3 className="text-base font-title font-bold text-white mb-2">
+        <h3 id="confirm-modal-title" className="text-base font-title font-bold text-white mb-2">
           {title}
         </h3>
         <p className="text-sm text-slate-400 mb-6 leading-relaxed">
@@ -63,3 +63,4 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     </div>
   );
 };
+

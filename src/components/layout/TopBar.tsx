@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { KoalineWordmark } from '../brand/KoalaMascot';
 import { CallDock } from '../call/CallDock';
 import {
   Bell,
@@ -11,13 +10,23 @@ import {
   Settings,
   LogOut,
   Sparkles,
-  MessageSquare
+  MessageSquare,
+  Globe,
+  ArrowLeft,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
+import { parseAppDate } from '../../utils/time';
+import { audioManager } from '../../services/AudioManager';
 
 export const TopBar: React.FC = () => {
   const {
     currentUser,
     communities,
+    dms,
+    messages,
+    lastReadAtByChannel,
+    markNotificationsRead,
     currentCommunityId,
     setCurrentCommunityId,
     isDirectMessages,
@@ -31,13 +40,42 @@ export const TopBar: React.FC = () => {
     addToast
   } = useApp();
 
-  const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
+const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [audioPreferences, setAudioPreferences] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('koaline:audio-settings') || '{}');
+      return { volume: Math.max(0, Math.min(1, Number(saved.volume ?? 0.55))), muted: Boolean(saved.muted) };
+    } catch { return { volume: 0.55, muted: false }; }
+  });
+  const updateAudioPreferences = (next: { volume: number; muted: boolean }) => {
+    setAudioPreferences(next);
+    audioManager.setPreferences(next.volume, next.muted);
+  };
 
   const commDropdownRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
+  const unreadDirectMessages = dms.filter((dm) => dm.unread && !dm.isArchived).length;
+  const unreadMentions = Object.entries(messages).reduce((count, [channelId, channelMessages]) => {
+    const lastReadAt = lastReadAtByChannel[channelId];
+    const normalizedHandle = currentUser.handle.replace(/^@/, '').split('#')[0].toLowerCase();
+    return count + channelMessages.filter((message) => {
+      if (message.senderId === currentUser.id) return false;
+      if (lastReadAt && parseAppDate(message.timestamp).getTime() <= parseAppDate(lastReadAt).getTime()) return false;
+      const content = (message.content || '').toLowerCase();
+      let mentionIndex = normalizedHandle ? content.indexOf(`@${normalizedHandle}`) : -1;
+      let mentionsUser = false;
+      while (mentionIndex >= 0) {
+        const nextCharacter = content[mentionIndex + normalizedHandle.length + 1];
+        if (!nextCharacter || !/[a-z0-9_]/i.test(nextCharacter)) { mentionsUser = true; break; }
+        mentionIndex = content.indexOf(`@${normalizedHandle}`, mentionIndex + 1);
+      }
+      return mentionsUser || /@(?:everyone|all)\b/i.test(content);
+    }).length;
+  }, 0);
+  const notificationCount = unreadDirectMessages + unreadMentions;
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -63,18 +101,18 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <header className="h-16 px-4 md:px-6 bg-slate-900/90 backdrop-blur-md border-b border-border flex items-center justify-between sticky top-0 z-30 transition-colors">
+    <header className="h-16 px-4 md:px-6 bg-slate-900 border-b border-border flex items-center justify-between sticky top-0 z-30 transition-colors">
       {/* LEFT: Wordmark + Community Selector Pill */}
       <div className="flex items-center gap-3 sm:gap-4">
-        <KoalineWordmark size="md" />
-
+        <button type="button" className="orbit-nav-trigger" title={window.location.pathname === '/orbit' ? 'Voltar ao Koaline' : 'Abrir Orbit'} aria-label={window.location.pathname === '/orbit' ? 'Voltar ao Koaline' : 'Abrir feed Orbit'} onClick={() => { const nextPath = window.location.pathname === '/orbit' ? '/' : '/orbit'; if (window.location.pathname !== nextPath) window.history.pushState({}, '', nextPath); window.dispatchEvent(new PopStateEvent('popstate')); }}>{window.location.pathname === '/orbit' ? <ArrowLeft size={18} strokeWidth={2} /> : <Globe size={18} strokeWidth={2} />}<span>{window.location.pathname === '/orbit' ? 'Voltar ao Koaline' : 'Orbit'}</span></button>
         <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+
 
         {/* Community Selector Pill */}
         <div className="relative" ref={commDropdownRef}>
           <button
             onClick={() => setIsCommunityDropdownOpen(!isCommunityDropdownOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-nest-pill bg-slate-800 hover:bg-slate-700/80 border border-border text-sm font-medium transition-all active:scale-95 max-w-[200px]"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-nest-pill bg-slate-800 hover:bg-slate-700 border border-border text-sm font-medium transition-all active:scale-95 max-w-[200px]"
           >
             {isDirectMessages ? <MessageSquare className="w-4 h-4 text-indigo-300" /> : activeCommunity?.icon?.startsWith('data:image/') ? <img src={activeCommunity.icon} alt="" className="w-5 h-5 rounded-md object-cover" /> : <span className="text-base">{activeCommunity?.icon || '◇'}</span>}
             <span className="truncate text-slate-100 font-semibold text-xs sm:text-sm">
@@ -155,19 +193,20 @@ export const TopBar: React.FC = () => {
         </button>
 
         <button
-          onClick={() => addToast('Notificações', 'Você está em dia com todas as mensagens.')}
-          title="Notificações"
-          className="relative p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+          onClick={markNotificationsRead}
+          title={notificationCount ? `${notificationCount} notificações não lidas. Marcar como lidas` : 'Nenhuma notificação não lida'}
+          aria-label={notificationCount ? `${notificationCount} notificações não lidas. Marcar como lidas` : 'Nenhuma notificação não lida'}
+          className={`relative p-2 rounded-full hover:bg-slate-800 transition-colors ${notificationCount ? 'text-primary' : 'text-slate-400 hover:text-slate-200'}`}
         >
           <Bell className="w-4 h-4" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-indigo-500 ring-2 ring-slate-900" />
+          {notificationCount > 0 && <span className="notification-badge" aria-hidden="true">{notificationCount}</span>}
         </button>
 
         {/* User Pill */}
         <div className="relative" ref={userMenuRef}>
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className="flex items-center gap-2 p-1 pl-2 rounded-nest-pill bg-slate-800 hover:bg-slate-700/80 border border-border transition-all"
+            className="flex items-center gap-2 p-1 pl-2 rounded-nest-pill bg-slate-800 hover:bg-slate-700 border border-border transition-all"
           >
             <div className="relative">
               {currentUser.avatar ? <img
@@ -195,7 +234,7 @@ export const TopBar: React.FC = () => {
 
           {isUserMenuOpen && (
             <div className="absolute top-full right-0 mt-2 w-64 p-2 rounded-nest-sm bg-slate-900 border border-slate-700 shadow-2xl z-40 animate-in fade-in zoom-in-95">
-              <div className="flex items-center gap-3 p-2.5 rounded-nest-sm bg-slate-950/60 mb-2">
+              <div className="flex items-center gap-3 p-2.5 rounded-nest-sm bg-slate-950 mb-2">
                 {currentUser.avatar ? <img
                   src={currentUser.avatar}
                   alt={currentUser.name}
@@ -235,6 +274,19 @@ export const TopBar: React.FC = () => {
                 <span>Editar Perfil & Status</span>
               </button>
 
+<div className="my-2 rounded-xl border border-slate-800 bg-slate-950 p-3">
+                <div className="mb-2 flex items-center justify-between text-[11px] font-semibold text-slate-200">
+                  <span>Áudio</span>
+                  <button type="button" role="switch" aria-checked={audioPreferences.muted} onClick={() => updateAudioPreferences({ ...audioPreferences, muted: !audioPreferences.muted })} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-slate-300 hover:bg-slate-800">
+                    {audioPreferences.muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                    {audioPreferences.muted ? 'Mudo' : 'Com som'}
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 text-[10px] text-slate-400">
+                  <span>Volume</span><input type="range" min="0" max="100" value={Math.round(audioPreferences.volume * 100)} onChange={(event) => updateAudioPreferences({ ...audioPreferences, volume: Number(event.target.value) / 100 })} className="min-w-0 flex-1 accent-sky-500" /><span className="w-8 text-right">{Math.round(audioPreferences.volume * 100)}%</span>
+                </label>
+              </div>
+
               <button
                 onClick={() => {
                   setIsThemeCustomizerOpen(true);
@@ -265,3 +317,7 @@ export const TopBar: React.FC = () => {
     </header>
   );
 };
+
+
+
+

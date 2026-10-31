@@ -5,6 +5,8 @@ export interface User {
   id: string;
   name: string;
   handle: string;
+  email?: string;
+  onboarding_completed?: boolean;
   avatar: string;
   banner?: string;
   status: UserStatus;
@@ -70,10 +72,12 @@ export interface Channel {
   topic?: string;
   type: ChannelType;
   categoryId: string;
+  ownerId?: string;
   unreadCount?: number;
   connectedUsers?: User[];
   isPrivate?: boolean;
   isArchived?: boolean;
+  isDefault?: boolean;
 }
 
 export interface Category {
@@ -105,6 +109,7 @@ export interface DirectMessageConversation {
   lastMessage: string;
   lastMessageTime: string;
   unread: boolean;
+  lastReadAt?: string;
   isArchived: boolean;
 }
 
@@ -141,5 +146,6 @@ export interface ToastMessage {
   id: string;
   title: string;
   message: string;
-  type?: 'info' | 'success' | 'warning' | 'coral';
+  type: 'info' | 'success' | 'warning' | 'error';
+  duration?: number;
 }

@@ -6,6 +6,8 @@ import { ChatHeader } from './ChatHeader';
 import { EmptyState } from '../common/EmptyState';
 import { Message } from '../../types';
 import { Search, Calendar } from 'lucide-react';
+import { formatDateHeading, formatRelativeTime, isSameLocalDay, parseAppDate } from '../../utils/time';
+import { canModerateCommunity } from '../admin/adminAccess';
 
 export const ChatView: React.FC = () => {
   const {
@@ -15,17 +17,28 @@ export const ChatView: React.FC = () => {
     activeDmId,
     isTyping,
     typingUser,
-    sendMessage
+    sendMessage,
+    lastReadAtByChannel,
+    markChannelRead,
+    communities,
+    currentCommunityId,
+    currentUser,
+    togglePinMessage,
+    addToast,
   } = useApp();
 
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [, setClock] = useState(Date.now());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeChannelKey = isDirectMessages && activeDmId ? activeDmId : currentChannelId;
   const channelMessages = messages[activeChannelKey] || [];
+  const pinnedMessages = isDirectMessages ? [] : channelMessages.filter((message) => message.pinned && !message.isDeleted);
+  const activeCommunity = communities.find((community) => community.id === currentCommunityId);
+  const canModerate = !!activeCommunity && canModerateCommunity(activeCommunity.id, currentUser, activeCommunity.ownerId || activeCommunity.creatorId);
 
   const filteredMessages = isSearching && searchQuery.trim()
     ? channelMessages.filter((m) =>
@@ -38,8 +51,20 @@ export const ChatView: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [channelMessages.length, isTyping]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (activeChannelKey) markChannelRead(activeChannelKey);
+  }, [activeChannelKey]);
+
+  const lastReadAt = lastReadAtByChannel[activeChannelKey];
+  const firstUnreadId = channelMessages.find((message) => message.senderId !== currentUser.id && (!lastReadAt || parseAppDate(message.timestamp).getTime() > parseAppDate(lastReadAt).getTime()))?.id;
+
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-950/30 relative min-w-0">
+    <div className="flex-1 flex flex-col h-full bg-surface-sunken relative min-w-0">
       {/* Header */}
       <ChatHeader
         onToggleSearch={() => setIsSearching(!isSearching)}
@@ -71,6 +96,23 @@ export const ChatView: React.FC = () => {
 
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto px-2 py-4">
+        {pinnedMessages.length > 0 && (
+          <div className="pinned-message-bar sticky top-0 z-20 mx-2 mb-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="pinned-message-label"><span aria-hidden="true">📌</span> Fixadas</span>
+              <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+                {pinnedMessages.map((message) => (
+                  <button key={message.id} type="button" className="pinned-message-link" title="Ir para mensagem fixada" onClick={() => document.getElementById(`message-${message.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+                    <span className="truncate">{message.sender.name}: {message.content || 'Anexo'}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {canModerate && pinnedMessages.map((message) => (
+              <button key={`unpin-${message.id}`} type="button" className="pinned-unpin" title="Desafixar mensagem" aria-label={`Desafixar mensagem de ${message.sender.name}`} onClick={() => { togglePinMessage(message.id); addToast('Mensagem desafixada', 'A mensagem foi removida das fixadas.', 'success'); }}>×</button>
+            ))}
+          </div>
+        )}
         {filteredMessages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <EmptyState
@@ -81,28 +123,30 @@ export const ChatView: React.FC = () => {
           </div>
         ) : (
           <>
-            {/* Date Separator */}
-            <div className="flex items-center justify-center mb-4">
-              <div className="h-px bg-slate-800 flex-1" />
-              <div className="px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Calendar className="w-3 h-3 text-indigo-400" />
-                <span>Hoje</span>
-              </div>
-              <div className="h-px bg-slate-800 flex-1" />
-            </div>
-
             {filteredMessages.map((msg, index) => {
               const previousMessage = filteredMessages[index - 1];
+              const startsNewDay = !previousMessage || !isSameLocalDay(previousMessage.timestamp, msg.timestamp);
+              const elapsedMinutes = previousMessage
+                ? (parseAppDate(msg.timestamp).getTime() - parseAppDate(previousMessage.timestamp).getTime()) / 60_000
+                : Number.POSITIVE_INFINITY;
               const isGrouped = !!previousMessage
                 && !previousMessage.isDeleted
-                && previousMessage.senderId === msg.senderId;
+                && !msg.isDeleted
+                && previousMessage.senderId === msg.senderId
+                && elapsedMinutes >= 0
+                && elapsedMinutes <= 5;
               return (
+                <React.Fragment key={msg.id}>
+                {startsNewDay && <div className="flex items-center justify-center mb-4 mt-2"><div className="h-px bg-slate-800 flex-1" /><div className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5"><Calendar className="w-3 h-3 text-indigo-400" /><span>{formatDateHeading(msg.timestamp)}</span></div><div className="h-px bg-slate-800 flex-1" /></div>}
+                {msg.id === firstUnreadId && <div className="unread-divider"><span>Não lidas</span></div>}
                 <MessageItem
-                  key={msg.id}
                   message={msg}
                   isGrouped={isGrouped}
+                  isUnread={!!lastReadAt && msg.senderId !== currentUser.id && parseAppDate(msg.timestamp).getTime() > parseAppDate(lastReadAt).getTime()}
+                  timeLabel={new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(parseAppDate(msg.timestamp))}
                   onReply={(target) => setReplyTarget(target)}
                 />
+                </React.Fragment>
               );
             })}
           </>
@@ -132,3 +176,5 @@ export const ChatView: React.FC = () => {
     </div>
   );
 };
+
+

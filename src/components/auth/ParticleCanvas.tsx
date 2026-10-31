@@ -39,7 +39,10 @@ export const ParticleCanvas: React.FC<ParticleCanvasProps> = ({
       color: string;
     }> = [];
 
-    const colors = ['#6366F1', '#38BDF8', '#818CF8', '#A855F7', '#C084FC'];
+    const rootStyles = getComputedStyle(document.documentElement);
+    let primary = rootStyles.getPropertyValue('--primary').trim();
+    let primaryRgb = rootStyles.getPropertyValue('--primary-rgb').trim();
+    const colors = [primary, primary, primary, primary, primary];
 
     for (let i = 0; i < particleCount; i++) {
       particles.push({
@@ -65,7 +68,7 @@ export const ParticleCanvas: React.FC<ParticleCanvasProps> = ({
 
           if (dist < 120) {
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(99, 102, 241, ${0.18 * (1 - dist / 120)})`;
+            ctx.strokeStyle = `rgba(${primaryRgb}, ${0.18 * (1 - dist / 120)})`;
             ctx.lineWidth = 0.8;
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
@@ -100,7 +103,16 @@ export const ParticleCanvas: React.FC<ParticleCanvasProps> = ({
 
     render();
 
+    const themeObserver = new MutationObserver(() => {
+      const styles = getComputedStyle(document.documentElement);
+      primary = styles.getPropertyValue('--primary').trim();
+      primaryRgb = styles.getPropertyValue('--primary-rgb').trim();
+      particles.forEach((particle) => { particle.color = primary; });
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
     return () => {
+      themeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameId);
     };
@@ -113,3 +125,4 @@ export const ParticleCanvas: React.FC<ParticleCanvasProps> = ({
     />
   );
 };
+

@@ -18,3 +18,4 @@ export const KoalineWordmark: React.FC<{ className?: string; size?: 'sm' | 'md' 
     </div>
   );
 };
+

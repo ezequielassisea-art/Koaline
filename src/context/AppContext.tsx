@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   User,
   Community,
@@ -9,8 +9,22 @@ import {
   DirectMessageConversation,
   ToastMessage
 } from '../types';
+import { canDeleteCommunityChannel, canModerateCommunity } from '../components/admin/adminAccess';
+import { audioManager } from '../services/AudioManager';
 
 const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'online', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
+
+const getDefaultTextChannel = (community?: Community) => {
+  const textChannels = community?.channels.filter((channel) => channel.type === 'text') || [];
+  return textChannels.find((channel) => channel.isDefault)
+    || textChannels.find((channel) => /^(geral|general)$/i.test(channel.name.trim()))
+    || textChannels[0]
+    || null;
+};
+
+type PendingCallRequest =
+  | { type: 'channel'; channel: Channel; mode: 'voice' | 'video'; isDeafened: boolean }
+  | { type: 'direct'; targetUser: User; mode: 'voice' | 'video' };
 
 interface AppContextType {
   // User & Auth
@@ -37,7 +51,7 @@ interface AppContextType {
   createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => void;
   updateCommunity: (id: string, updates: Partial<Community>) => void;
   updateChannel: (id: string, updates: Partial<Channel>) => void;
-  deleteChannel: (id: string) => void;
+  deleteChannel: (id: string) => boolean;
   removeCommunity: (id: string) => void;
 
   // Messaging
@@ -71,9 +85,12 @@ interface AppContextType {
 
   // Call / Voice / Video
   activeCall: ActiveCall | null;
+  pendingCallSwitch: boolean;
+  confirmCallSwitch: () => void;
+  cancelCallSwitch: () => void;
   startCall: (channel: Channel, mode: 'voice' | 'video', isDeafened?: boolean) => void;
   startDirectCall: (targetUser: User, mode: 'voice' | 'video') => void;
-  leaveCall: () => void;
+  leaveCall: (expectedChannelId?: string, silent?: boolean) => void;
   toggleMute: () => void;
   toggleDeafen: () => void;
   toggleCamera: () => void;
@@ -83,6 +100,8 @@ interface AppContextType {
   toggleMinimizeCall: () => void;
   setCallLayout: (layout: 'grid' | 'spotlight' | 'audio-only') => void;
   switchCallChannel: (channel: Channel) => void;
+  moveVoiceUser: (userId: string, channelId: string) => boolean;
+  syncVoiceParticipants: (channelId: string, users: User[]) => void;
 
   // Themes
   theme: ThemeSettings;
@@ -93,6 +112,12 @@ interface AppContextType {
   toasts: ToastMessage[];
   addToast: (title: string, message: string, type?: ToastMessage['type']) => void;
   removeToast: (id: string) => void;
+  pauseToast: () => void;
+  resumeToast: () => void;
+  notify: { success: (message: string, duration?: number) => void; error: (message: string, duration?: number) => void; warning: (message: string, duration?: number) => void; info: (message: string, duration?: number) => void };
+  markNotificationsRead: () => void;
+  lastReadAtByChannel: Record<string, string>;
+  markChannelRead: (channelId: string) => void;
 
   // User Actions Menu
   activeUserMenu: { user: User; position: { x: number; y: number } } | null;
@@ -101,7 +126,7 @@ interface AppContextType {
 }
 
 const DEFAULT_THEME: ThemeSettings = {
-  mode: 'dark',
+  mode: typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
   fontScale: 100,
   reduceMotion: false,
 };
@@ -154,6 +179,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('koaline:invites', JSON.stringify(invites));
     localStorage.setItem('koaline:logs', JSON.stringify(logs));
   }, [communities, currentCommunityId, currentChannelId, dms, members, flatChannels, invites, logs]);
+  // A persisted voice-channel selection is not a call session. Return to text on reload/deep link.
+  useEffect(() => {
+    if (activeCallRef.current) return;
+    const community = communities.find((item) => item.id === currentCommunityId);
+    const selected = community?.channels.find((channel) => channel.id === currentChannelId);
+    if (selected?.type !== 'voice') return;
+    setCurrentChannelId(getDefaultTextChannel(community)?.id || '');
+    setIsDirectMessages(false);
+    setActiveDmId(null);
+  }, [communities, currentCommunityId, currentChannelId]);
 
   useEffect(() => {
     if (localStorage.getItem('koaline:migrated_clean') === '1') return;
@@ -199,6 +234,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Active Call
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const activeCallRef = useRef(activeCall);
+  activeCallRef.current = activeCall;
+  const [pendingCallRequest, setPendingCallRequest] = useState<PendingCallRequest | null>(null);
   const screenStreamRef = React.useRef<MediaStream | null>(null);
 
   // Theme
@@ -210,6 +248,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const toastTimerRef = useRef<number | null>(null);
+  const toastPausedRef = useRef(false);
+  const toastDeadlineRef = useRef(0);
+  const toastRemainingRef = useRef(4000);
+  const [lastReadAtByChannel, setLastReadAtByChannel] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('koaline:last-read') || '{}'); } catch { return {}; }
+  });
 
   // User Actions Dropdown Menu
   const [activeUserMenu, setActiveUserMenu] = useState<{ user: User; position: { x: number; y: number } } | null>(null);
@@ -222,7 +267,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       '--text-muted', '--border', '--border-strong', '--accent', '--accent-hover', '--color-primary',
       '--color-primary-hover', '--color-accent', '--color-bg-app', '--color-surface',
       '--color-surface-elevated', '--color-surface-sunken', '--color-text-main', '--color-text-muted',
-      '--color-border', '--accent-muted', '--density-padding', '--glass-opacity', '--glass-blur',
+      '--color-border', '--accent-muted', '--density-padding',
       '--app-background-image', '--background-opacity', '--radius-sm', '--radius-md', '--radius-lg',
       '--radius-xl', '--shadow-sm', '--shadow-md', '--shadow-lg',
     ].forEach((property) => root.style.removeProperty(property));
@@ -327,16 +372,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const addToast = (title: string, message: string, type: ToastMessage['type'] = 'coral') => {
+  const clearToastTimer = () => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = null;
+  };
+
+  const addToast = (title: string, message: string, type: ToastMessage['type'] = 'info', duration = 4000) => {
+    clearToastTimer();
     const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, title, message, type }]);
-    setTimeout(() => {
-      removeToast(id);
-    }, 4000);
+    const toast = { id, title, message, type, duration };
+    setToasts([toast]);
+    toastRemainingRef.current = duration;
+    if (!toastPausedRef.current) {
+      toastDeadlineRef.current = Date.now() + duration;
+      toastTimerRef.current = window.setTimeout(() => removeToast(id), duration);
+    }
   };
 
   const removeToast = (id: string) => {
+    clearToastTimer();
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const pauseToast = () => {
+    toastPausedRef.current = true;
+    if (toastTimerRef.current === null) return;
+    toastRemainingRef.current = Math.max(0, toastDeadlineRef.current - Date.now());
+    clearToastTimer();
+  };
+
+  const resumeToast = () => {
+    toastPausedRef.current = false;
+    if (toastTimerRef.current !== null || !toasts[0]) return;
+    const delay = toastRemainingRef.current || 1;
+    toastDeadlineRef.current = Date.now() + delay;
+    toastTimerRef.current = window.setTimeout(() => removeToast(toasts[0].id), delay);
+  };
+
+  const notify = {
+    success: (message: string, duration?: number) => addToast('Sucesso', message, 'success', duration),
+    error: (message: string, duration?: number) => addToast('Erro', message, 'error', duration),
+    warning: (message: string, duration?: number) => addToast('Atenção', message, 'warning', duration),
+    info: (message: string, duration?: number) => addToast('Informação', message, 'info', duration),
+  };
+
+  const markChannelRead = (channelId: string) => {
+    const readAt = new Date().toISOString();
+    setLastReadAtByChannel((prev) => {
+      const next = { ...prev, [channelId]: readAt };
+      try { localStorage.setItem('koaline:last-read', JSON.stringify(next)); } catch { /* Mantém a leitura na sessão atual. */ }
+      return next;
+    });
+    setCommunities((prev) => prev.map((community) => ({ ...community, channels: community.channels.map((channel) => channel.id === channelId ? { ...channel, unreadCount: 0 } : channel) })));
+    setDms((prev) => prev.map((dm) => dm.id === channelId ? { ...dm, unread: false, lastReadAt: readAt } : dm));
+  };
+
+  const markNotificationsRead = () => {
+    const readAt = new Date().toISOString();
+    setDms((prev) => prev.map((dm) => ({ ...dm, unread: false, lastReadAt: readAt })));
+    setCommunities((prev) => prev.map((community) => ({ ...community, channels: community.channels.map((channel) => ({ ...channel, unreadCount: 0 })) })));
+    const next: Record<string, string> = {};
+    communities.forEach((community) => community.channels.forEach((channel) => { next[channel.id] = readAt; }));
+    dms.forEach((dm) => { next[dm.id] = readAt; });
+    setLastReadAtByChannel(next);
+    try { localStorage.setItem('koaline:last-read', JSON.stringify(next)); } catch { /* Mantém o estado na sessão atual. */ }
+  };
+
+  const moveVoiceUser = (userId: string, channelId: string) => {
+    if (!userId.trim()) return false;
+    const destinationCommunity = communities.find((community) => community.channels.some((channel) => channel.id === channelId));
+    const destination = destinationCommunity?.channels.find((channel) => channel.id === channelId);
+    if (!destinationCommunity || destination?.type !== 'voice' || !canModerateCommunity(destinationCommunity.id, currentUser, destinationCommunity.ownerId || destinationCommunity.creatorId)) return false;
+    const sourceChannel = communities.flatMap((community) => community.channels).find((channel) => channel.type === 'voice' && channel.connectedUsers?.some((user) => user.id === userId));
+    if (!sourceChannel || sourceChannel.communityId !== destinationCommunity.id) return false;
+    const movingUser = sourceChannel.connectedUsers?.find((user) => user.id === userId);
+    if (!movingUser) return false;
+    setCommunities((prev) => prev.map((community) => ({
+      ...community,
+      channels: community.channels.map((channel) => {
+        const remaining = (channel.connectedUsers || []).filter((user) => user.id !== userId);
+        return channel.id === channelId ? { ...channel, connectedUsers: [...remaining, movingUser] } : channel.connectedUsers ? { ...channel, connectedUsers: remaining } : channel;
+      }),
+    })));
+    setActiveCall((prev) => prev?.participants.some((participant) => participant.user.id === userId)
+      ? { ...prev, channelId, channelName: destination.name }
+      : prev);
+    addToast('Usuário movido', `Usuário movido para ${destination.name}.`, 'success');
+    return true;
+  };
+
+  const syncVoiceParticipants = (channelId: string, users: User[]) => {
+    const validUsers = [...new Map(users.filter((user) => (user.id || '').trim() && ((user.avatar || '').trim() || (user.name || '').trim() || (user.handle || '').trim())).map((user) => [user.id, user])).values()];
+    setCommunities((prev) => prev.map((community) => ({
+      ...community,
+      channels: community.channels.map((channel) => channel.id === channelId
+        ? { ...channel, connectedUsers: validUsers }
+        : channel),
+    })));
   };
 
   const updateTheme = (updates: Partial<ThemeSettings>) => {
@@ -409,6 +541,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newChan: Channel = {
       id: crypto.randomUUID(),
       communityId: currentCommunityId,
+      ownerId: currentUser.id,
       name: cleanName,
       type,
       categoryId,
@@ -452,17 +585,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   };
 
-  const deleteChannel = (id: string) => {
-    setCommunities((prev) => prev.map((community) => ({
-      ...community,
-      channels: community.channels.filter((channel) => channel.id !== id),
+  const deleteChannel = (id: string): boolean => {
+    const community = communities.find((item) => item.channels.some((channel) => channel.id === id));
+    const channel = community?.channels.find((item) => item.id === id);
+    if (!community || !channel || !canDeleteCommunityChannel(community.id, currentUser, community.ownerId || community.creatorId, channel.ownerId)) return false;
+
+    if (activeCallRef.current?.channelId === id) leaveCall(id, true);
+    setCommunities((prev) => prev.map((item) => ({
+      ...item,
+      channels: item.channels.filter((itemChannel) => itemChannel.id !== id),
     })));
-    setFlatChannels((prev) => prev.filter((channel) => channel.id !== id));
+    setFlatChannels((prev) => prev.filter((item) => item.id !== id));
     setMessages((prev) => { const next = { ...prev }; delete next[id]; return next; });
-    if (currentChannelId === id) {
-      const fallback = communities.find((community) => community.id === currentCommunityId)?.channels.find((channel) => channel.id !== id && channel.type === 'text');
+    setLastReadAtByChannel((prev) => { const next = { ...prev }; delete next[id]; return next; });
+    try {
+      const key = `koaline:admin:${community.id}`;
+      const saved = JSON.parse(localStorage.getItem(key) || '{}');
+      localStorage.setItem(key, JSON.stringify({
+        ...saved,
+        archived: (saved.archived || []).filter((channelId: string) => channelId !== id),
+        channelOrder: (saved.channelOrder || []).filter((channelId: string) => channelId !== id),
+      }));
+    } catch { /* A remoção do canal não depende da limpeza dos dados auxiliares. */ }
+
+    if (currentCommunityId === community.id && currentChannelId === id) {
+      const remainingTextChannels = community.channels.filter((item) => item.id !== id && item.type === 'text');
+      const remainingChannels = community.channels.filter((item) => item.id !== id);
+      const fallback = remainingTextChannels.find((item) => /^(geral|general)$/i.test(item.name)) || remainingTextChannels[0] || remainingChannels[0];
       setCurrentChannelId(fallback?.id || '');
     }
+    return true;
   };
 
   const removeCommunity = (id: string) => {
@@ -507,7 +659,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       senderId: currentUser.id,
       sender: currentUser,
       content: content.trim(),
-      timestamp: 'Hoje às ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: new Date().toISOString(),
       reactions: [],
       replyTo,
       attachments,
@@ -517,6 +669,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...prev,
       [activeChannelKey]: [...(prev[activeChannelKey] || []), newMessage],
     }));
+    if (isDirectMessages && activeDmId) {
+      setDms((prev) => prev.map((dm) => dm.id === activeDmId
+        ? { ...dm, lastMessage: content.trim() || 'Anexo', lastMessageTime: newMessage.timestamp, unread: false }
+        : dm));
+    }
 
   };
 
@@ -603,12 +760,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Call management
-  const startCall = (channel: Channel, mode: 'voice' | 'video', isDeafened = false) => {
+  const connectToChannelCall = (channel: Channel, mode: 'voice' | 'video', isDeafened = false) => {
     const currentComm = communities.find((c) => c.id === currentCommunityId);
+    setCurrentChannelId(channel.id);
     const otherParticipants = (channel.connectedUsers || [])
       .filter((user) => user.id !== currentUser.id)
       .map((user) => ({ user, isSpeaking: false, isMuted: false, isCameraOn: false }));
-    setActiveCall({
+    setCommunities((prev) => prev.map((community) => ({
+      ...community,
+      channels: community.channels.map((item) => item.id === channel.id
+        ? { ...item, connectedUsers: [...(item.connectedUsers || []).filter((user) => user.id !== currentUser.id), currentUser] }
+        : item),
+    })));
+    const nextCall: ActiveCall = {
       channelId: channel.id,
       channelName: channel.name,
       communityName: currentComm ? currentComm.name : 'Geral',
@@ -626,12 +790,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ...otherParticipants,
         { user: currentUser, isSpeaking: false, isMuted: false, isCameraOn: mode === 'video' },
       ],
-    });
+    };
+    activeCallRef.current = nextCall;
+    setActiveCall(nextCall);
     addToast('Conectado', `Entrou na sala de voz ${channel.name}`, 'success');
   };
 
-  const startDirectCall = (targetUser: User, mode: 'voice' | 'video') => {
-    setActiveCall({
+  const connectToDirectCall = (targetUser: User, mode: 'voice' | 'video') => {
+    const nextCall: ActiveCall = {
       channelId: `dm-call-${targetUser.id}`,
       channelName: targetUser.name,
       communityName: 'Chamada Direta',
@@ -649,16 +815,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         { user: currentUser, isSpeaking: false, isMuted: false, isCameraOn: mode === 'video' },
         { user: targetUser, isSpeaking: false, isMuted: false, isCameraOn: mode === 'video' },
       ],
-    });
+    };
+    activeCallRef.current = nextCall;
+    setActiveCall(nextCall);
     addToast('Chamando...', `Iniciando chamada com ${targetUser.name}`);
   };
 
-  const leaveCall = () => {
+  const startCall = (channel: Channel, mode: 'voice' | 'video', isDeafened = false) => {
+    if (activeCallRef.current && activeCallRef.current.channelId !== channel.id) {
+      setPendingCallRequest({ type: 'channel', channel, mode, isDeafened });
+      return;
+    }
+    connectToChannelCall(channel, mode, isDeafened);
+  };
+
+  const startDirectCall = (targetUser: User, mode: 'voice' | 'video') => {
+    const targetCallId = `dm-call-${targetUser.id}`;
+    if (activeCallRef.current && activeCallRef.current.channelId !== targetCallId) {
+      setPendingCallRequest({ type: 'direct', targetUser, mode });
+      return;
+    }
+    connectToDirectCall(targetUser, mode);
+  };
+
+  const leaveCall = (expectedChannelId?: string, silent = false) => {
+    const callToLeave = activeCallRef.current;
+    if (!callToLeave || (expectedChannelId && callToLeave.channelId !== expectedChannelId)) return;
+    if (!silent) void audioManager.play('leave_call');
+    if (!callToLeave.channelId.startsWith('dm-call-')) {
+      const callCommunity = communities.find((community) => community.channels.some((channel) => channel.id === callToLeave.channelId));
+      const callChannel = callCommunity?.channels.find((channel) => channel.id === callToLeave.channelId);
+      if (currentChannelId === callToLeave.channelId && callChannel?.type === 'voice' && callCommunity) {
+        setCurrentCommunityId(callCommunity.id);
+        setCurrentChannelId(getDefaultTextChannel(callCommunity)?.id || '');
+        setIsDirectMessages(false);
+        setActiveDmId(null);
+      }
+      setCommunities((prev) => prev.map((community) => ({
+        ...community,
+        channels: community.channels.map((channel) => channel.id === callToLeave.channelId
+          ? { ...channel, connectedUsers: (channel.connectedUsers || []).filter((user) => user.id !== currentUser.id) }
+          : channel),
+      })));
+    }
     screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     screenStreamRef.current = null;
+    activeCallRef.current = null;
     setActiveCall(null);
-    addToast('Chamada Encerrada', 'Você saiu da sala.');
+    if (!silent) addToast('Chamada Encerrada', 'Você saiu da call.');
   };
+
+  const confirmCallSwitch = () => {
+    const request = pendingCallRequest;
+    if (!request) return;
+    const previousCallId = activeCallRef.current?.channelId;
+    if (previousCallId) leaveCall(previousCallId, true);
+    setPendingCallRequest(null);
+    window.setTimeout(() => {
+      if (request.type === 'channel') connectToChannelCall(request.channel, request.mode, request.isDeafened);
+      else connectToDirectCall(request.targetUser, request.mode);
+    }, 0);
+  };
+
+  const cancelCallSwitch = () => setPendingCallRequest(null);
 
   const toggleMute = () => {
     setActiveCall((prev) => {
@@ -733,16 +952,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const switchCallChannel = (channel: Channel) => {
     if (!activeCall) return;
-    addToast('Trocando de canal', `Saindo de ${activeCall.channelName}, entrando em ${channel.name}...`);
-    setActiveCall((prev) =>
-      prev
-        ? {
-            ...prev,
-            channelId: channel.id,
-            channelName: channel.name,
-          }
-        : null
-    );
+    startCall(channel, activeCall.type, activeCall.isDeafened);
   };
 
   return (
@@ -795,6 +1005,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isCreateChannelModalOpen,
         setIsCreateChannelModalOpen,
         activeCall,
+        pendingCallSwitch: pendingCallRequest !== null,
+        confirmCallSwitch,
+        cancelCallSwitch,
         startCall,
         startDirectCall,
         leaveCall,
@@ -807,12 +1020,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleMinimizeCall,
         setCallLayout,
         switchCallChannel,
+        moveVoiceUser,
+        syncVoiceParticipants,
         theme,
         updateTheme,
         resetTheme,
         toasts,
         addToast,
         removeToast,
+        pauseToast,
+        resumeToast,
+        notify,
+        markNotificationsRead,
+        lastReadAtByChannel,
+        markChannelRead,
         activeUserMenu,
         openUserMenu,
         closeUserMenu,
@@ -830,3 +1051,6 @@ export const useApp = () => {
   }
   return context;
 };
+
+
+

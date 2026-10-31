@@ -6,10 +6,11 @@ import {
   Image as ImageIcon,
   Check,
   RotateCcw,
-  User
 } from 'lucide-react';
 import { UserStatus } from '../../types';
 import { ImageCropperModal } from '../common/ImageCropperModal';
+import { Avatar } from '../common/Avatar';
+import { CoverImage } from '../common/CoverImage';
 
 export const ProfileEditor: React.FC = () => {
   const {
@@ -80,7 +81,7 @@ export const ProfileEditor: React.FC = () => {
   };
 
   return <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60  animate-in fade-in select-none">
       <div className="w-full max-w-xl max-h-[90vh] bg-slate-900 rounded-nest-lg border border-slate-700 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
@@ -104,10 +105,8 @@ export const ProfileEditor: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* Banner & Avatar Preview */}
           <div>
-            <div className="relative h-28 rounded-nest-sm profile-banner-gradient overflow-hidden group">
-              {banner && (
-                <img src={banner} alt="Banner" className="w-full h-full object-cover" />
-              )}
+            <div className="relative mb-10 h-24 rounded-nest-sm profile-banner-gradient group">
+              <CoverImage src={banner} alt="Capa do perfil" className="absolute inset-0 h-full w-full" />
               <input type="file" accept="image/*" className="hidden" aria-label="Escolher banner" onChange={(event) => handleImageFile(event, 'banner')} id="profile-banner-file" />
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
@@ -121,9 +120,9 @@ export const ProfileEditor: React.FC = () => {
               </div>
 
               {/* Avatar position */}
-              <div className="absolute bottom-2 left-4 group/avatar">
+              <div className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2 translate-y-1/2 group/avatar">
                 <div className="relative">
-                  {avatar ? <img src={avatar} alt={name} className="w-14 h-14 rounded-full object-cover ring-4 ring-slate-900 shadow-xl" /> : <div aria-label={name || 'Avatar padrão'} className="w-14 h-14 rounded-full bg-slate-700 ring-4 ring-slate-900 shadow-xl grid place-items-center text-white">{name.trim().charAt(0).toUpperCase() || <User />}</div>}
+                  <Avatar src={avatar} name={name} className="w-20 h-20 rounded-full ring-4 ring-slate-900 shadow-xl" />
                   <input type="file" accept="image/*" className="hidden" aria-label="Escolher avatar" onChange={(event) => handleImageFile(event, 'avatar')} id="profile-avatar-file" />
                   <button
                     type="button"
@@ -187,13 +186,6 @@ export const ProfileEditor: React.FC = () => {
               <div className="flex gap-2">
                 <input
                   type="text"
-                  value={statusEmoji}
-                  onChange={(e) => setStatusEmoji(e.target.value)}
-                  maxLength={2}
-                  className="w-12 text-center py-2 rounded-nest-sm bg-slate-950 border border-slate-800 text-sm text-white"
-                />
-                <input
-                  type="text"
                   value={statusText}
                   onChange={(e) => setStatusText(e.target.value)}
                   placeholder="O que você está fazendo?"
@@ -254,7 +246,7 @@ export const ProfileEditor: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between">
+        <div className="px-6 py-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
           <button
             type="button"
             onClick={() => {
@@ -287,6 +279,7 @@ export const ProfileEditor: React.FC = () => {
         </div>
       </div>
     </div>
-  <ImageCropperModal open={!!cropTarget && !!cropImage} imageSrc={cropImage} aspectRatio={cropTarget === 'banner' ? 3 : 1} cropShape={cropTarget === 'banner' ? 'rect' : 'round'} targetWidth={cropTarget === 'banner' ? 1920 : 512} targetHeight={cropTarget === 'banner' ? 640 : 512} onCancel={() => { setCropTarget(null); setCropImage(''); }} onConfirm={(cropped) => { if (cropTarget === 'banner') { setBanner(cropped); updateCurrentUser({ banner: cropped }); } else { setAvatar(cropped); updateCurrentUser({ avatar: cropped }); } setCropTarget(null); setCropImage(''); }} />
+  <ImageCropperModal open={!!cropTarget && !!cropImage} imageSrc={cropImage} aspectRatio={cropTarget === 'banner' ? 16 / 6 : 1} cropShape={cropTarget === 'banner' ? 'rect' : 'round'} targetWidth={cropTarget === 'banner' ? 1600 : 512} targetHeight={cropTarget === 'banner' ? 600 : 512} onCancel={() => { setCropTarget(null); setCropImage(''); }} onConfirm={(cropped) => { if (cropTarget === 'banner') { setBanner(cropped); updateCurrentUser({ banner: cropped }); } else { setAvatar(cropped); updateCurrentUser({ avatar: cropped }); } setCropTarget(null); setCropImage(''); }} />
   </>;
 };
+

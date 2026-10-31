@@ -5,8 +5,8 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(15, 15, 16, .58);
-  backdrop-filter: blur(var(--glass-blur));
+  background: rgb(var(--overlay-rgb) / .58);
+  
 }
 
 .admin-panel {
@@ -92,7 +92,7 @@
   padding: 10px 12px;
   border: 0;
   border-radius: 12px;
-  background: transparent;
+  background: var(--bg-secondary);
   color: var(--text-secondary);
   text-align: left;
   font-size: 12px;
@@ -101,7 +101,7 @@
 .admin-nav button svg { width: 16px; height: 16px; }
 .admin-nav button.active,
 .admin-nav button:hover {
-  background: var(--bg-active);
+  background: color-mix(in srgb, var(--primary) 12%, var(--bg-secondary));
   color: var(--text-primary);
 }
 
@@ -319,7 +319,7 @@
   z-index: 40;
   display: grid;
   place-items: center;
-  background: rgba(15, 15, 16, .72);
+  background: rgb(var(--overlay-rgb) / .72);
   color: var(--text-primary);
 }
 .admin-guard > div {
@@ -356,3 +356,35 @@
   .admin-permissions { grid-template-columns: 1fr; }
   .admin-header { padding: 0 14px; }
 }
+
+.admin-banner-editor { display: flex; min-width: 0; flex-direction: column; gap: 9px; }
+.admin-banner-label { color: var(--text-primary); font-size: 12px; font-weight: 600; }
+.admin-banner-preview {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 16 / 6;
+  overflow: hidden;
+  padding: 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  background-color: var(--bg-secondary);
+  background-position: center;
+  background-size: cover;
+}
+.admin-banner-preview.has-image::before {
+  position: absolute;
+  inset: 0;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(4, 15, 24, .04) 22%, rgba(4, 15, 24, .7) 100%);
+}
+.admin-banner-caption { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 3px; color: var(--text-primary); }
+.admin-banner-preview.has-image .admin-banner-caption { color: #FFFFFF; text-shadow: 0 1px 4px rgba(0, 0, 0, .35); }
+.admin-banner-caption strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.admin-banner-caption span { color: inherit; font-size: 10px; opacity: .82; }
+.admin-banner-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.admin-banner-actions small { flex-basis: 100%; color: var(--text-secondary); font-size: 10px; }
+.admin-banner-input { display: none; }

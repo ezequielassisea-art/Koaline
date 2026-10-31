@@ -1,237 +1,172 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { ArrowLeft, ArrowRight, AtSign, Check, Eye, EyeOff, LockKeyhole, Mail, UserRound } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { KoalineWordmark } from '../brand/KoalaMascot';
-import { ParticleCanvas } from './ParticleCanvas';
-import {
-  Mail,
-  Lock,
-  ArrowRight,
-  User,
-  Eye,
-  EyeOff,
-  Globe
-} from 'lucide-react';
+import { AuthThemeToggle } from './AuthThemeToggle';
+import { AuthLayout } from './AuthLayout';
+import { KoalineLogo } from './KoalineLogo';
+import { Button } from '../common/Button';
+import { SolidCard } from '../common/SolidCard';
+import { Input } from '../common/Input';
+
+type AuthMode = 'home' | 'login' | 'register';
+type LocalAccount = { handle: string; email: string; name: string };
+type AuthDraft = { mode: AuthMode; step: number; handle: string; email: string; loginIdentifier: string };
+const DRAFT_KEY = 'koaline:auth-draft';
+const ACCOUNTS_KEY = 'koaline:local-identities';
+const HANDLE_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
+const AppleBrandMark: React.FC = () => (
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" focusable="false">
+    <path d="M18.71 19.5c-.83 1.24-1.71 2.46-3.13 2.48-1.4.03-1.85-.79-3.45-.79s-2.09.77-3.42.82c-1.38.05-2.41-1.3-3.24-2.54-1.74-2.56-3.07-7.22-1.28-10.37.89-1.57 2.49-2.56 4.23-2.59 1.32-.03 2.56.89 3.45.89s2.39-1.1 4.04-.94c.69.03 2.63.28 3.87 2.1-.1.06-2.31 1.35-2.28 4.02.03 3.2 2.8 4.26 2.83 4.27-.03.07-.44 1.5-1.45 2.65zM13.47 3.5c.77-.93 2.05-1.64 3.09-1.7.13 1.17-.3 2.35-1.04 3.2-.69.83-1.82 1.47-2.94 1.39-.15-1.13.4-2.35.89-2.89z" />
+  </svg>
+);
+
+const readJson = <T,>(key: string, fallback: T): T => {
+  try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; }
+  catch { return fallback; }
+};
+
+const emailNickSuggestions = (email: string) => {
+  const [localPart, domain] = email.trim().toLowerCase().split('@');
+  if (!localPart || !domain || !/(gmail|outlook|hotmail|yahoo|icloud|live)\./.test(domain)) return [];
+  const parts = localPart.normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[._+-]+/).filter(Boolean);
+  const candidates = [parts.join(''), parts.length > 1 ? `${parts[0]}${parts.at(-1)?.[0] || ''}` : `${parts[0]}_`, parts.length > 1 ? `${parts.at(-1)}${parts[0]}` : `${parts[0]}_oficial`];
+  return [...new Set(candidates)].filter((candidate) => HANDLE_PATTERN.test(candidate));
+};
 
 export const AuthOnboardingModal: React.FC = () => {
-  const {
-    isLoggedIn,
-    setIsLoggedIn,
-    currentUser,
-    updateCurrentUser,
-    addToast
-  } = useApp();
-
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
+  const { isLoggedIn, setIsLoggedIn, currentUser, updateCurrentUser, addToast } = useApp();
+  const [draft] = useState<AuthDraft>(() => readJson(DRAFT_KEY, { mode: 'login', step: 1, handle: '', email: '', loginIdentifier: '' }));
+  const [mode, setMode] = useState<AuthMode>(draft.mode === 'home' ? 'login' : draft.mode);
+  const [step, setStep] = useState(Math.min(3, Math.max(1, draft.step || 1)));
+  const [handle, setHandle] = useState(draft.handle || '');
+  const [email, setEmail] = useState(draft.email || '');
+  const [loginIdentifier, setLoginIdentifier] = useState(draft.loginIdentifier || '');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [accounts, setAccounts] = useState<LocalAccount[]>(() => readJson(ACCOUNTS_KEY, []));
+
+  useEffect(() => {
+    if (mode === 'home') return;
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ mode, step, handle, email, loginIdentifier })); }
+    catch { /* A etapa continua disponível na sessão mesmo sem armazenamento. */ }
+  }, [mode, step, handle, email, loginIdentifier]);
 
   if (isLoggedIn) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  const normalizedHandle = handle.trim().replace(/^@/, '').toLowerCase();
+  const handleValid = HANDLE_PATTERN.test(normalizedHandle);
+  const handleTaken = accounts.some((account) => account.handle.toLowerCase() === normalizedHandle && account.email.toLowerCase() !== email.trim().toLowerCase())
+    || (currentUser.handle.toLowerCase() === normalizedHandle && !!currentUser.email && currentUser.email.toLowerCase() !== email.trim().toLowerCase());
+  const handleMessage = !handle ? 'Exemplo: @seunome' : !handleValid ? 'Use de 3 a 20 letras, números ou _.' : handleTaken ? 'Esse identificador já está em uso.' : 'Identificador disponível';
+  const suggestions = emailNickSuggestions(email);
+  const strength = [password.length >= 8, /[A-Z]/.test(password) && /[a-z]/.test(password), /\d/.test(password) || /[^a-zA-Z0-9]/.test(password)].filter(Boolean).length;
+  const strengthLabel = ['', 'Fraca', 'Boa', 'Forte'][strength];
+  const passwordsMatch = password.length > 0 && password === confirmPassword;
 
-    setTimeout(() => {
-      setIsLoading(false);
+  const enterLogin = () => { setMode('login'); setPassword(''); };
+  const enterRegister = () => { setMode('register'); setStep(1); setPassword(''); setConfirmPassword(''); };
+  const showSocialNotice = (provider: string) => addToast(`${provider} ainda não conectado`, 'Conecte o provedor de autenticação no backend para habilitar este acesso.', 'warning');
+
+  const finishLogin = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!loginIdentifier.trim() || !password) return;
+    setIsLoading(true);
+    window.setTimeout(() => {
+      const identity = loginIdentifier.trim().replace(/^@/, '').toLowerCase();
+      const account = accounts.find((entry) => entry.handle.toLowerCase() === identity || entry.email.toLowerCase() === loginIdentifier.trim().toLowerCase());
       updateCurrentUser({
-        name: name.trim(),
-        handle: name.toLowerCase().replace(/\s+/g, '_'),
+        ...(account ? { name: account.name, handle: account.handle, email: account.email } : {}),
+        onboarding_completed: currentUser.onboarding_completed ?? false,
       });
+      setIsLoading(false);
       setIsLoggedIn(true);
-      addToast('Bem-vindo ao Koaline!', 'Sua sessão foi iniciada com sucesso.', 'success');
-    }, 600);
+      addToast('Bem-vindo ao Koaline!', 'Sua sessão local foi iniciada.', 'success');
+    }, 250);
   };
 
-  const handleGuestLogin = () => {
+  const finishRegister = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!handleValid || handleTaken || !email.trim() || !passwordsMatch || strength < 2) return;
+    const displayName = name.trim() || normalizedHandle;
+    const nextAccounts = [...accounts.filter((account) => account.handle !== normalizedHandle), { handle: normalizedHandle, email: email.trim(), name: displayName }];
     setIsLoading(true);
-    setTimeout(() => {
+    window.setTimeout(() => {
+      try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(nextAccounts)); } catch { /* Cadastro continua na sessão atual. */ }
+      localStorage.removeItem(DRAFT_KEY);
+      setAccounts(nextAccounts);
+      updateCurrentUser({ name: displayName, handle: normalizedHandle, email: email.trim(), onboarding_completed: false });
       setIsLoading(false);
-      updateCurrentUser({
-        name: 'Visitante Convidado',
-        handle: 'guest_' + Math.floor(Math.random() * 8999 + 1000),
-      });
       setIsLoggedIn(true);
-      addToast('Acesso como Convidado', 'Explorando todos os canais e chamadas.');
-    }, 400);
+      addToast('Conta criada', 'Vamos personalizar seu perfil.', 'success');
+    }, 250);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950 overflow-hidden select-none">
-      {/* Dynamic Animated Particles in Background */}
-      <ParticleCanvas particleCount={80} />
+  const back = () => {
+    if (mode === 'register' && step > 1) { setStep(step - 1); return; }
+    setMode('home');
+  };
 
-      {/* Decorative Glow Orbs */}
-      <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-sky-500/15 rounded-full blur-3xl pointer-events-none" />
+  return <AuthLayout>
+    <AuthThemeToggle />
+    <SolidCard className="auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <KoalineLogo className="auth-logo" />
+      <h1 id="auth-title">{mode === 'home' ? 'Converse do seu jeito.' : mode === 'login' ? 'Que bom ter você de volta.' : 'Crie sua conta.'}</h1>
+      <p className="auth-description">{mode === 'home' ? 'Seu espaço para conversar, compartilhar e estar junto.' : mode === 'login' ? 'Entre com seu identificador ou email.' : 'Alguns passos rápidos para começar.'}</p>
 
-      {/* Glassmorphic Auth Card */}
-      <div className="relative z-10 w-full max-w-md p-8 rounded-nest-lg bg-slate-900/80 border border-slate-700/60 shadow-2xl backdrop-blur-xl animate-in zoom-in-95 duration-300">
-        {/* Brand Header */}
-        <div className="flex flex-col items-center text-center mb-6">
-          <KoalineWordmark size="lg" className="mb-2" />
-          <p className="text-xs text-slate-400">
-            Plataforma moderna de comunicação, comunidade e voz
-          </p>
+      {mode === 'register' && <div className="auth-progress" aria-label={`Etapa ${step} de 3`}>
+        {[1, 2, 3].map((item) => <React.Fragment key={item}><span className={`auth-progress-dot ${step >= item ? 'is-active' : ''}`} aria-current={step === item ? 'step' : undefined}>{step > item ? <Check aria-hidden="true" /> : item}</span>{item < 3 && <span className={`auth-progress-line ${step > item ? 'is-active' : ''}`} />}</React.Fragment>)}
+      </div>}
+
+      {mode === 'home' && <div className="auth-home-actions">
+        <Button variant="primary" className="auth-large-button" onClick={enterRegister}><UserRound aria-hidden="true" />Criar conta<ArrowRight aria-hidden="true" /></Button>
+        <Button variant="outline" className="auth-large-button" onClick={enterLogin}><ArrowRight aria-hidden="true" />Entrar</Button>
+        <div className="auth-divider"><span>ou continue com</span></div>
+        <div className="auth-social-grid">
+          <Button variant="outline" onClick={() => showSocialNotice('Google')}><span className="auth-google-mark" aria-hidden="true">G</span>Google</Button>
+          <Button variant="outline" onClick={() => showSocialNotice('Apple')}><AppleBrandMark />Apple</Button>
         </div>
+      </div>}
 
-        {/* Tab Switcher */}
-        <div className="grid grid-cols-2 p-1 bg-slate-950/70 rounded-nest-sm border border-slate-800 mb-6">
-          <button
-            type="button"
-            onClick={() => setMode('login')}
-            className={`py-2 text-xs font-semibold rounded-nest-sm transition-all ${
-              mode === 'login'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Entrar
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('register')}
-            className={`py-2 text-xs font-semibold rounded-nest-sm transition-all ${
-              mode === 'register'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            Criar Conta
-          </button>
+      {mode === 'login' && <form className="auth-form" onSubmit={finishLogin}>
+        <div className="auth-social-grid">
+          <Button variant="outline" onClick={() => showSocialNotice('Google')}><span className="auth-google-mark" aria-hidden="true">G</span>Google</Button>
+          <Button variant="outline" onClick={() => showSocialNotice('Apple')}><AppleBrandMark />Apple</Button>
         </div>
+        <div className="auth-divider"><span>ou entre com e-mail</span></div>
+        <Input id="auth-login-identifier" label="E-mail ou @usuário" startAdornment={<AtSign />} autoComplete="username" required value={loginIdentifier} onChange={(event) => setLoginIdentifier(event.target.value)} />
+        <div className="auth-label-row"><span className="auth-label">Senha</span><button type="button" className="auth-inline-link" onClick={() => addToast('Recuperação de senha', 'Conecte o fluxo de recuperação ao backend de autenticação.', 'warning')}>Esqueceu a senha?</button></div>
+        <Input id="auth-login-password" label="Senha" startAdornment={<LockKeyhole />} type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onCopy={(event) => event.preventDefault()} onCut={(event) => event.preventDefault()} onChange={(event) => setPassword(event.target.value)} endAdornment={<button type="button" className="auth-icon-button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>} />
+        <Button type="submit" variant="primary" className="auth-submit-button" disabled={isLoading}>{isLoading ? 'Entrando…' : 'Entrar'}<ArrowRight aria-hidden="true" /></Button>
+        <p className="auth-switch-copy">Ainda não tem conta? <button type="button" className="auth-inline-link" onClick={enterRegister}>Criar conta</button></p>
+      </form>}
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {mode === 'register' && (
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                Nome Completo
-              </label>
-              <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-nest-sm bg-slate-950/80 border border-slate-800 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all">
-                <User className="w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Seu nome ou apelido"
-                  className="w-full bg-transparent text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
-                />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              Email
-            </label>
-            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-nest-sm bg-slate-950/80 border border-slate-800 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all">
-              <Mail className="w-4 h-4 text-slate-500" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="nome@exemplo.com"
-                className="w-full bg-transparent text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                Senha
-              </label>
-              {mode === 'login' && (
-                <button
-                  type="button"
-                  onClick={() => addToast('Recuperação de Senha', 'Link enviado para o email.')}
-                  className="text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors"
-                >
-                  Esqueceu?
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-nest-sm bg-slate-950/80 border border-slate-800 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all">
-              <Lock className="w-4 h-4 text-slate-500" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-transparent text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="text-slate-500 hover:text-slate-300"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full mt-2 py-3 rounded-nest-sm bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-          >
-            {isLoading ? (
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <>
-                <span>{mode === 'login' ? 'Entrar no Koaline' : 'Criar minha conta'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Divider */}
-        <div className="flex items-center my-5">
-          <div className="h-px bg-slate-800 flex-1" />
-          <span className="px-3 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-            ou continue com
-          </span>
-          <div className="h-px bg-slate-800 flex-1" />
-        </div>
-
-        {/* Social / Guest Options */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <button
-            type="button"
-            onClick={handleGuestLogin}
-            className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-nest-sm bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-slate-200 text-xs font-medium transition-colors"
-          >
-            <svg className="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
-            <span>GitHub</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleGuestLogin}
-            className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-nest-sm bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-slate-200 text-xs font-medium transition-colors"
-          >
-            <Globe className="w-4 h-4 text-slate-400" />
-            <span>Google</span>
-          </button>
-        </div>
-
-        {/* Quick Guest Enter */}
-        <button
-          type="button"
-          onClick={handleGuestLogin}
-          className="w-full py-2 text-center text-xs text-slate-400 hover:text-slate-200 transition-colors"
-        >
-          Entrar como visitante anônimo →
-        </button>
-      </div>
-    </div>
-  );
+      {mode === 'register' && <form className="auth-form" onSubmit={step < 3 ? (event) => { event.preventDefault(); if (step === 1 && (!handleValid || handleTaken)) return; if (step === 2 && !email.trim()) return; setStep(step + 1); } : finishRegister}>
+        <button type="button" className="auth-back-button" onClick={back}><ArrowLeft aria-hidden="true" />{step > 1 ? 'Etapa anterior' : 'Voltar'}</button>
+        {step === 1 && <>
+          <Input id="auth-handle" label="Nome de usuário" startAdornment={<AtSign />} autoComplete="username" autoFocus required minLength={3} maxLength={20} pattern="[A-Za-z0-9_]{3,20}" value={handle} onChange={(event) => setHandle(event.target.value.replace(/^@/, ''))} aria-describedby="auth-handle-help" aria-invalid={!!handle && (!handleValid || handleTaken)} />
+          <p id="auth-handle-help" className={`auth-field-hint ${handle && handleValid && !handleTaken ? 'is-success' : ''}`}>{handleMessage}</p>
+          <Button type="submit" variant="primary" className="auth-submit-button" disabled={!handleValid || handleTaken}>Continuar<ArrowRight aria-hidden="true" /></Button>
+        </>}
+        {step === 2 && <>
+          <Input id="auth-register-email" label="Email" startAdornment={<Mail />} type="email" autoComplete="email" autoFocus required value={email} onChange={(event) => setEmail(event.target.value)} />
+          {suggestions.length > 0 && <div className="auth-suggestions"><p>Ideias de usuário para seu email</p><div>{suggestions.map((suggestion) => { const used = accounts.some((account) => account.handle === suggestion); return <button key={suggestion} type="button" disabled={used} onClick={() => setHandle(suggestion)} aria-label={`Usar identificador ${suggestion}`} className={used ? 'is-disabled' : ''}>@{suggestion}</button>; })}</div></div>}
+          <Button type="submit" variant="primary" className="auth-submit-button">Continuar<ArrowRight aria-hidden="true" /></Button>
+        </>}
+        {step === 3 && <>
+          <Input id="auth-display-name" label="Nome de exibição (opcional)" startAdornment={<UserRound />} autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} />
+          <Input id="auth-register-password" label="Senha" startAdornment={<LockKeyhole />} type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} required value={password} onCopy={(event) => event.preventDefault()} onCut={(event) => event.preventDefault()} onChange={(event) => setPassword(event.target.value)} endAdornment={<button type="button" className="auth-icon-button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>} />
+          <div className="auth-strength" aria-live="polite"><span className={`strength-${strength}`} /><span>Força: {strengthLabel || 'digite sua senha'}</span></div>
+          <Input id="auth-confirm-password" label="Repetir senha" startAdornment={<LockKeyhole />} type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" required value={confirmPassword} onCopy={(event) => event.preventDefault()} onCut={(event) => event.preventDefault()} onChange={(event) => setConfirmPassword(event.target.value)} aria-describedby="auth-password-match" endAdornment={<button type="button" className="auth-icon-button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} aria-label={showConfirmPassword ? 'Ocultar senha repetida' : 'Mostrar senha repetida'}>{showConfirmPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>} />
+          <p id="auth-password-match" className={`auth-field-hint ${passwordsMatch ? 'is-success' : ''}`}>{confirmPassword ? passwordsMatch ? 'As senhas conferem.' : 'As senhas ainda não conferem.' : ' '}</p>
+          <Button type="submit" variant="primary" className="auth-submit-button" disabled={isLoading || !passwordsMatch || strength < 2}>{isLoading ? 'Criando conta…' : 'Criar minha conta'}<ArrowRight aria-hidden="true" /></Button>
+        </>}
+      </form>}
+    </SolidCard>
+  </AuthLayout>;
 };
+
+

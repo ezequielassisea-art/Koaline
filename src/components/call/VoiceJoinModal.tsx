@@ -13,7 +13,7 @@ export const VoiceJoinModal: React.FC<VoiceJoinModalProps> = ({ channel, onClose
   const participants = channel.connectedUsers || [];
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="voice-join-title">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 " role="dialog" aria-modal="true" aria-labelledby="voice-join-title">
       <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
         <div className="flex items-start justify-between border-b border-slate-800 p-5">
           <div>
@@ -36,7 +36,7 @@ export const VoiceJoinModal: React.FC<VoiceJoinModalProps> = ({ channel, onClose
           {participants.length ? (
             <div className="flex flex-wrap gap-2">
               {participants.map((user) => (
-                <div key={user.id} title={user.name} className="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800/70 py-1 pl-1 pr-3 text-xs text-slate-200">
+                <div key={user.id} title={user.name} className="flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 py-1 pl-1 pr-3 text-xs text-slate-200">
                   {user.avatar ? <img src={user.avatar} alt="" className="h-7 w-7 rounded-full object-cover" /> : <span className="grid h-7 w-7 place-items-center rounded-full bg-slate-700 font-semibold">{user.name.trim().charAt(0).toUpperCase() || '◇'}</span>}
                   <span className="max-w-32 truncate">{user.name}</span>
                 </div>
@@ -58,3 +58,4 @@ export const VoiceJoinModal: React.FC<VoiceJoinModalProps> = ({ channel, onClose
     </div>
   );
 };
+

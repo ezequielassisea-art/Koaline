@@ -23,21 +23,23 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
     isDirectMessages,
     activeDmId,
     dms,
+    messages,
     isContextPanelOpen,
     closeContextPanel,
     openMembersPanel,
     startDirectCall,
     openUserProfile,
     toggleArchiveDm,
-    addToast
   } = useApp();
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
   const activeChannel = activeCommunity.channels.find((c) => c.id === currentChannelId);
   const activeDm = dms.find((d) => d.id === activeDmId);
+  const activeKey = isDirectMessages && activeDmId ? activeDmId : currentChannelId;
+  const hasPinnedMessages = !!messages[activeKey]?.some((message) => message.pinned && !message.isDeleted);
 
   return (
-    <div className="h-14 px-4 border-b border-slate-800/60 bg-slate-900/70 backdrop-blur-md flex items-center justify-between sticky top-0 z-10 select-none">
+    <div className="h-14 px-4 border-b border-slate-800/60 flex items-center justify-between sticky top-0 z-10 select-none koaline-solid-panel">
       {/* Left: Channel / DM Info */}
       <div className="flex items-center gap-3 min-w-0">
         {isDirectMessages && activeDm ? (
@@ -68,20 +70,15 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600/20 flex items-center justify-center text-indigo-400 flex-shrink-0">
-              <Hash className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-sm font-title font-bold text-white truncate">
-                {activeChannel?.name || 'chat-geral'}
-              </h2>
-              {activeChannel?.topic && (
-                <p className="text-[11px] text-slate-400 truncate hidden sm:block max-w-md">
-                  {activeChannel.topic}
-                </p>
-              )}
-            </div>
+          <div className="min-w-0">
+            <h2 className="text-sm font-title font-bold text-white truncate">
+              {activeChannel?.name || 'chat-geral'}
+            </h2>
+            {activeChannel?.topic && (
+              <p className="text-[11px] text-slate-400 truncate hidden sm:block max-w-md">
+                {activeChannel.topic}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -114,9 +111,9 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
           </>
         )}
 
-        {!isDirectMessages && (
+        {!isDirectMessages && hasPinnedMessages && (
           <button
-            onClick={() => addToast('Mensagens Fixadas', 'Mensagens fixadas pelos moderadores.')}
+            onClick={() => document.querySelector('.pinned-message-bar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
             title="Mensagens fixadas"
             className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
           >
@@ -147,3 +144,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
     </div>
   );
 };
+
+
+

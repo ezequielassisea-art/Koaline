@@ -30,7 +30,7 @@ export const CallDock: React.FC = () => {
         onClick={toggleMinimizeCall}
         onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleMinimizeCall(); } }}
         tabIndex={0}
-        className="flex h-12 max-w-full items-center gap-2 rounded-full border border-slate-700 bg-slate-900/95 px-2 shadow-xl backdrop-blur-xl transition-all duration-300 ease-out animate-in slide-in-from-top-2 cursor-pointer hover:border-slate-500"
+        className="flex h-12 max-w-full items-center gap-2 rounded-full border border-slate-700 bg-slate-900 px-2 shadow-xl  transition-all duration-300 ease-out animate-in slide-in-from-top-2 cursor-pointer hover:border-slate-500"
       >
         <span className="ml-1 h-2 w-2 shrink-0 rounded-full bg-emerald-400 animate-pulse" />
         <span className="max-w-28 truncate text-xs font-semibold text-white" title={activeCall.channelName}>{activeCall.channelName}</span>
@@ -63,3 +63,5 @@ export const CallDock: React.FC = () => {
     </>
   );
 };
+
+

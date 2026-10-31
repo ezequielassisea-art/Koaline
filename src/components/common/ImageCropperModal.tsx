@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
 import { useApp } from '../../context/AppContext';
 import { X } from 'lucide-react';
@@ -27,8 +27,11 @@ async function getCroppedImg(imageSrc: string, area: Area, targetW: number, targ
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas unavailable');
   ctx.drawImage(image, area.x, area.y, area.width, area.height, 0, 0, targetW, targetH);
-  let result = canvas.toDataURL('image/jpeg', 0.9);
-  if (result.length > 500 * 1024) result = canvas.toDataURL('image/jpeg', 0.7);
+  let result = canvas.toDataURL('image/jpeg', 0.88);
+  for (const quality of [0.72, 0.58, 0.46]) {
+    if (result.length <= 500 * 1024) break;
+    result = canvas.toDataURL('image/jpeg', quality);
+  }
   return result;
 }
 
@@ -38,11 +41,13 @@ export const ImageCropperModal: React.FC<Props> = ({ open, imageSrc, aspectRatio
   const [zoom, setZoom] = useState(1);
   const [pixels, setPixels] = useState<Area | null>(null);
   const [saving, setSaving] = useState(false);
+  const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    stageRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onCancel(); };
     window.addEventListener('keydown', onKeyDown);
     return () => {
@@ -66,9 +71,10 @@ export const ImageCropperModal: React.FC<Props> = ({ open, imageSrc, aspectRatio
   return <div className="image-cropper-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
     <section className="image-cropper-modal" role="dialog" aria-modal="true" aria-label="Recortar imagem">
       <header><strong>Recortar imagem</strong><button onClick={onCancel} aria-label="Cancelar recorte"><X /></button></header>
-      <div className="image-cropper-stage"><Cropper image={imageSrc} crop={crop} zoom={zoom} aspect={aspectRatio} cropShape={cropShape} onCropChange={setCrop} onZoomChange={setZoom} onCropComplete={(_, areaPixels) => setPixels(areaPixels)} zoomWithScroll restrictPosition={false} /></div>
-      <label className="image-cropper-zoom">Zoom <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
+      <div ref={stageRef} className="image-cropper-stage" tabIndex={0} role="application" aria-label={`Área de recorte ${cropShape === 'round' ? 'circular' : 'retangular'}. Use as setas para posicionar a imagem e a roda do mouse para aproximar.`} onKeyDown={(event) => { const delta = event.shiftKey ? 12 : 4; if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); setCrop((current) => ({ x: current.x + (event.key === 'ArrowLeft' ? -delta : event.key === 'ArrowRight' ? delta : 0), y: current.y + (event.key === 'ArrowUp' ? -delta : event.key === 'ArrowDown' ? delta : 0) })); } }}><Cropper image={imageSrc} crop={crop} zoom={zoom} aspect={aspectRatio} cropShape={cropShape} onCropChange={setCrop} onZoomChange={setZoom} onCropComplete={(_, areaPixels) => setPixels(areaPixels)} zoomWithScroll restrictPosition={false} /></div>
+      <label className="image-cropper-zoom" htmlFor="image-cropper-zoom-control">Zoom <input id="image-cropper-zoom-control" type="range" min={1} max={3} step={0.01} value={zoom} aria-label="Zoom do recorte" onChange={(event) => setZoom(Number(event.target.value))} /></label>
       <footer><button type="button" onClick={onCancel}>Cancelar</button><button type="button" autoFocus disabled={!pixels || saving} onClick={save}>{saving ? 'Salvando…' : 'Salvar'}</button></footer>
     </section>
   </div>;
 };
+

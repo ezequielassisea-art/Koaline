@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useId } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Mic,
@@ -11,15 +11,115 @@ import {
   ChevronDown,
   Volume2,
   VolumeX,
-  Maximize2
+  Maximize2,
+  Music
 } from 'lucide-react';
+import { audioManager } from '../../services/AudioManager';
 import { EmptyState } from '../common/EmptyState';
+import { AudioTrack, LiveKitRoom, useIsSpeaking, useLocalParticipant, useParticipants, useRoomContext, useTracks, useConnectionState } from '@livekit/components-react';
+import { ConnectionState, DisconnectReason, LocalAudioTrack, Participant, RoomEvent, TokenSource, Track } from 'livekit-client';
+import { SoundDraft } from './SoundEditorModal';
+import { getGroupSounds } from '../../services/GroupSoundStore';
+
+import { User } from '../../types';
+import { canModerateCommunity } from '../admin/adminAccess';
+
+const MICROPHONE_CAPTURE_OPTIONS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+const LIVEKIT_ROOM_OPTIONS = { audioCaptureDefaults: MICROPHONE_CAPTURE_OPTIONS };
+
+const LIVEKIT_SERVER_URL = 'wss://callgroup-1qh235tw.livekit.cloud';
+const tokenSource = TokenSource.sandboxTokenServer('callgroup-bnyk7k');
+
+const ParticipantTile: React.FC<{ participant: Participant; user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; onOpen: () => void }> = ({ participant, user, isMuted, onOpen }) => {
+  const isSpeaking = useIsSpeaking(participant);
+  const initials = user.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '◇';
+
+  return <div onClick={onOpen} className="group relative flex w-full max-w-xs cursor-pointer flex-col items-center rounded-nest border border-slate-800 bg-slate-900 p-5 shadow-xl transition-all hover:border-indigo-500/50">
+    <div className="relative mb-3">
+      {user.avatar ? <img src={user.avatar} alt={user.name} className={`h-24 w-24 rounded-full object-cover transition-all duration-200 ${isSpeaking ? 'scale-105 ring-4 ring-indigo-500 shadow-glow-speaking' : isMuted ? 'opacity-60 ring-2 ring-slate-800' : 'ring-2 ring-slate-700'}`} /> : <div className={`grid h-24 w-24 place-items-center rounded-full bg-slate-700 text-xl font-semibold text-white transition-all ${isSpeaking ? 'scale-105 ring-4 ring-indigo-500 shadow-glow-speaking' : 'ring-2 ring-slate-700'}`}>{initials}</div>}
+      {isMuted && <span className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-rose-400 shadow-md"><MicOff className="h-3.5 w-3.5" /></span>}
+      {isSpeaking && <span className="absolute -top-1 right-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm animate-pulse">Falando</span>}
+    </div>
+    <span className="max-w-[180px] truncate text-xs font-title font-bold text-white">{user.name}</span>
+    <span className="mt-0.5 text-[10px] text-slate-400">@{user.handle}</span>
+  </div>;
+};
 
 export const VoiceRoom: React.FC = () => {
+  const { activeCall, currentUser, addToast, leaveCall } = useApp();
+  const [tokenResult, setTokenResult] = useState<{ channelId: string; token?: string; error?: string } | null>(null);
+  const fallbackIdentity = useId().replace(/:/g, '');
+  const callChannelId = activeCall?.channelId;
+  const addToastRef = useRef(addToast);
+  const hasConnectedRef = useRef(false);
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+  useEffect(() => { hasConnectedRef.current = false; }, [callChannelId]);
+  useEffect(() => { addToastRef.current = addToast; }, [addToast]);
+
+  useEffect(() => {
+    if (!callChannelId) return;
+    let cancelled = false;
+    const fetchToken = async () => {
+      try {
+        const credentials = await tokenSource.fetch({
+          roomName: callChannelId,
+          participantName: currentUser.name || currentUser.handle || 'Participante Koaline',
+          participantIdentity: currentUser.id || currentUser.handle || fallbackIdentity,
+        });
+        if (!cancelled) setTokenResult({ channelId: callChannelId, token: credentials.participantToken });
+      } catch (error) {
+        if (!cancelled) {
+          addToastRef.current('Não foi possível obter acesso à chamada', error instanceof Error ? error.message : 'Verifique a configuração do LiveKit Cloud.', 'warning');
+          setTokenResult({ channelId: callChannelId, error: error instanceof Error ? error.message : 'Verifique a configuração do LiveKit Cloud.' });
+        }
+      }
+    };
+    void fetchToken();
+    return () => { cancelled = true; };
+  }, [callChannelId, currentUser.handle, currentUser.id, currentUser.name, fallbackIdentity]);
+
+  if (!activeCall) return null;
+  const token = tokenResult?.channelId === activeCall.channelId ? tokenResult.token : null;
+  const tokenError = tokenResult?.channelId === activeCall.channelId ? tokenResult.error : null;
+  if (!token) return <div className="flex h-full w-full items-center justify-center bg-slate-950 text-sm text-slate-300">{tokenError ? <div className="text-center"><p className="mb-3 text-rose-300">{tokenError}</p><button onClick={() => leaveCall()} className="rounded-lg bg-slate-800 px-4 py-2 hover:bg-slate-700">Sair da chamada</button></div> : 'Conectando à sala de voz…'}</div>;
+
+  return <LiveKitRoom
+    token={token}
+    serverUrl={LIVEKIT_SERVER_URL}
+    connect={true}
+    audio={false}
+    video={false}
+    options={LIVEKIT_ROOM_OPTIONS}
+    onMediaDeviceFailure={(_failure, kind) => { if (kind === 'audioinput') addToast('Microfone não autorizado', 'Permita o acesso ao microfone nas configurações do navegador para falar na chamada.', 'warning'); }}
+    onError={(error) => addToast('Falha na chamada', error.message || 'Não foi possível conectar ao LiveKit.', 'warning')}
+    onConnected={() => { if (!hasConnectedRef.current) { hasConnectedRef.current = true; void audioManager.play('join_call'); } }}
+    onDisconnected={(reason) => {
+      if (!isMountedRef.current || !hasConnectedRef.current) return;
+      hasConnectedRef.current = false;
+      if (reason && reason !== DisconnectReason.CLIENT_INITIATED) {
+        leaveCall(callChannelId, true);
+        addToast('Conexão encerrada', 'A conexão com a call foi perdida.', 'warning');
+        return;
+      }
+      leaveCall(callChannelId);
+    }}
+  >
+    <VoiceRoomConnected />
+  </LiveKitRoom>;
+};
+
+const RemoteAudioTracks: React.FC<{ volumes: Record<string, number>; muted: Record<string, boolean> }> = ({ volumes, muted }) => {
+  const tracks = useTracks([Track.Source.Microphone, Track.Source.Unknown]);
+  return <>{tracks.filter((ref) => !ref.participant.isLocal).map((ref) => { const id = ref.participant.identity; return <AudioTrack key={`${id}-${ref.publication.trackSid || ref.source}`} trackRef={ref} volume={muted[id] ? 0 : (volumes[id] ?? 1)} />; })}</>;
+};
+
+const VoiceRoomConnected: React.FC = () => {
   const {
     activeCall,
-    leaveCall,
-    toggleMute,
     toggleDeafen,
     toggleCamera,
     toggleScreenShare,
@@ -30,12 +130,164 @@ export const VoiceRoom: React.FC = () => {
     openUserProfile,
     watchScreen,
     stopWatchingScreen,
-    currentUser
+    currentUser,
+    theme,
+    syncVoiceParticipants,
+    leaveCall,
+    addToast
   } = useApp();
+  const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
+  const liveParticipants = useParticipants();
+  const participantSignature = liveParticipants.map((participant) => `${participant.identity}:${participant.name}`).sort().join('|');
+  const room = useRoomContext();
+  const connectionState = useConnectionState(room);
+  const remoteSoundTracksRef = useRef(new Set<LocalAudioTrack>());
+
+  useEffect(() => {
+    if (!activeCall || activeCall.channelId.startsWith('dm-call-') || room.name !== activeCall.channelId) return;
+    const knownUsers = communities.flatMap((community) => community.channels).flatMap((channel) => channel.connectedUsers || []);
+    const users: User[] = liveParticipants.map((participant) => {
+      if (participant.identity === currentUser.id || participant.identity === currentUser.handle) return currentUser;
+      const known = knownUsers.find((user) => user.id === participant.identity || user.handle === participant.identity);
+      let metadata: Partial<User> = {};
+      try { metadata = JSON.parse(participant.metadata || '{}') as Partial<User>; } catch { /* Mantém os dados básicos do participante. */ }
+      return {
+        ...currentUser,
+        ...known,
+        ...metadata,
+        id: participant.identity,
+        handle: metadata.handle || known?.handle || participant.identity,
+        name: participant.name || metadata.name || known?.name || participant.identity,
+        avatar: metadata.avatar || known?.avatar || '',
+        status: 'online',
+      };
+    });
+    syncVoiceParticipants(activeCall.channelId, users);
+  }, [activeCall?.channelId, participantSignature, room.name]);
 
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showChannelDropdown, setShowChannelDropdown] = useState(false);
+  const [soundboardOpen, setSoundboardOpen] = useState(false);
+  const [mySounds, setMySounds] = useState<SoundDraft[]>([]);
+  const [soundAnimation, setSoundAnimation] = useState<{ id: string; nonce: number } | null>(null);
+  const soundAnimationNonce = useRef(0);
+  const [contextUser, setContextUser] = useState<{ id: string; name: string; handle: string; avatar: string } | null>(null);
+  const [remoteVolumes, setRemoteVolumes] = useState<Record<string, number>>({});
+  const [locallyMuted, setLocallyMuted] = useState<Record<string, boolean>>({});
+  const [kickTarget, setKickTarget] = useState<{ id: string; name: string } | null>(null);
+  const currentCommunity = communities.find((item) => item.id === currentCommunityId) || communities[0];
+  const callCommunity = communities.find((item) => item.channels.some((channel) => channel.id === activeCall?.channelId));
+  const soundCommunityId = activeCall?.channelId.startsWith('dm-call-') ? '' : callCommunity?.id || currentCommunityId;
+  const mayKick = !!currentCommunity && canModerateCommunity(currentCommunity.id, currentUser, currentCommunity.ownerId || currentCommunity.creatorId);
+  const latestLeaveCallRef = useRef(leaveCall);
+  const latestToastRef = useRef(addToast);
+  useEffect(() => { latestLeaveCallRef.current = leaveCall; latestToastRef.current = addToast; }, [leaveCall, addToast]);
+
+  useEffect(() => {
+    if (!activeCall || liveParticipants.length !== 1 || liveParticipants[0]?.identity !== localParticipant.identity || connectionState !== ConnectionState.Connected) return;
+    const channelId = activeCall.channelId;
+    const idleTimer = window.setTimeout(() => {
+      if (connectionState !== ConnectionState.Connected) return;
+      void audioManager.play('leave_call');
+      latestLeaveCallRef.current(channelId, true);
+      void room.disconnect();
+      latestToastRef.current('Call encerrada', 'Você foi desconectado da call por ficar sozinho por muito tempo.', 'warning');
+    }, 300_000);
+    return () => window.clearTimeout(idleTimer);
+  }, [activeCall?.channelId, liveParticipants.length, connectionState, room, localParticipant.identity]);
+
+  useEffect(() => () => {
+    for (const track of remoteSoundTracksRef.current) track.stop();
+    remoteSoundTracksRef.current.clear();
+  }, []);
+  useEffect(() => {
+    const handleData = (payload: Uint8Array) => {
+      try {
+        const data = JSON.parse(new TextDecoder().decode(payload)) as { type?: string };
+        if (data.type === 'koaline:call-kick') { if (activeCall) leaveCall(activeCall.channelId, true); void room.disconnect(); addToast('Removido da call', 'Você foi removido da call pelo administrador.', 'warning'); }
+      } catch { /* Ignora eventos de dados que não pertencem ao Koaline. */ }
+    };
+    room.on(RoomEvent.DataReceived, handleData);
+    return () => { room.off(RoomEvent.DataReceived, handleData); };
+  }, [room, activeCall?.channelId]);
+
+  useEffect(() => {
+    if (!contextUser) return;
+    try { const saved = localStorage.getItem(`koaline:volume_${contextUser.id}`); if (saved !== null) setRemoteVolumes((prev) => ({ ...prev, [contextUser.id]: Number(saved) })); } catch { /* Volume padrão. */ }
+  }, [contextUser?.id]);
+
+  const saveRemoteVolume = (id: string, volume: number) => {
+    setRemoteVolumes((prev) => ({ ...prev, [id]: volume }));
+    try { localStorage.setItem(`koaline:volume_${id}`, String(volume)); } catch { /* Volume permanece na sessão atual. */ }
+  };
+  const playSoundInCall = async (sound: SoundDraft) => {
+    soundAnimationNonce.current += 1;
+    setSoundAnimation({ id: sound.id, nonce: soundAnimationNonce.current });
+    void audioManager.playCustom(sound.url);
+    let context: AudioContext | null = null;
+    let source: AudioBufferSourceNode | null = null;
+    let track: LocalAudioTrack | null = null;
+    try {
+      const response = await fetch(sound.url);
+      if (!response.ok) throw new Error('Não foi possível ler o áudio salvo.');
+      const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor) throw new Error('O navegador não oferece suporte ao áudio da call.');
+      context = new AudioContextCtor();
+      await context.resume();
+      const buffer = await context.decodeAudioData(await response.arrayBuffer());
+      const destination = context.createMediaStreamDestination();
+      source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(destination);
+      const mediaTrack = destination.stream.getAudioTracks()[0];
+      if (!mediaTrack) throw new Error('Não foi possível preparar o áudio para a call.');
+      track = new LocalAudioTrack(mediaTrack, undefined, true, context);
+      remoteSoundTracksRef.current.add(track);
+      const soundTrack = track;
+      const audioContext = context;
+      source.onended = () => {
+        remoteSoundTracksRef.current.delete(soundTrack);
+        void room.localParticipant.unpublishTrack(soundTrack, true).catch(() => undefined);
+        if (audioContext.state !== 'closed') void audioContext.close();
+      };
+      await room.localParticipant.publishTrack(track, { name: `soundboard-${sound.id}`, source: Track.Source.Unknown });
+      source.start();
+    } catch (reason) {
+      if (track) {
+        remoteSoundTracksRef.current.delete(track);
+        try { await room.localParticipant.unpublishTrack(track, true); } catch { track.stop(); }
+      }
+      if (context && context.state !== 'closed') await context.close();
+      addToast('Não foi possível tocar na call', reason instanceof Error ? reason.message : 'Tente novamente.', 'warning');
+    }
+  };
+
+  const kickParticipant = async () => {
+    if (!kickTarget || !mayKick) return;
+    try { await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type: 'koaline:call-kick' })), { reliable: true, destinationIdentities: [kickTarget.id] }); addToast('Participante removido', `${kickTarget.name} foi expulso da call.`, 'success'); }
+    catch { addToast('Falha ao expulsar', 'Não foi possível enviar o comando ao participante.', 'warning'); }
+    setKickTarget(null); setContextUser(null);
+  };
   const screenVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!soundCommunityId) { setMySounds([]); return; }
+    let mounted = true;
+    const loadSounds = () => { void getGroupSounds(soundCommunityId).then((saved) => { if (mounted) setMySounds(saved); }).catch(() => { if (mounted) setMySounds([]); }); };
+    const handleGroupSoundsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ communityId?: string; sounds?: SoundDraft[] }>).detail;
+      if (detail?.communityId === soundCommunityId && Array.isArray(detail.sounds)) setMySounds(detail.sounds);
+    };
+    const handleStorage = () => loadSounds();
+    loadSounds();
+    window.addEventListener('koaline:community-sounds-updated', handleGroupSoundsUpdated);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('koaline:community-sounds-updated', handleGroupSoundsUpdated);
+      window.removeEventListener('storage', handleStorage);
+      mounted = false;
+    };
+  }, [soundCommunityId]);
 
   useEffect(() => {
     if (screenVideoRef.current) screenVideoRef.current.srcObject = activeCall?.screenStream || null;
@@ -66,7 +318,19 @@ export const VoiceRoom: React.FC = () => {
   const currentComm = communities.find((c) => c.id === currentCommunityId) || communities[0];
   const voiceChannels = currentComm.channels.filter((c) => c.type === 'voice');
 
-  const participants = activeCall.participants;
+  const participants = liveParticipants.map((participant) => {
+    const isLocal = participant.identity === localParticipant.identity;
+    const user = isLocal ? currentUser : {
+      ...currentUser,
+      id: participant.identity,
+      name: participant.name || participant.identity,
+      handle: participant.identity,
+      avatar: '',
+      badges: [],
+      socials: [],
+    };
+    return { participant, user, isMuted: !participant.isMicrophoneEnabled };
+  });
   const pCount = participants.length;
   let gridColsClass = 'grid-cols-1 md:grid-cols-2';
   if (pCount === 1) gridColsClass = 'grid-cols-1 max-w-md';
@@ -76,12 +340,13 @@ export const VoiceRoom: React.FC = () => {
 
   return (
     <div className="relative w-full h-full flex flex-col items-center justify-between p-6 bg-slate-950 overflow-hidden select-none animate-in fade-in duration-300">
+      <RemoteAudioTracks volumes={remoteVolumes} muted={locallyMuted} />
       {/* Top Bar: Channel Switcher */}
       <div className="relative z-20 flex items-center gap-3">
         <div className="relative">
           <button
             onClick={() => setShowChannelDropdown(!showChannelDropdown)}
-            className="flex items-center gap-2 px-4 py-2 rounded-nest-pill bg-slate-900/90 border border-slate-700 shadow-xl hover:border-indigo-500/50 transition-all text-xs font-semibold text-white"
+            className="flex items-center gap-2 px-4 py-2 rounded-nest-pill bg-slate-900 border border-slate-700 shadow-xl hover:border-indigo-500/50 transition-all text-xs font-semibold text-white"
           >
             <Volume2 className="w-4 h-4 text-indigo-400 animate-pulse" />
             <span>{activeCall.channelName}</span>
@@ -119,21 +384,21 @@ export const VoiceRoom: React.FC = () => {
         <button
           onClick={toggleMinimizeCall}
           title="Minimizar chamada"
-          className="p-2 rounded-full bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white shadow-md transition-colors"
+          className="p-2 rounded-full bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white shadow-md transition-colors"
         >
           <Minimize2 className="w-4 h-4" />
         </button>
       </div>
 
-      {activeCall.isScreenSharing && <div className="absolute right-6 top-20 z-30 flex items-center gap-3 rounded-xl border border-sky-500/40 bg-slate-900/95 px-4 py-3 text-white shadow-2xl"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500"/><div><p className="text-xs font-semibold">Você está transmitindo</p><p className="text-[10px] text-slate-400">Áudio da transmissão disponível apenas com LiveKit integrado</p></div><button onClick={toggleScreenShare} className="rounded-lg bg-rose-600 px-3 py-2 text-[11px] font-semibold hover:bg-rose-500">Parar Transmissão</button></div>}
-      {activeCall.isScreenSharing && !activeCall.isWatchingScreen && <button onClick={watchScreen} className="absolute left-1/2 top-20 z-20 -translate-x-1/2 rounded-xl border border-slate-700 bg-slate-900/95 px-4 py-2 text-xs text-white shadow-xl hover:border-sky-500"><span className="font-semibold">{currentUser.name || 'Usuário'} está transmitindo.</span> <span className="text-sky-300">Assistir</span></button>}
+      {activeCall.isScreenSharing && <div className="absolute right-6 top-20 z-30 flex items-center gap-3 rounded-xl border border-sky-500/40 bg-slate-900 px-4 py-3 text-white shadow-2xl"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500"/><div><p className="text-xs font-semibold">Você está transmitindo</p><p className="text-[10px] text-slate-400">Áudio da transmissão disponível apenas com LiveKit integrado</p></div><button onClick={toggleScreenShare} className="rounded-lg bg-rose-600 px-3 py-2 text-[11px] font-semibold hover:bg-rose-500">Parar Transmissão</button></div>}
+      {activeCall.isScreenSharing && !activeCall.isWatchingScreen && <button onClick={watchScreen} className="absolute left-1/2 top-20 z-20 -translate-x-1/2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-xs text-white shadow-xl hover:border-sky-500"><span className="font-semibold">{currentUser.name || 'Usuário'} está transmitindo.</span> <span className="text-sky-300">Assistir</span></button>}
 
       {/* Center Participants Grid */}
       {activeCall.isWatchingScreen && activeCall.screenStream ? (
         <div className="relative my-4 flex min-h-0 w-full max-w-5xl flex-1 flex-col items-center justify-center overflow-hidden rounded-2xl border border-sky-500/40 bg-black shadow-2xl">
           <video ref={screenVideoRef} autoPlay playsInline className="h-full max-h-full w-full object-contain" />
-          <div className="absolute bottom-4 right-4 flex gap-2"><button onClick={() => screenVideoRef.current?.requestFullscreen?.()} className="rounded-lg bg-slate-900/90 px-3 py-2 text-xs text-white hover:bg-slate-800"><Maximize2 className="mr-1 inline h-3.5 w-3.5"/>Tela Cheia</button><button onClick={stopWatchingScreen} className="rounded-lg bg-slate-900/90 px-3 py-2 text-xs text-white hover:bg-slate-800">Sair da transmissão</button></div>
-          <p className="absolute left-4 top-4 rounded-lg bg-slate-900/90 px-3 py-2 text-[10px] text-slate-300">Áudio da transmissão disponível apenas com LiveKit integrado</p>
+          <div className="absolute bottom-4 right-4 flex gap-2"><button onClick={() => screenVideoRef.current?.requestFullscreen?.()} className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800"><Maximize2 className="mr-1 inline h-3.5 w-3.5"/>Tela Cheia</button><button onClick={stopWatchingScreen} className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800">Sair da transmissão</button></div>
+          <p className="absolute left-4 top-4 rounded-lg bg-slate-900 px-3 py-2 text-[10px] text-slate-300">Áudio da transmissão disponível apenas com LiveKit integrado</p>
         </div>
       ) : (
         <div className="flex-1 w-full flex items-center justify-center py-6 overflow-y-auto">
@@ -141,69 +406,38 @@ export const VoiceRoom: React.FC = () => {
             <EmptyState type="voice-empty" />
           ) : (
             <div className={`grid ${gridColsClass} gap-6 w-full justify-items-center items-center`}>
-              {participants.map((p, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => openUserProfile(p.user)}
-                  className="group relative flex flex-col items-center p-5 rounded-nest bg-slate-900/70 border border-slate-800 hover:border-indigo-500/50 shadow-xl transition-all cursor-pointer w-full max-w-xs"
-                >
-                  <div className="relative mb-3">
-                    <img
-                      src={p.user.avatar}
-                      alt={p.user.name}
-                      className={`w-24 h-24 rounded-full object-cover transition-all duration-200 ${
-                        p.isSpeaking
-                          ? 'ring-4 ring-indigo-500 shadow-glow-speaking scale-105'
-                          : p.isMuted
-                          ? 'ring-2 ring-slate-800 opacity-60'
-                          : 'ring-2 ring-slate-700'
-                      }`}
-                    />
-
-                    {p.isMuted && (
-                      <span className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-slate-800 border border-slate-700 shadow-md flex items-center justify-center text-rose-400">
-                        <MicOff className="w-3.5 h-3.5" />
-                      </span>
-                    )}
-
-                    {p.isSpeaking && (
-                      <span className="absolute -top-1 right-1 px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[9px] font-bold uppercase tracking-wider shadow-sm animate-pulse">
-                        Falando
-                      </span>
-                    )}
-                  </div>
-
-                  <span className="text-xs font-title font-bold text-white truncate max-w-[180px]">
-                    {p.user.name}
-                  </span>
-                  <span className="text-[10px] text-slate-400 mt-0.5">
-                    @{p.user.handle}
-                  </span>
-                </div>
+              {participants.map((p) => (
+                <ParticipantTile
+                  key={p.participant.identity}
+                  participant={p.participant}
+                  user={p.user}
+                  isMuted={p.isMuted || !!locallyMuted[p.user.id]}
+                  onOpen={() => setContextUser(p.user)}
+                />
               ))}
             </div>
           )}
         </div>
       )}
 
-      {activeCall.isScreenSharing && <div className="absolute bottom-24 left-6 z-20 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-2 text-[10px] text-slate-300"><span>Assistindo:</span>{(activeCall.screenViewers || []).length ? (activeCall.screenViewers || []).map((viewer) => <button key={viewer.id} onClick={() => openUserProfile(viewer)} title={viewer.name}><img src={viewer.avatar || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(viewer.name)}`} alt={viewer.name} className="h-6 w-6 rounded-full object-cover"/></button>) : <span className="text-slate-500">ninguém ainda</span>}</div>}
+      {activeCall.isScreenSharing && <div className="absolute bottom-24 left-6 z-20 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-[10px] text-slate-300"><span>Assistindo:</span>{(activeCall.screenViewers || []).length ? (activeCall.screenViewers || []).map((viewer) => <button key={viewer.id} onClick={() => openUserProfile(viewer)} title={viewer.name}><img src={viewer.avatar || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(viewer.name)}`} alt={viewer.name} className="h-6 w-6 rounded-full object-cover"/></button>) : <span className="text-slate-500">ninguém ainda</span>}</div>}
 
       {/* Floating Bottom Control Bar */}
       <div
-        className={`relative z-20 flex items-center gap-3 px-5 py-3 rounded-nest-pill bg-slate-900/95 border border-slate-700 shadow-2xl backdrop-blur-xl transition-all duration-300 ${
+        className={`relative z-20 flex items-center gap-3 px-5 py-3 rounded-nest-pill bg-slate-900 border border-slate-700 shadow-2xl  transition-all duration-300 ${
           controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'
         }`}
       >
         <button
-          onClick={toggleMute}
-          title={activeCall.isMicMuted ? 'Ativar microfone' : 'Silenciar'}
+          onClick={async () => { try { await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, MICROPHONE_CAPTURE_OPTIONS); } catch (error) { addToast('Microfone não autorizado', error instanceof Error ? error.message : 'Permita o acesso ao microfone para falar na chamada.', 'warning'); } }}
+          title={isMicrophoneEnabled ? 'Silenciar' : 'Ativar microfone'}
           className={`p-3 rounded-full transition-all active:scale-95 ${
-            activeCall.isMicMuted
+            !isMicrophoneEnabled
               ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30'
               : 'bg-slate-800 hover:bg-slate-700 text-indigo-400'
           }`}
         >
-          {activeCall.isMicMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          {!isMicrophoneEnabled ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
         </button>
 
         <button
@@ -248,8 +482,12 @@ export const VoiceRoom: React.FC = () => {
           <Minimize2 className="w-5 h-5" />
         </button>
 
+        <button type="button" onClick={() => setSoundboardOpen((open) => !open)} title="Meus Sons" aria-label="Abrir Soundboard" aria-expanded={soundboardOpen} className="p-3 rounded-full bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors">
+          <Music className="w-5 h-5" />
+        </button>
+
         <button
-          onClick={leaveCall}
+          onClick={() => { if (activeCall) leaveCall(activeCall.channelId); void room.disconnect(); }}
           title="Sair da sala"
           className="p-3 px-5 rounded-nest-pill bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs shadow-md transition-all active:scale-95 flex items-center gap-2"
         >
@@ -257,6 +495,19 @@ export const VoiceRoom: React.FC = () => {
           <span>Sair</span>
         </button>
       </div>
+      {soundboardOpen && <div className="absolute bottom-24 left-1/2 z-40 w-72 -translate-x-1/2 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-white shadow-2xl" role="dialog" aria-label="Sons do grupo">
+        <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Sons do grupo</h2><button type="button" onClick={() => setSoundboardOpen(false)} className="text-xs text-slate-400 hover:text-white">Fechar</button></div>
+        {mySounds.length ? <div className="grid grid-cols-2 gap-2">{mySounds.map((sound) => <div key={sound.id || sound.url} className="relative min-w-0"><button type="button" onClick={() => void playSoundInCall(sound)} className="flex w-full items-center justify-center gap-1.5 truncate rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white hover:border-cyan-500" title={sound.name}><span>{sound.emoji || '🔊'}</span><span className="truncate">{sound.name}</span></button>{soundAnimation?.id === sound.id && <span key={soundAnimation.nonce} className="soundboard-float-emoji" aria-hidden="true">{sound.emoji || '🔊'}</span>}</div>)}</div> : <p className="text-xs leading-relaxed text-slate-400">{soundCommunityId ? 'Este grupo ainda não tem sons. Eles podem ser adicionados em Configurações do grupo › Áudios.' : 'Sons de grupo não estão disponíveis em chamadas diretas.'}</p>}
+      </div>}
+      {contextUser && <div className="absolute inset-0 z-50 grid place-items-center bg-black/55 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setContextUser(null); }}><section className="w-full max-w-xs rounded-2xl border border-slate-700 bg-slate-900 p-4 text-white shadow-2xl" role="dialog" aria-modal="true" aria-label={`Opções de ${contextUser.name}`}>
+        <div className="mb-4 flex items-center gap-3">{contextUser.avatar ? <img src={contextUser.avatar} alt="" className="h-12 w-12 rounded-full object-cover" /> : <span className="grid h-12 w-12 place-items-center rounded-full bg-slate-700 font-bold">{contextUser.name.slice(0, 1)}</span>}<div><strong className="block text-sm">{contextUser.name}</strong><span className="text-xs text-slate-400">@{contextUser.handle}</span></div><button type="button" onClick={() => setContextUser(null)} className="ml-auto text-slate-400">×</button></div>
+        <label className="mb-4 block text-xs text-slate-300">Volume individual: {Math.round((remoteVolumes[contextUser.id] ?? 1) * 100)}%<input type="range" min="0" max="100" value={Math.round((remoteVolumes[contextUser.id] ?? 1) * 100)} onChange={(event) => saveRemoteVolume(contextUser.id, Number(event.target.value) / 100)} className="mt-2 w-full accent-sky-500" /></label>
+        <button type="button" onClick={() => setLocallyMuted((prev) => ({ ...prev, [contextUser.id]: !prev[contextUser.id] }))} className="mb-2 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-left text-xs hover:bg-slate-700">{locallyMuted[contextUser.id] ? 'Ativar áudio para mim' : 'Silenciar para mim'}</button>
+        {mayKick && contextUser.id !== currentUser.id && <button type="button" onClick={() => setKickTarget({ id: contextUser.id, name: contextUser.name })} className="w-full rounded-xl bg-rose-600 px-3 py-2 text-left text-xs font-semibold text-white hover:bg-rose-500">Expulsar da Call</button>}
+      </section></div>}
+      {kickTarget && <div className="absolute inset-0 z-[60] grid place-items-center bg-black/60 p-4"><section className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 text-white shadow-2xl" role="alertdialog" aria-modal="true"><h2 className="mb-2 font-semibold">Expulsar participante?</h2><p className="mb-4 text-sm text-slate-300">Tem certeza que deseja expulsar @{kickTarget.name}?</p><div className="flex justify-end gap-2"><button type="button" onClick={() => setKickTarget(null)} className="rounded-xl border border-slate-600 px-3 py-2 text-sm">Cancelar</button><button type="button" onClick={() => void kickParticipant()} className="rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white">Expulsar</button></div></section></div>}
     </div>
   );
 };
+
+

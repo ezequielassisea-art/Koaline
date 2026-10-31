@@ -14,13 +14,13 @@ import {
   Loader2
 } from 'lucide-react';
 import { Message, User } from '../../types';
+const EmojiPickerPopover = React.lazy(() => import('../common/EmojiPickerPopover').then((module) => ({ default: module.EmojiPickerPopover })));
 
 interface MessageInputProps {
   replyTarget: Message | null;
   onClearReply: () => void;
 }
 
-const EMOJI_LIST = ['🔥', '⚡', '✨', '🚀', '👍', '❤️', '👀', '🎉', '👏', '💡', '💯', '☕'];
 const GIF_OPTIONS = [
   { label: 'Gato digitando', url: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif' },
   { label: 'Gato dançando', url: 'https://media.giphy.com/media/ICOgUNjpvO0PC/giphy.gif' },
@@ -46,6 +46,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     activeDmId,
     dms,
     addToast,
+    theme,
   } = useApp();
 
   const [text, setText] = useState('');
@@ -67,6 +68,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingStartedAtRef = useRef(0);
   const recordingTimerRef = useRef<number | null>(null);
+  const cursorPositionRef = useRef({ start: 0, end: 0 });
 
   useEffect(() => {
     if (!showGifPicker) return;
@@ -76,7 +78,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     const timer = window.setTimeout(async () => {
       setGifLoading(true);
       try {
-        const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=LIVDSRZULELA&limit=12`, { signal: controller.signal });
+        const apiKey = import.meta.env.VITE_TENOR_API_KEY?.trim();
+        if (!apiKey) { setGifResults(GIF_OPTIONS); return; }
+        const response = await fetch(`https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(query)}&key=${encodeURIComponent(apiKey)}&limit=12`, { signal: controller.signal });
         if (!response.ok) throw new Error('Tenor indisponível');
         const data = await response.json() as { results?: Array<{ id: string; content_description?: string; media_formats?: Record<string, { url?: string }> }> };
         const results = (data.results || []).map((item) => ({ label: item.content_description || 'GIF', url: item.media_formats?.gif?.url || item.media_formats?.mediumgif?.url || item.media_formats?.tinygif?.url || '' })).filter((item) => item.url);
@@ -127,6 +131,21 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     }
   };
 
+const insertEmoji = (emoji: string) => {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? cursorPositionRef.current.start;
+    const end = textarea?.selectionEnd ?? cursorPositionRef.current.end;
+    const nextText = `${text.slice(0, start)}${emoji}${text.slice(end)}`;
+    setText(nextText);
+    setShowEmojiPicker(false);
+    window.requestAnimationFrame(() => {
+      if (!textarea) return;
+      textarea.focus();
+      const cursor = start + emoji.length;
+      textarea.setSelectionRange(cursor, cursor);
+      cursorPositionRef.current = { start: cursor, end: cursor };
+    });
+  };
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -238,7 +257,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
   const formatRecordingTime = `${Math.floor(recordingSeconds / 60).toString().padStart(2, '0')}:${(recordingSeconds % 60).toString().padStart(2, '0')}`;
 
   return (
-    <div className="p-3 border-t border-border bg-surface/80 backdrop-blur-md relative select-none">
+    <div className="p-3 border-t border-border relative select-none koaline-solid-panel">
       {/* Reply Banner */}
       {replyTarget && (
         <div className="mb-2 px-3 py-1.5 rounded-nest-sm bg-slate-900 border border-border flex items-center justify-between text-xs animate-in slide-in-from-bottom-2">
@@ -307,23 +326,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
       )}
 
       {/* Emoji Picker */}
-      {showEmojiPicker && (
-        <div className="absolute bottom-full right-4 mb-2 p-2 rounded-nest-sm bg-slate-900 border border-slate-700 shadow-2xl z-30 flex flex-wrap gap-1.5 max-w-xs animate-in zoom-in-95">
-          {EMOJI_LIST.map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => {
-                setText((prev) => prev + emoji);
-                setShowEmojiPicker(false);
-                if (textareaRef.current) textareaRef.current.focus();
-              }}
-              className="p-1.5 hover:bg-slate-800 rounded hover:scale-125 transition-all text-base"
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      )}
+      {showEmojiPicker && <React.Suspense fallback={<div className="absolute bottom-full right-2 z-40 mb-2 rounded-xl border border-slate-700 bg-slate-900 p-4 text-xs text-slate-300">Carregando emojis…</div>}><EmojiPickerPopover theme={theme.mode} onSelect={insertEmoji} onClose={() => setShowEmojiPicker(false)} className="absolute bottom-full right-2 z-40 mb-2 w-[min(22rem,calc(100vw-2rem))] animate-in zoom-in-95" /></React.Suspense>}
 
       {showGifPicker && (
         <div className="absolute bottom-full right-4 z-30 mb-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl animate-in fade-in zoom-in-95" role="dialog" aria-label="Escolher GIF">
@@ -369,6 +372,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
           rows={1}
           value={text}
           onChange={handleTextChange}
+          onSelect={(event) => { cursorPositionRef.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }; }}
           onKeyDown={handleKeyDown}
           placeholder={placeholderText}
           className="flex-1 bg-transparent border-0 resize-none py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none max-h-32"
@@ -387,8 +391,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
           </button>
 
           <button
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+            type="button"
+            onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowGifPicker(false); }}
             title="Escolher emoji"
+            aria-label="Escolher emoji"
+            aria-expanded={showEmojiPicker}
             className="p-1.5 rounded-full text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors"
           >
             <Smile className="w-4 h-4" />
@@ -432,3 +439,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     </div>
   );
 };
+
+
+

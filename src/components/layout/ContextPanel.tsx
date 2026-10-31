@@ -116,7 +116,7 @@ export const ContextPanel: React.FC = () => {
         )}
         <button
           onClick={closeContextPanel}
-          className="absolute top-3 right-3 p-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors backdrop-blur-sm"
+          className="absolute top-3 right-3 p-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors "
         >
           <X className="w-4 h-4" />
         </button>
@@ -172,10 +172,10 @@ export const ContextPanel: React.FC = () => {
               </span>
             )}
           </div>
-          <div className="text-xs text-slate-400">@{user.handle}</div>
+          <div className="context-user-handle">@{user.handle}</div>
 
           {user.customStatus && (
-            <div className="mt-2.5 p-2 rounded-nest-sm bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-xs">
+            <div className="mt-2.5 p-2 rounded-nest-sm bg-slate-950 border border-slate-800 flex items-center gap-2 text-xs">
               <span className="text-base">{user.customStatus.emoji}</span>
               <span className="text-slate-200 italic truncate">{user.customStatus.text}</span>
             </div>
@@ -215,7 +215,7 @@ export const ContextPanel: React.FC = () => {
         )}
 
         {/* Level & XP */}
-        <div className="p-3 rounded-nest-sm bg-slate-950/60 border border-slate-800 mb-4">
+        <div className="p-3 rounded-nest-sm bg-slate-950 border border-slate-800 mb-4">
           <div className="flex items-center justify-between text-xs mb-1.5">
             <span className="font-semibold text-slate-200 flex items-center gap-1">
               <Award className="w-3.5 h-3.5 text-indigo-400" /> Nível {user.level}
@@ -297,7 +297,7 @@ export const ContextPanel: React.FC = () => {
                     href={social.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-between p-2 rounded-nest-sm bg-slate-950/60 hover:bg-slate-800 text-xs text-slate-200 transition-colors border border-slate-800"
+                    className="flex items-center justify-between p-2 rounded-nest-sm bg-slate-950 hover:bg-slate-800 text-xs text-slate-200 transition-colors border border-slate-800"
                   >
                     <span>{social.platform}</span>
                     <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
@@ -310,3 +310,5 @@ export const ContextPanel: React.FC = () => {
     </aside>
   );
 };
+
+
