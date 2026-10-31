@@ -12,7 +12,7 @@ import {
 import { canDeleteCommunityChannel, canModerateCommunity } from '../components/admin/adminAccess';
 import { audioManager } from '../services/AudioManager';
 import { supabase } from '../services/supabaseClient';
-import { getOrCreateDirectConversation } from '../services/directMessageService';
+import { getOrCreateConversation } from '../services/directMessageService';
 
 
 const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'offline', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
@@ -123,7 +123,7 @@ interface AppContextType {
   dms: DirectMessageConversation[];
   toggleArchiveDm: (id: string) => void;
   isDmLoading: boolean;
-  openDirectMessage: (user: User) => void;
+  openDirectMessage: (user: User) => Promise<void>;
   createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => Promise<boolean>;
   updateCommunity: (id: string, updates: Partial<Community>) => void;
   updateChannel: (id: string, updates: Partial<Channel>) => void;
@@ -1203,17 +1203,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('Conversa Atualizada', 'O status de arquivamento foi modificado.');
   };
 
-  const openDirectMessage = (user: User) => {
+  const openDirectMessage = async (user: User) => {
     const existing = dms.find((dm) => dm.user.id === user.id || dm.user.handle.toLowerCase() === user.handle.toLowerCase());
-    const id = existing?.id || `dm-${user.id}`;
-    if (!existing) {
-      setDms((prev) => [...prev, { id, user, lastMessage: '', lastMessageTime: '', unread: false, isArchived: false }]);
-    } else if (existing.isArchived) {
-      setDms((prev) => prev.map((dm) => dm.id === existing.id ? { ...dm, isArchived: false } : dm));
+    if (existing && !existing.id.startsWith('dm-')) {
+      if (existing.isArchived) {
+        setDms((prev) => prev.map((dm) => dm.id === existing.id ? { ...dm, isArchived: false } : dm));
+      }
+      setActiveDmId(existing.id);
+      setIsDirectMessages(true);
+      setIsColumn1Collapsed(false);
+      return;
     }
-    setActiveDmId(id);
-    setIsDirectMessages(true);
-    setIsColumn1Collapsed(false);
+
+    setIsDmLoading(true);
+    try {
+      const conversationId = await getOrCreateConversation(user.id);
+      setDms((previous) => {
+        const existingConversation = previous.find((dm) => dm.id === conversationId);
+        if (existingConversation) {
+          return previous.map((dm) => dm.id === conversationId ? { ...dm, user, isArchived: false } : dm);
+        }
+        return [...previous, {
+          id: conversationId,
+          user,
+          lastMessage: '',
+          lastMessageTime: '',
+          unread: false,
+          isArchived: false,
+        }];
+      });
+      setActiveDmId(conversationId);
+      setIsDirectMessages(true);
+      setIsColumn1Collapsed(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Não foi possível abrir a conversa direta.';
+      addToast('Conversa não aberta', message, 'error');
+    } finally {
+      setIsDmLoading(false);
+    }
   };
 
   const createChannel = async (name: string, type: 'text' | 'voice', categoryId: string): Promise<boolean> => {

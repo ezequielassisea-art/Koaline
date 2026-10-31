@@ -22,12 +22,11 @@ export const ContextPanel: React.FC = () => {
     currentCommunityId,
     dms,
     addToast,
+    openDirectMessage,
     openUserProfile,
     setIsProfileEditorOpen,
     setIsThemeCustomizerOpen,
     startDirectCall,
-    setIsDirectMessages,
-    setActiveDmId,
   } = useApp();
 
   const user = contextPanelUser || currentUser;
@@ -203,8 +202,7 @@ export const ContextPanel: React.FC = () => {
         ) : (
           <button
             onClick={() => {
-              setIsDirectMessages(true);
-              setActiveDmId(`dm-${user.id}`);
+              void openDirectMessage(user);
               closeContextPanel();
             }}
             className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-nest-pill bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-lg shadow-indigo-600/30 mb-5 transition-all"
