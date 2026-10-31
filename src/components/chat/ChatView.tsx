@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { MessageItem } from './MessageItem';
 import { MessageInput } from './MessageInput';
@@ -35,15 +35,16 @@ const ChatViewComponent: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const activeChannelKey = isDirectMessages && activeDmId ? activeDmId : currentChannelId;
-  const channelMessages = messages[activeChannelKey] || [];
-  const pinnedMessages = isDirectMessages ? [] : channelMessages.filter((message) => message.pinned && !message.isDeleted);
-  const activeCommunity = communities.find((community) => community.id === currentCommunityId);
+  const channelMessages = (activeChannelKey && Array.isArray(messages[activeChannelKey])) ? messages[activeChannelKey] : [];
+  const pinnedMessages = isDirectMessages ? [] : channelMessages.filter((message) => message && message.pinned && !message.isDeleted);
+  const activeCommunity = communities.find((community) => community && community.id === currentCommunityId) || communities[0] || null;
   const canModerate = !!activeCommunity && canModerateCommunity(activeCommunity.id, currentUser, activeCommunity.ownerId || activeCommunity.creatorId);
 
   const filteredMessages = isSearching && searchQuery.trim()
     ? channelMessages.filter((m) =>
-        m.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.sender.name.toLowerCase().includes(searchQuery.toLowerCase())
+        m &&
+        ((m.content || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (m.sender?.name || '').toLowerCase().includes(searchQuery.toLowerCase()))
       )
     : channelMessages;
 
@@ -123,7 +124,8 @@ const ChatViewComponent: React.FC = () => {
           </div>
         ) : (
           <>
-            {filteredMessages.map((msg, index) => {
+            {filteredMessages?.map((msg, index) => {
+              if (!msg) return null;
               const previousMessage = filteredMessages[index - 1];
               const startsNewDay = !previousMessage || !isSameLocalDay(previousMessage.timestamp, msg.timestamp);
               const elapsedMinutes = previousMessage

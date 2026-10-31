@@ -116,13 +116,13 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     return () => window.removeEventListener('koaline:mention-user', insertMention);
   }, [text]);
 
-  const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
-  const activeChannel = activeCommunity.channels.find((c) => c.id === currentChannelId);
-  const activeDm = dms.find((d) => d.id === activeDmId);
+  const activeCommunity = communities.find((c) => c && c.id === currentCommunityId) || communities[0] || null;
+  const activeChannel = activeCommunity?.channels?.find((c) => c && c.id === currentChannelId) || null;
+  const activeDm = dms.find((d) => d && d.id === activeDmId) || null;
   const memberSuggestions: User[] = [];
 
-  const placeholderText = isDirectMessages && activeDm
-    ? `Conversar com @${activeDm.user.name}...`
+  const placeholderText = isDirectMessages
+    ? (activeDm && activeDm.user ? `Conversar com @${activeDm.user.name}...` : 'Conversa privada...')
     : `Mensagem em #${activeChannel?.name || 'geral'}...`;
 
   const handleSend = async () => {

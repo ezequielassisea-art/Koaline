@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Message } from '../../types';
 import { formatRelativeTime } from '../../utils/time';
@@ -130,7 +130,8 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
   const messageText = youtubeMatch
     ? content.replace(/https?:\/\/(?=(?:www\.)?(?:youtube\.com|youtu\.be))/i, '').replace(youtubeMatch[0], '').trim()
     : content.trim();
-  const senderInitials = sender.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '◇';
+  const senderName = sender?.name || 'Membro Koaline';
+  const senderInitials = senderName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '◇';
 
   useEffect(() => {
     if (!isYouTubeModalOpen) return;

@@ -12,6 +12,7 @@ import {
 import { canDeleteCommunityChannel, canModerateCommunity } from '../components/admin/adminAccess';
 import { audioManager } from '../services/AudioManager';
 import { supabase } from '../services/supabaseClient';
+import { getOrCreateDirectConversation } from '../services/directMessageService';
 
 
 const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'offline', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
@@ -121,6 +122,7 @@ interface AppContextType {
   setActiveDmId: (id: string | null) => void;
   dms: DirectMessageConversation[];
   toggleArchiveDm: (id: string) => void;
+  isDmLoading: boolean;
   openDirectMessage: (user: User) => void;
   createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => Promise<boolean>;
   updateCommunity: (id: string, updates: Partial<Community>) => void;
@@ -352,6 +354,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentChannelId, setCurrentChannelId] = useState<string>('');
   const [isDirectMessages, setIsDirectMessages] = useState<boolean>(false);
   const [activeDmId, setActiveDmId] = useState<string | null>(null);
+  const [isDmLoading, setIsDmLoading] = useState<boolean>(false);
   const [dms, setDms] = useState<DirectMessageConversation[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:dms') || '[]'); } catch { return []; } });
   const [members, setMembers] = useState<Array<{id:string;communityId:string;userId:string;role:'owner'|'admin'|'moderator'|'member';joinedAt:string}>>([]);
   const [invites, setInvites] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:invites') || '[]'); } catch { return []; } });
@@ -1707,6 +1710,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveDmId,
         dms,
         toggleArchiveDm,
+        isDmLoading,
         openDirectMessage,
         createChannel,
         updateCommunity,

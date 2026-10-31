@@ -1,8 +1,9 @@
-import React from 'react';
+﻿import React from 'react';
 import { useApp } from './context/AppContext';
 import { TopBar } from './components/layout/TopBar';
 import { ChannelList } from './components/layout/ChannelList';
 import { ChatView } from './components/chat/ChatView';
+import { DirectMessageView } from './components/chat/DirectMessageView';
 import { ContextPanel } from './components/layout/ContextPanel';
 import { VoiceJoinModal } from './components/call/VoiceJoinModal';
 import { ScreenSharePiP } from './components/call/ScreenSharePiP';
@@ -35,6 +36,7 @@ export const AppContent: React.FC = () => {
     authLoadError,
     retryAuthProfileLoad,
     currentUser,
+    isDirectMessages,
     isContextPanelOpen,
     isProfileEditorOpen,
     isThemeCustomizerOpen,
@@ -120,9 +122,11 @@ export const AppContent: React.FC = () => {
       <TopBar />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 flex-1 overflow-hidden" style={{ display: isNotFound ? 'none' : 'flex' }}>
-          {communities.length > 0 && <ChannelList onOpenAdmin={openAdminPanel} onOpenVoiceChannel={setSelectedVoiceChannel} />}
+          {(communities.length > 0 || isDirectMessages) && <ChannelList onOpenAdmin={openAdminPanel} onOpenVoiceChannel={setSelectedVoiceChannel} />}
           <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative">
-            {communities.length === 0 ? (
+            {isDirectMessages ? (
+              <DirectMessageView />
+            ) : communities.length === 0 ? (
               <div className="m-auto w-full max-w-lg p-8 text-center">
                 <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-slate-700 bg-slate-900 text-2xl">
                   ◇
