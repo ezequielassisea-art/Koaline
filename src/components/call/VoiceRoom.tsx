@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { audioManager } from '../../services/AudioManager';
 import { EmptyState } from '../common/EmptyState';
-import { AudioTrack, LiveKitRoom, VideoTrack, useIsSpeaking, useLocalParticipant, useParticipants, useRoomContext, useTracks, useConnectionState } from '@livekit/components-react';
+import { AudioTrack, LiveKitRoom, useIsSpeaking, useLocalParticipant, useParticipants, useRoomContext, useTracks, useConnectionState } from '@livekit/components-react';
 import { ConnectionState, DisconnectReason, Participant, RoomEvent, TokenSource, Track } from 'livekit-client';
 import { SoundDraft } from './SoundEditorModal';
 import { getGroupSounds } from '../../services/GroupSoundStore';
@@ -34,9 +34,10 @@ const LIVEKIT_ROOM_OPTIONS = { audioCaptureDefaults: MICROPHONE_CAPTURE_OPTIONS 
 const LIVEKIT_SERVER_URL = 'wss://callgroup-1qh235tw.livekit.cloud';
 const tokenSource = TokenSource.sandboxTokenServer('callgroup-bnyk7k');
 const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+const isInternalIdentity = (value: string) => isUuid(value) || /^user[_-]/i.test(value);
 const firstVisibleLabel = (...values: Array<string | null | undefined>) => values
   .map((value) => value?.trim() || '')
-  .find((value) => value && !isUuid(value)) || '';
+  .find((value) => value && !isInternalIdentity(value)) || '';
 
 type VoicePresenceMeta = {
   user_id?: string;
@@ -110,7 +111,7 @@ export const VoiceRoom: React.FC = () => {
       try {
         const credentials = await tokenSource.fetch({
           roomName: callChannelId,
-          participantName: (!currentUser.name || isUuid(currentUser.name)) ? 'Membro Koaline' : currentUser.name,
+          participantName: (!currentUser.name || isInternalIdentity(currentUser.name)) ? 'Membro Koaline' : currentUser.name,
           participantIdentity: currentUser.id || currentUser.handle || fallbackIdentity,
         });
         if (!cancelled) setTokenResult({ channelId: callChannelId, token: credentials.participantToken });
@@ -214,17 +215,54 @@ const VoiceRoomConnected: React.FC = () => {
 
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
   const liveParticipants = useParticipants();
-  const screenShareTracks = useTracks([Track.Source.ScreenShare]).filter((trackRef) => !trackRef.participant.isLocal);
-  const [watchingScreenTrackSid, setWatchingScreenTrackSid] = useState<string | null>(null);
-  const activeRemoteScreen = screenShareTracks[0];
-  const activeRemoteScreenSid = activeRemoteScreen?.publication.trackSid || null;
-  useEffect(() => {
-    if (watchingScreenTrackSid && !screenShareTracks.some((trackRef) => trackRef.publication.trackSid === watchingScreenTrackSid)) {
-      setWatchingScreenTrackSid(null);
-    }
-  }, [watchingScreenTrackSid, screenShareTracks.map((trackRef) => trackRef.publication.trackSid).join('|')]);
-  const participantSignature = liveParticipants.map((participant) => `${participant.identity}:${participant.name}`).sort().join('|');
   const room = useRoomContext();
+  const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
+  const [sharingUserId, setSharingUserId] = useState<string | null>(null);
+  const [isWatchingRemoteScreen, setIsWatchingRemoteScreen] = useState(false);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+  const modalVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteScreenTrackRef = useRef<MediaStreamTrack | null>(null);
+  useEffect(() => {
+    const clearRemoteScreen = (track: any, publication: any, participant: Participant) => {
+      if (publication.source !== Track.Source.ScreenShare || track.kind !== Track.Kind.Video) return;
+      if (remoteScreenTrackRef.current !== track.mediaStreamTrack) return;
+      remoteScreenTrackRef.current = null;
+      setRemoteScreenStream(null);
+      setSharingUserId(null);
+      setIsWatchingRemoteScreen(false);
+    };
+    const onTrackSubscribed = (track: any, publication: any, participant: Participant) => {
+      if (publication.source !== Track.Source.ScreenShare || track.kind !== Track.Kind.Video || participant.isLocal) return;
+      remoteScreenTrackRef.current = track.mediaStreamTrack;
+      setRemoteScreenStream(new MediaStream([track.mediaStreamTrack]));
+      setSharingUserId(participant.identity);
+    };
+    room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
+    room.on(RoomEvent.TrackUnsubscribed, clearRemoteScreen);
+    room.remoteParticipants.forEach((participant) => {
+      participant.trackPublications.forEach((publication) => {
+        const track = publication.track;
+        if (track && publication.source === Track.Source.ScreenShare && track.kind === Track.Kind.Video) {
+          remoteScreenTrackRef.current = track.mediaStreamTrack;
+          setRemoteScreenStream(new MediaStream([track.mediaStreamTrack]));
+          setSharingUserId(participant.identity);
+        }
+      });
+    });
+    return () => {
+      room.off(RoomEvent.TrackSubscribed, onTrackSubscribed);
+      room.off(RoomEvent.TrackUnsubscribed, clearRemoteScreen);
+      remoteScreenTrackRef.current = null;
+      setRemoteScreenStream(null);
+      setSharingUserId(null);
+      setIsWatchingRemoteScreen(false);
+    };
+  }, [room]);
+  useEffect(() => {
+    if (previewVideoRef.current) previewVideoRef.current.srcObject = remoteScreenStream;
+    if (modalVideoRef.current) modalVideoRef.current.srcObject = remoteScreenStream;
+  }, [remoteScreenStream, isWatchingRemoteScreen]);
+  const participantSignature = liveParticipants.map((participant) => `${participant.identity}:${participant.name}`).sort().join('|');
   const connectionState = useConnectionState(room);
   const [presenceParticipants, setPresenceParticipants] = useState<VoicePresenceParticipant[]>([]);
   const [profilesById, setProfilesById] = useState<Record<string, VoiceProfile>>({});
@@ -311,7 +349,7 @@ const VoiceRoomConnected: React.FC = () => {
         if (status !== 'SUBSCRIBED' || !active) return;
         
         // Ao entrar na call, busca o perfil na tabela profiles (select username, avatar_url)
-        let resolvedUsername = (!currentUser.name || isUuid(currentUser.name)) ? 'Membro Koaline' : currentUser.name;
+        let resolvedUsername = (!currentUser.name || isInternalIdentity(currentUser.name)) ? 'Membro Koaline' : currentUser.name;
         let resolvedAvatar = currentUser.avatar || '';
 
         try {
@@ -321,7 +359,7 @@ const VoiceRoomConnected: React.FC = () => {
             .eq('id', currentUser.id)
             .maybeSingle();
 
-          if (myProfile?.username && !isUuid(myProfile.username)) {
+          if (myProfile?.username && !isInternalIdentity(myProfile.username)) {
             resolvedUsername = myProfile.username;
           }
           if (myProfile?.avatar_url) {
@@ -684,22 +722,22 @@ const VoiceRoomConnected: React.FC = () => {
         </button>
       )}
 
-      {activeRemoteScreen && (
+      {remoteScreenStream && sharingUserId && (
         <div className="absolute right-6 top-20 z-30 h-36 w-60 overflow-hidden rounded-xl border border-sky-400/70 bg-slate-950 shadow-2xl ring-1 ring-sky-400/20">
-          <VideoTrack trackRef={activeRemoteScreen} className="h-full w-full object-cover" />
+          <video ref={previewVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
           <div className="absolute inset-0 flex items-center justify-center bg-slate-950/55 backdrop-blur-[2px]">
-            <button onClick={() => setWatchingScreenTrackSid(activeRemoteScreenSid)} className="flex items-center gap-2 rounded-full border border-sky-300/40 bg-sky-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-sky-950/40 transition hover:scale-105 hover:bg-sky-500">
+            <button onClick={() => setIsWatchingRemoteScreen(true)} className="flex items-center gap-2 rounded-full border border-sky-300/40 bg-sky-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-sky-950/40 transition hover:scale-105 hover:bg-sky-500">
               <Play className="h-4 w-4 fill-current" /> Assistir transmissão
             </button>
           </div>
-          <span className="absolute left-2 top-2 rounded bg-slate-950/80 px-2 py-1 text-[10px] text-white">{participants.find((p) => p.id === activeRemoteScreen.participant.identity)?.user.name || 'Membro Koaline'} transmitindo</span>
+          <span className="absolute left-2 top-2 rounded bg-slate-950/80 px-2 py-1 text-[10px] text-white">{participants.find((p) => p.id === sharingUserId)?.user.name || 'Membro Koaline'} transmitindo</span>
         </div>
       )}
 
-      {watchingScreenTrackSid && activeRemoteScreen && activeRemoteScreenSid === watchingScreenTrackSid && (
+      {isWatchingRemoteScreen && remoteScreenStream && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm">
-          <button onClick={() => setWatchingScreenTrackSid(null)} aria-label="Fechar transmissão" className="absolute right-5 top-5 z-10 rounded-full border border-white/20 bg-slate-900/90 p-3 text-white hover:bg-slate-700"><X className="h-5 w-5" /></button>
-          <VideoTrack trackRef={activeRemoteScreen} className="max-h-full max-w-full rounded-xl object-contain" />
+          <button onClick={() => setIsWatchingRemoteScreen(false)} aria-label="Fechar transmissão" className="absolute right-5 top-5 z-10 rounded-full border border-white/20 bg-slate-900/90 p-3 text-white hover:bg-slate-700"><X className="h-5 w-5" /></button>
+          <video ref={modalVideoRef} autoPlay muted playsInline className="max-h-full max-w-full rounded-xl object-contain" />
         </div>
       )}
 
@@ -729,7 +767,7 @@ const VoiceRoomConnected: React.FC = () => {
                   participant={p.participant}
                   user={p.user}
                   isMuted={p.isMuted || !!locallyMuted[p.user.id]}
-                  isSharingScreen={p.id === activeRemoteScreen?.participant.identity}
+                  isSharingScreen={p.id === sharingUserId}
                   onOpen={() => setContextUser(p.user)}
                 />
               ))}
