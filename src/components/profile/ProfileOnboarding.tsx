@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Camera, Check, ImagePlus, UserRound } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Avatar } from '../common/Avatar';
-import { CoverImage } from '../common/CoverImage';
 import { ImageCropperModal } from '../common/ImageCropperModal';
 import { AuthThemeToggle } from '../auth/AuthThemeToggle';
 
@@ -11,7 +10,7 @@ type CropTarget = 'avatar' | 'cover';
 export const ProfileOnboarding: React.FC = () => {
   const { currentUser, completeOnboarding, addToast } = useApp();
   const [avatar, setAvatar] = useState(currentUser.avatar || '');
-  const [cover, setCover] = useState(currentUser.banner || '');
+  const [cover, setCover] = useState('');
   const [cropImage, setCropImage] = useState('');
   const [cropTarget, setCropTarget] = useState<CropTarget | null>(null);
   const [saving, setSaving] = useState(false);
@@ -59,7 +58,9 @@ export const ProfileOnboarding: React.FC = () => {
       <p className="auth-description">Uma foto e uma capa ajudam sua comunidade a reconhecer você. Você pode trocar depois.</p>
 
       <section className="profile-onboarding-preview" aria-label="Prévia do perfil">
-        <CoverImage src={cover} alt="Prévia da capa do perfil" className="profile-onboarding-cover" />
+        <div className="profile-onboarding-cover" role="img" aria-label={cover ? 'Prévia da capa do perfil escolhida' : 'Espaço opcional para capa do perfil'} style={cover ? { backgroundImage: `url("${cover}")` } : undefined}>
+          {!cover && <span className="profile-onboarding-cover-placeholder">Capa opcional</span>}
+        </div>
         <div className="profile-onboarding-avatar"><Avatar src={avatar} name={currentUser.name} className="profile-onboarding-avatar-image" /></div>
       </section>
 

@@ -22,12 +22,9 @@ const VoiceRoom = React.lazy(() => import('./components/call/VoiceRoom').then((m
 const OrbitPage = React.lazy(() => import('./features/orbit/OrbitPage').then((module) => ({ default: module.OrbitPage })));
 
 export const AppContent: React.FC = () => {
-  const { activeCall, pendingCallSwitch, confirmCallSwitch, cancelCallSwitch, communities, createCommunity, joinCommunityByInvite, addToast, isLoggedIn, isAuthLoading, authLoadError, retryAuthProfileLoad, currentUser, isContextPanelOpen, isProfileEditorOpen, isThemeCustomizerOpen, isCreateChannelModalOpen, activeUserMenu, startCall } = useApp();
+  const { activeCall, pendingCallSwitch, confirmCallSwitch, cancelCallSwitch, communities, joinCommunityByInvite, addToast, isLoggedIn, isAuthLoading, authLoadError, retryAuthProfileLoad, currentUser, isContextPanelOpen, isProfileEditorOpen, isThemeCustomizerOpen, isCreateChannelModalOpen, activeUserMenu, startCall } = useApp();
   const [isAdminPanelOpen, setIsAdminPanelOpen] = React.useState(false);
   const [selectedVoiceChannel, setSelectedVoiceChannel] = React.useState<Channel | null>(null);
-  const [communityName, setCommunityName] = React.useState('');
-  const [communityIcon, setCommunityIcon] = React.useState('');
-  const [visibility, setVisibility] = React.useState<'public' | 'private'>('public');
   const [isOrbitPage, setIsOrbitPage] = React.useState(() => window.location.pathname === '/orbit');
   const [hasVisitedOrbit, setHasVisitedOrbit] = React.useState(() => window.location.pathname === '/orbit');
   const [isNotFound, setIsNotFound] = React.useState(() => window.location.pathname !== '/' && window.location.pathname !== '/orbit');
@@ -36,6 +33,12 @@ export const AppContent: React.FC = () => {
   const closeOrbit = React.useCallback(() => {
     if (window.location.pathname === '/orbit') window.history.pushState({}, '', '/');
     setIsOrbitPage(false);
+    setIsNotFound(false);
+  }, []);
+  const openOrbit = React.useCallback(() => {
+    if (window.location.pathname !== '/orbit') window.history.pushState({}, '', '/orbit');
+    setIsOrbitPage(true);
+    setHasVisitedOrbit(true);
     setIsNotFound(false);
   }, []);
 
@@ -63,7 +66,7 @@ export const AppContent: React.FC = () => {
         <div className="flex min-h-0 flex-1 overflow-hidden" style={{ display: isOrbitPage || isNotFound ? 'none' : 'flex' }}>
           {communities.length > 0 && <ChannelList onOpenAdmin={openAdminPanel} onOpenVoiceChannel={setSelectedVoiceChannel} />}
           <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative">
-            {communities.length === 0 ? <div className="m-auto w-full max-w-md p-8 text-center"><div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-slate-700 bg-slate-900 text-2xl">◇</div><h1 className="mb-2 text-2xl font-bold">Criar comunidade</h1><p className="mb-6 text-sm text-slate-400">Comece um espaço para conversar e colaborar.</p><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void createCommunity({ name: communityName, icon: communityIcon, visibility }); }}><input required value={communityName} onChange={(event) => setCommunityName(event.target.value)} placeholder="Nome da comunidade" className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-3 text-sm"/><label className="block text-left text-sm text-slate-300">Ícone (opcional)<input type="file" accept="image/*" className="mt-2 block w-full text-sm text-slate-400" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setCommunityIcon(String(reader.result)); reader.readAsDataURL(file); }}/>{communityIcon && <img src={communityIcon} alt="Prévia do ícone" className="mt-2 h-12 w-12 rounded-xl object-cover"/>}</label><select value={visibility} onChange={(event) => setVisibility(event.target.value as 'public'|'private')} className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-3 text-sm"><option value="public">Pública</option><option value="private">Privada — somente convite</option></select><button className="w-full rounded-lg bg-violet-600 px-4 py-3 text-sm font-semibold text-white">Criar comunidade</button></form><button className="mt-3 text-sm text-slate-400 hover:text-white" onClick={() => { const code = window.prompt('Cole o código do convite:'); if (code && !joinCommunityByInvite(code)) addToast('Convite inválido', 'O código pode ter expirado, sido revogado ou atingido o limite de usos.', 'warning'); }}>Entrar com código de convite</button></div> : isCallFullscreen ? <React.Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-slate-400">Carregando sala de voz…</div>}><VoiceRoom /></React.Suspense> : <ChatView />}
+            {communities.length === 0 ? <div className="m-auto w-full max-w-lg p-8 text-center"><div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-slate-700 bg-slate-900 text-2xl">◇</div><h1 className="mb-2 text-2xl font-bold">Sua conta está pronta</h1><p className="mb-6 text-sm text-slate-400">Explore o Orbit para encontrar uma comunidade. Você pode participar de uma existente e criar a sua quando quiser.</p><button type="button" className="rounded-lg bg-violet-600 px-5 py-3 text-sm font-semibold text-white hover:bg-violet-500" onClick={openOrbit}>Explorar Orbit</button><button type="button" className="mt-4 block w-full text-sm text-slate-400 hover:text-white" onClick={() => { const code = window.prompt('Cole o código do convite:'); if (code && !joinCommunityByInvite(code)) addToast('Convite inválido', 'O código pode ter expirado, sido revogado ou atingido o limite de usos.', 'warning'); }}>Tenho um convite</button></div> : isCallFullscreen ? <React.Suspense fallback={<div className="flex h-full items-center justify-center bg-slate-950 text-sm text-slate-400">Carregando sala de voz…</div>}><VoiceRoom /></React.Suspense> : <ChatView />}
             {activeCall?.isMinimized && activeCall.isScreenSharing && <ScreenSharePiP />}
           </main>
         </div>
