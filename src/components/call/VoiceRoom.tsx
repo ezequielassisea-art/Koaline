@@ -17,9 +17,12 @@ import {
 import { audioManager } from '../../services/AudioManager';
 import { EmptyState } from '../common/EmptyState';
 import { AudioTrack, LiveKitRoom, useIsSpeaking, useLocalParticipant, useParticipants, useRoomContext, useTracks, useConnectionState } from '@livekit/components-react';
-import { ConnectionState, DisconnectReason, LocalAudioTrack, Participant, RoomEvent, TokenSource, Track } from 'livekit-client';
+import { ConnectionState, DisconnectReason, Participant, RoomEvent, TokenSource, Track } from 'livekit-client';
 import { SoundDraft } from './SoundEditorModal';
 import { getGroupSounds } from '../../services/GroupSoundStore';
+import { supabase } from '../../services/supabaseClient';
+import type { RealtimeChannel } from '@supabase/supabase-js';
+import { Avatar } from '../common/Avatar';
 
 import { User } from '../../types';
 import { canModerateCommunity } from '../admin/adminAccess';
@@ -29,14 +32,29 @@ const LIVEKIT_ROOM_OPTIONS = { audioCaptureDefaults: MICROPHONE_CAPTURE_OPTIONS 
 
 const LIVEKIT_SERVER_URL = 'wss://callgroup-1qh235tw.livekit.cloud';
 const tokenSource = TokenSource.sandboxTokenServer('callgroup-bnyk7k');
+const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+const firstVisibleLabel = (...values: Array<string | null | undefined>) => values
+  .map((value) => value?.trim() || '')
+  .find((value) => value && !isUuid(value)) || '';
+
+type VoicePresenceMeta = {
+  user_id?: string;
+  username?: string;
+  full_name?: string;
+  avatar_url?: string;
+  status?: User['status'];
+  muted?: boolean;
+};
+
+type VoicePresenceParticipant = VoicePresenceMeta & { user_id: string };
+type VoiceProfile = { username?: string | null; full_name?: string | null; avatar_url?: string | null };
 
 const ParticipantTile: React.FC<{ participant: Participant; user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; onOpen: () => void }> = ({ participant, user, isMuted, onOpen }) => {
   const isSpeaking = useIsSpeaking(participant);
-  const initials = user.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || '◇';
 
   return <div onClick={onOpen} className="group relative flex w-full max-w-xs cursor-pointer flex-col items-center rounded-nest border border-slate-800 bg-slate-900 p-5 shadow-xl transition-all hover:border-indigo-500/50">
     <div className="relative mb-3">
-      {user.avatar ? <img src={user.avatar} alt={user.name} className={`h-24 w-24 rounded-full object-cover transition-all duration-200 ${isSpeaking ? 'scale-105 ring-4 ring-indigo-500 shadow-glow-speaking' : isMuted ? 'opacity-60 ring-2 ring-slate-800' : 'ring-2 ring-slate-700'}`} /> : <div className={`grid h-24 w-24 place-items-center rounded-full bg-slate-700 text-xl font-semibold text-white transition-all ${isSpeaking ? 'scale-105 ring-4 ring-indigo-500 shadow-glow-speaking' : 'ring-2 ring-slate-700'}`}>{initials}</div>}
+      <Avatar src={user.avatar} name={user.name} className={`h-24 w-24 rounded-full transition-all duration-200 ${isSpeaking ? 'scale-105 ring-4 ring-indigo-500 shadow-glow-speaking' : isMuted ? 'opacity-60 ring-2 ring-slate-800' : 'ring-2 ring-slate-700'}`} />
       {isMuted && <span className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-rose-400 shadow-md"><MicOff className="h-3.5 w-3.5" /></span>}
       {isSpeaking && <span className="absolute -top-1 right-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm animate-pulse">Falando</span>}
     </div>
@@ -141,29 +159,157 @@ const VoiceRoomConnected: React.FC = () => {
   const participantSignature = liveParticipants.map((participant) => `${participant.identity}:${participant.name}`).sort().join('|');
   const room = useRoomContext();
   const connectionState = useConnectionState(room);
-  const remoteSoundTracksRef = useRef(new Set<LocalAudioTrack>());
+  const [presenceParticipants, setPresenceParticipants] = useState<VoicePresenceParticipant[]>([]);
+  const [profilesById, setProfilesById] = useState<Record<string, VoiceProfile>>({});
+  const [broadcastMuteStates, setBroadcastMuteStates] = useState<Record<string, boolean>>({});
+  const presenceChannelRef = useRef<RealtimeChannel | null>(null);
+  const profileRequestsRef = useRef(new Set<string>());
+  const profileCacheRef = useRef<Record<string, VoiceProfile>>({});
+
+  useEffect(() => { profileCacheRef.current = profilesById; }, [profilesById]);
 
   useEffect(() => {
-    if (!activeCall || activeCall.channelId.startsWith('dm-call-') || room.name !== activeCall.channelId) return;
-    const knownUsers = communities.flatMap((community) => community.channels).flatMap((channel) => channel.connectedUsers || []);
-    const users: User[] = liveParticipants.map((participant) => {
-      if (participant.identity === currentUser.id || participant.identity === currentUser.handle) return currentUser;
-      const known = knownUsers.find((user) => user.id === participant.identity || user.handle === participant.identity);
-      let metadata: Partial<User> = {};
-      try { metadata = JSON.parse(participant.metadata || '{}') as Partial<User>; } catch { /* Mantém os dados básicos do participante. */ }
-      return {
-        ...currentUser,
-        ...known,
-        ...metadata,
-        id: participant.identity,
-        handle: metadata.handle || known?.handle || participant.identity,
-        name: participant.name || metadata.name || known?.name || participant.identity,
-        avatar: metadata.avatar || known?.avatar || '',
-        status: 'online',
-      };
+    if (!activeCall || !currentUser.id || room.name !== activeCall.channelId || !supabase) return;
+    let active = true;
+    const client = supabase;
+    const channel = client.channel(`koaline:voice-room:${activeCall.channelId}`, {
+      config: { presence: { key: currentUser.id } },
     });
-    syncVoiceParticipants(activeCall.channelId, users);
-  }, [activeCall?.channelId, participantSignature, room.name]);
+    presenceChannelRef.current = channel;
+    setPresenceParticipants([]);
+    setBroadcastMuteStates({});
+    profileRequestsRef.current.clear();
+
+    const fetchProfiles = async (ids: string[]) => {
+      const missing = [...new Set(ids)].filter((id) => id && !profileCacheRef.current[id] && !profileRequestsRef.current.has(id));
+      if (!missing.length) return;
+      missing.forEach((id) => profileRequestsRef.current.add(id));
+      try {
+        const { data, error } = await client.from('profiles').select('id,username,full_name,avatar_url').in('id', missing);
+        if (error) throw error;
+        if (!active) return;
+        const loaded = Object.fromEntries((data || []).map((profile) => [profile.id, {
+          username: profile.username,
+          full_name: profile.full_name,
+          avatar_url: profile.avatar_url,
+        }]));
+        setProfilesById((previous) => ({ ...previous, ...loaded }));
+        Object.keys(loaded).forEach((id) => profileRequestsRef.current.delete(id));
+        missing.filter((id) => !loaded[id]).forEach((id) => profileRequestsRef.current.delete(id));
+      } catch {
+        missing.forEach((id) => profileRequestsRef.current.delete(id));
+      }
+    };
+
+    const syncPresence = () => {
+      const state = channel.presenceState<VoicePresenceMeta>();
+      const entries = Object.entries(state).flatMap(([key, metas]) => {
+        const meta = metas[metas.length - 1];
+        const userId = meta?.user_id || key;
+        return userId ? [{ ...meta, user_id: userId }] : [];
+      });
+      const unique = [...new Map(entries.map((entry) => [entry.user_id, entry])).values()];
+      setPresenceParticipants(unique);
+      void fetchProfiles(unique.map((entry) => entry.user_id));
+    };
+
+    channel
+      .on('presence', { event: 'sync' }, syncPresence)
+      .on('broadcast', { event: 'play_sound' }, ({ payload }) => {
+        const audioUrl = typeof payload?.audioUrl === 'string' ? payload.audioUrl : '';
+        if (!audioUrl) return;
+        audioManager.playCustom(audioUrl);
+        const soundId = typeof payload?.soundId === 'string' ? payload.soundId : '';
+        if (soundId) {
+          soundAnimationNonce.current += 1;
+          setSoundAnimation({ id: soundId, nonce: soundAnimationNonce.current });
+        }
+      })
+      .on('broadcast', { event: 'microphone_state' }, ({ payload }) => {
+        const userId = typeof payload?.userId === 'string' ? payload.userId : '';
+        if (userId && typeof payload?.muted === 'boolean') {
+          setBroadcastMuteStates((previous) => ({ ...previous, [userId]: payload.muted }));
+        }
+      })
+      .subscribe(async (status) => {
+        if (status !== 'SUBSCRIBED' || !active) return;
+        await fetchProfiles([currentUser.id]);
+        const profile = profileCacheRef.current[currentUser.id];
+        await channel.track({
+          user_id: currentUser.id,
+          username: profile?.username || currentUser.handle || undefined,
+          full_name: profile?.full_name || currentUser.name || undefined,
+          avatar_url: profile?.avatar_url || currentUser.avatar || undefined,
+          status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
+          muted: !localParticipant.isMicrophoneEnabled,
+        } satisfies VoicePresenceMeta);
+        syncPresence();
+      });
+
+    return () => {
+      active = false;
+      if (presenceChannelRef.current === channel) presenceChannelRef.current = null;
+      void client.removeChannel(channel);
+    };
+  }, [activeCall?.channelId, currentUser.id, room.name]);
+
+  useEffect(() => {
+    const channel = presenceChannelRef.current;
+    if (!channel || !currentUser.id) return;
+    const muted = !isMicrophoneEnabled;
+    const profile = profileCacheRef.current[currentUser.id];
+    void channel.track({
+      user_id: currentUser.id,
+      username: profile?.username || currentUser.handle || undefined,
+      full_name: profile?.full_name || currentUser.name || undefined,
+      avatar_url: profile?.avatar_url || currentUser.avatar || undefined,
+      status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
+      muted,
+    } satisfies VoicePresenceMeta);
+    void channel.send({ type: 'broadcast', event: 'microphone_state', payload: { userId: currentUser.id, muted } });
+  }, [isMicrophoneEnabled, currentUser.id]);
+
+  const knownUsers = communities.flatMap((community) => community.channels).flatMap((channel) => channel.connectedUsers || []);
+  const participantUser = (participant: Participant, presence?: VoicePresenceParticipant): User => {
+    const id = presence?.user_id || participant.identity;
+    const profile = profilesById[id];
+    if (id === currentUser.id) return {
+      ...currentUser,
+      name: firstVisibleLabel(profile?.full_name, profile?.username, currentUser.name) || 'Membro Koaline',
+      handle: firstVisibleLabel(profile?.username, currentUser.handle) || 'koaline',
+      avatar: profile?.avatar_url || currentUser.avatar || '',
+      status: 'online',
+      statusKnown: true,
+    };
+    const known = knownUsers.find((user) => user.id === id || user.handle === id);
+    let metadata: Partial<User> = {};
+    try { metadata = JSON.parse(participant.metadata || '{}') as Partial<User>; } catch { /* Usa os dados públicos do perfil. */ }
+    const visibleName = firstVisibleLabel(profile?.full_name, profile?.username, presence?.full_name, presence?.username, metadata.name, known?.name, participant.name) || 'Membro Koaline';
+    const visibleHandle = firstVisibleLabel(profile?.username, presence?.username, metadata.handle, known?.handle, id) || 'koaline';
+    return {
+      ...currentUser,
+      ...known,
+      ...metadata,
+      id,
+      name: visibleName,
+      handle: visibleHandle,
+      avatar: profile?.avatar_url || presence?.avatar_url || metadata.avatar || known?.avatar || '',
+      status: 'online',
+      statusKnown: true,
+    };
+  };
+
+  useEffect(() => {
+    if (!activeCall || room.name !== activeCall.channelId) return;
+    const liveById = new Map(liveParticipants.map((participant) => [participant.identity, participant]));
+    const rows = presenceParticipants.length
+      ? presenceParticipants.flatMap((presence) => {
+        const participant = liveById.get(presence.user_id);
+        return participant ? [{ participant, user: participantUser(participant, presence), muted: broadcastMuteStates[presence.user_id] ?? presence.muted ?? !participant.isMicrophoneEnabled }] : [];
+      })
+      : liveParticipants.map((participant) => ({ participant, user: participantUser(participant), muted: broadcastMuteStates[participant.identity] ?? !participant.isMicrophoneEnabled }));
+    syncVoiceParticipants(activeCall.channelId, rows.map((row) => row.user));
+  }, [activeCall?.channelId, participantSignature, presenceParticipants, profilesById, broadcastMuteStates, room.name]);
 
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showChannelDropdown, setShowChannelDropdown] = useState(false);
@@ -196,10 +342,6 @@ const VoiceRoomConnected: React.FC = () => {
     return () => window.clearTimeout(idleTimer);
   }, [activeCall?.channelId, liveParticipants.length, connectionState, room, localParticipant.identity]);
 
-  useEffect(() => () => {
-    for (const track of remoteSoundTracksRef.current) track.stop();
-    remoteSoundTracksRef.current.clear();
-  }, []);
   useEffect(() => {
     const handleData = (payload: Uint8Array) => {
       try {
@@ -233,40 +375,16 @@ const VoiceRoomConnected: React.FC = () => {
     soundAnimationNonce.current += 1;
     setSoundAnimation({ id: sound.id, nonce: soundAnimationNonce.current });
     void audioManager.playCustom(sound.url);
-    let context: AudioContext | null = null;
-    let source: AudioBufferSourceNode | null = null;
-    let track: LocalAudioTrack | null = null;
     try {
-      const response = await fetch(sound.url);
-      if (!response.ok) throw new Error('Não foi possível ler o áudio salvo.');
-      const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextCtor) throw new Error('O navegador não oferece suporte ao áudio da call.');
-      context = new AudioContextCtor();
-      await context.resume();
-      const buffer = await context.decodeAudioData(await response.arrayBuffer());
-      const destination = context.createMediaStreamDestination();
-      source = context.createBufferSource();
-      source.buffer = buffer;
-      source.connect(destination);
-      const mediaTrack = destination.stream.getAudioTracks()[0];
-      if (!mediaTrack) throw new Error('Não foi possível preparar o áudio para a call.');
-      track = new LocalAudioTrack(mediaTrack, undefined, true, context);
-      remoteSoundTracksRef.current.add(track);
-      const soundTrack = track;
-      const audioContext = context;
-      source.onended = () => {
-        remoteSoundTracksRef.current.delete(soundTrack);
-        void room.localParticipant.unpublishTrack(soundTrack, true).catch(() => undefined);
-        if (audioContext.state !== 'closed') void audioContext.close();
-      };
-      await room.localParticipant.publishTrack(track, { name: `soundboard-${sound.id}`, source: Track.Source.Unknown });
-      source.start();
+      const channel = presenceChannelRef.current;
+      if (!channel) throw new Error('A conexão de presença da sala ainda não está pronta.');
+      const result = await channel.send({
+        type: 'broadcast',
+        event: 'play_sound',
+        payload: { audioUrl: sound.url, soundId: sound.id, emoji: sound.emoji },
+      });
+      if (result !== 'ok') throw new Error('O Supabase não confirmou o envio do som para a sala.');
     } catch (reason) {
-      if (track) {
-        remoteSoundTracksRef.current.delete(track);
-        try { await room.localParticipant.unpublishTrack(track, true); } catch { track.stop(); }
-      }
-      if (context && context.state !== 'closed') await context.close();
       addToast('Não foi possível tocar na call', reason instanceof Error ? reason.message : 'Tente novamente.', 'warning');
     }
   };
@@ -327,19 +445,17 @@ const VoiceRoomConnected: React.FC = () => {
   const currentComm = communities.find((c) => c.id === currentCommunityId) || communities[0];
   const voiceChannels = currentComm.channels.filter((c) => c.type === 'voice');
 
-  const participants = liveParticipants.map((participant) => {
-    const isLocal = participant.identity === localParticipant.identity;
-    const user = isLocal ? currentUser : {
-      ...currentUser,
-      id: participant.identity,
-      name: participant.name || participant.identity,
-      handle: participant.identity,
-      avatar: '',
-      badges: [],
-      socials: [],
-    };
-    return { participant, user, isMuted: !participant.isMicrophoneEnabled };
-  });
+  const liveById = new Map(liveParticipants.map((participant) => [participant.identity, participant]));
+  const participants = presenceParticipants.length
+    ? presenceParticipants.flatMap((presence) => {
+      const participant = liveById.get(presence.user_id);
+      return participant ? [{ participant, user: participantUser(participant, presence), isMuted: broadcastMuteStates[presence.user_id] ?? presence.muted ?? !participant.isMicrophoneEnabled }] : [];
+    })
+    : liveParticipants.map((participant) => ({
+      participant,
+      user: participantUser(participant),
+      isMuted: broadcastMuteStates[participant.identity] ?? !participant.isMicrophoneEnabled,
+    }));
   const pCount = participants.length;
   let gridColsClass = 'grid-cols-1 md:grid-cols-2';
   if (pCount === 1) gridColsClass = 'grid-cols-1 max-w-md';

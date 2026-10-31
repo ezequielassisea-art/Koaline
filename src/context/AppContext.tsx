@@ -470,8 +470,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const activeCallRef = useRef(activeCall);
   activeCallRef.current = activeCall;
+  const globalPresenceChannelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null);
   const [pendingCallRequest, setPendingCallRequest] = useState<PendingCallRequest | null>(null);
   const screenStreamRef = React.useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || isAuthLoading || !currentUser.id) {
+      globalPresenceChannelRef.current = null;
+      return;
+    }
+
+    let active = true;
+    const channel = client.channel('koaline:presence:global', {
+      config: { presence: { key: currentUser.id } },
+    });
+    globalPresenceChannelRef.current = channel;
+    const applyPresence = () => {
+      const presence = channel.presenceState<{ user_id?: string; status?: User['status'] }>();
+      const statusById = new Map<string, User['status']>();
+      Object.entries(presence).forEach(([key, entries]) => {
+        const entry = entries[entries.length - 1];
+        const userId = entry?.user_id || key;
+        if (userId) statusById.set(userId, entry?.status === 'idle' || entry?.status === 'dnd' || entry?.status === 'offline' ? entry.status : 'online');
+      });
+
+      setDms((previous) => previous.map((dm) => ({
+        ...dm,
+        user: { ...dm.user, status: statusById.get(dm.user.id) || 'offline', statusKnown: true },
+      })));
+      setCommunities((previous) => previous.map((community) => ({
+        ...community,
+        channels: community.channels.map((voiceChannel) => voiceChannel.connectedUsers
+          ? { ...voiceChannel, connectedUsers: voiceChannel.connectedUsers.map((user) => ({ ...user, status: statusById.get(user.id) || 'offline', statusKnown: true })) }
+          : voiceChannel),
+      })));
+      setActiveCall((previous) => previous ? {
+        ...previous,
+        participants: previous.participants.map((participant) => ({
+          ...participant,
+          user: { ...participant.user, status: statusById.get(participant.user.id) || 'offline', statusKnown: true },
+        })),
+      } : previous);
+    };
+
+    channel.on('presence', { event: 'sync' }, applyPresence).subscribe(async (status) => {
+      if (status !== 'SUBSCRIBED' || !active) return;
+      await channel.track({
+        user_id: currentUser.id,
+        username: currentUser.handle || undefined,
+        full_name: currentUser.name || undefined,
+        avatar_url: currentUser.avatar || undefined,
+        status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
+      });
+      applyPresence();
+    });
+
+    return () => {
+      active = false;
+      if (globalPresenceChannelRef.current === channel) globalPresenceChannelRef.current = null;
+      void client.removeChannel(channel);
+    };
+  }, [isLoggedIn, isAuthLoading, currentUser.id]);
+
+  useEffect(() => {
+    const channel = globalPresenceChannelRef.current;
+    if (!channel || !currentUser.id) return;
+    void channel.track({
+      user_id: currentUser.id,
+      username: currentUser.handle || undefined,
+      full_name: currentUser.name || undefined,
+      avatar_url: currentUser.avatar || undefined,
+      status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
+    });
+  }, [currentUser.name, currentUser.handle, currentUser.avatar, currentUser.status, currentUser.id]);
 
   // Theme
   const [theme, setTheme] = useState<ThemeSettings>(() => {
