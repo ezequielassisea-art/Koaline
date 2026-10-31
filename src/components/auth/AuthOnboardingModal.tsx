@@ -7,12 +7,11 @@ import { KoalineLogo } from './KoalineLogo';
 import { Button } from '../common/Button';
 import { SolidCard } from '../common/SolidCard';
 import { Input } from '../common/Input';
+import { requireSupabase } from '../../services/supabaseClient';
 
 type AuthMode = 'home' | 'login' | 'register';
-type LocalAccount = { handle: string; email: string; name: string };
 type AuthDraft = { mode: AuthMode; step: number; handle: string; email: string; loginIdentifier: string };
 const DRAFT_KEY = 'koaline:auth-draft';
-const ACCOUNTS_KEY = 'koaline:local-identities';
 const HANDLE_PATTERN = /^[a-zA-Z0-9_]{3,20}$/;
 const AppleBrandMark: React.FC = () => (
   <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true" focusable="false">
@@ -34,7 +33,7 @@ const emailNickSuggestions = (email: string) => {
 };
 
 export const AuthOnboardingModal: React.FC = () => {
-  const { isLoggedIn, setIsLoggedIn, currentUser, updateCurrentUser, addToast } = useApp();
+  const { isLoggedIn, currentUser, addToast } = useApp();
   const [draft] = useState<AuthDraft>(() => readJson(DRAFT_KEY, { mode: 'login', step: 1, handle: '', email: '', loginIdentifier: '' }));
   const [mode, setMode] = useState<AuthMode>(draft.mode === 'home' ? 'login' : draft.mode);
   const [step, setStep] = useState(Math.min(3, Math.max(1, draft.step || 1)));
@@ -47,7 +46,6 @@ export const AuthOnboardingModal: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [accounts, setAccounts] = useState<LocalAccount[]>(() => readJson(ACCOUNTS_KEY, []));
 
   useEffect(() => {
     if (mode === 'home') return;
@@ -59,8 +57,7 @@ export const AuthOnboardingModal: React.FC = () => {
 
   const normalizedHandle = handle.trim().replace(/^@/, '').toLowerCase();
   const handleValid = HANDLE_PATTERN.test(normalizedHandle);
-  const handleTaken = accounts.some((account) => account.handle.toLowerCase() === normalizedHandle && account.email.toLowerCase() !== email.trim().toLowerCase())
-    || (currentUser.handle.toLowerCase() === normalizedHandle && !!currentUser.email && currentUser.email.toLowerCase() !== email.trim().toLowerCase());
+  const handleTaken = currentUser.handle.toLowerCase() === normalizedHandle && !!currentUser.email && currentUser.email.toLowerCase() !== email.trim().toLowerCase();
   const handleMessage = !handle ? 'Exemplo: @seunome' : !handleValid ? 'Use de 3 a 20 letras, números ou _.' : handleTaken ? 'Esse identificador já está em uso.' : 'Identificador disponível';
   const suggestions = emailNickSuggestions(email);
   const strength = [password.length >= 8, /[A-Z]/.test(password) && /[a-z]/.test(password), /\d/.test(password) || /[^a-zA-Z0-9]/.test(password)].filter(Boolean).length;
@@ -69,40 +66,41 @@ export const AuthOnboardingModal: React.FC = () => {
 
   const enterLogin = () => { setMode('login'); setPassword(''); };
   const enterRegister = () => { setMode('register'); setStep(1); setPassword(''); setConfirmPassword(''); };
-  const showSocialNotice = (provider: string) => addToast(`${provider} ainda não conectado`, 'Conecte o provedor de autenticação no backend para habilitar este acesso.', 'warning');
+  const loginWithGoogle = async () => {
+    try { const client = requireSupabase(); const { error } = await client.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } }); if (error) throw error; }
+    catch (error) { addToast('Login com Google indisponível', error instanceof Error ? error.message : 'Verifique a configuração do provedor no Supabase.', 'warning'); }
+  };
+  const showSocialNotice = (provider: string) => addToast(`${provider} ainda não conectado`, 'Este provedor não está habilitado no Supabase.', 'warning');
 
-  const finishLogin = (event: React.FormEvent) => {
+  const finishLogin = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!loginIdentifier.trim() || !password) return;
     setIsLoading(true);
-    window.setTimeout(() => {
-      const identity = loginIdentifier.trim().replace(/^@/, '').toLowerCase();
-      const account = accounts.find((entry) => entry.handle.toLowerCase() === identity || entry.email.toLowerCase() === loginIdentifier.trim().toLowerCase());
-      updateCurrentUser({
-        ...(account ? { name: account.name, handle: account.handle, email: account.email } : {}),
-        onboarding_completed: currentUser.onboarding_completed ?? false,
-      });
-      setIsLoading(false);
-      setIsLoggedIn(true);
-      addToast('Bem-vindo ao Koaline!', 'Sua sessão local foi iniciada.', 'success');
-    }, 250);
+    try {
+      const client = requireSupabase();
+      const { error } = await client.auth.signInWithPassword({ email: loginIdentifier.trim(), password });
+      if (error) throw error;
+      localStorage.removeItem(DRAFT_KEY);
+    } catch (error) { addToast('Falha no login', /invalid login credentials/i.test(error instanceof Error ? error.message : '') ? 'E-mail ou senha incorretos.' : error instanceof Error ? error.message : 'Tente novamente.', 'error'); }
+    finally { setIsLoading(false); }
   };
 
   const finishRegister = (event: React.FormEvent) => {
     event.preventDefault();
     if (!handleValid || handleTaken || !email.trim() || !passwordsMatch || strength < 2) return;
     const displayName = name.trim() || normalizedHandle;
-    const nextAccounts = [...accounts.filter((account) => account.handle !== normalizedHandle), { handle: normalizedHandle, email: email.trim(), name: displayName }];
     setIsLoading(true);
-    window.setTimeout(() => {
-      try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(nextAccounts)); } catch { /* Cadastro continua na sessão atual. */ }
-      localStorage.removeItem(DRAFT_KEY);
-      setAccounts(nextAccounts);
-      updateCurrentUser({ name: displayName, handle: normalizedHandle, email: email.trim(), onboarding_completed: false });
-      setIsLoading(false);
-      setIsLoggedIn(true);
-      addToast('Conta criada', 'Vamos personalizar seu perfil.', 'success');
-    }, 250);
+    void (async () => {
+      try {
+        const client = requireSupabase();
+        const { data, error } = await client.auth.signUp({ email: email.trim(), password, options: { data: { username: normalizedHandle, full_name: displayName, avatar_url: currentUser.avatar || null } } });
+        if (error) throw error;
+        if (data.user) await client.from('profiles').upsert({ id: data.user.id, username: normalizedHandle, full_name: displayName, avatar_url: currentUser.avatar || null }, { onConflict: 'id' });
+        localStorage.removeItem(DRAFT_KEY);
+        if (!data.session) addToast('Confirme seu e-mail', 'Enviamos um link de confirmação antes de entrar.', 'success');
+      } catch (error) { addToast('Não foi possível criar a conta', /already registered|already exists/i.test(error instanceof Error ? error.message : '') ? 'Este e-mail já está cadastrado.' : error instanceof Error ? error.message : 'Tente novamente.', 'error'); }
+      finally { setIsLoading(false); }
+    })();
   };
 
   const back = () => {
@@ -126,18 +124,18 @@ export const AuthOnboardingModal: React.FC = () => {
         <Button variant="outline" className="auth-large-button" onClick={enterLogin}><ArrowRight aria-hidden="true" />Entrar</Button>
         <div className="auth-divider"><span>ou continue com</span></div>
         <div className="auth-social-grid">
-          <Button variant="outline" onClick={() => showSocialNotice('Google')}><span className="auth-google-mark" aria-hidden="true">G</span>Google</Button>
+          <Button variant="outline" onClick={() => void loginWithGoogle()}><span className="auth-google-mark" aria-hidden="true">G</span>Google</Button>
           <Button variant="outline" onClick={() => showSocialNotice('Apple')}><AppleBrandMark />Apple</Button>
         </div>
       </div>}
 
       {mode === 'login' && <form className="auth-form" onSubmit={finishLogin}>
         <div className="auth-social-grid">
-          <Button variant="outline" onClick={() => showSocialNotice('Google')}><span className="auth-google-mark" aria-hidden="true">G</span>Google</Button>
+          <Button variant="outline" onClick={() => void loginWithGoogle()}><span className="auth-google-mark" aria-hidden="true">G</span>Google</Button>
           <Button variant="outline" onClick={() => showSocialNotice('Apple')}><AppleBrandMark />Apple</Button>
         </div>
         <div className="auth-divider"><span>ou entre com e-mail</span></div>
-        <Input id="auth-login-identifier" label="E-mail ou @usuário" startAdornment={<AtSign />} autoComplete="username" required value={loginIdentifier} onChange={(event) => setLoginIdentifier(event.target.value)} />
+        <Input id="auth-login-identifier" label="E-mail" startAdornment={<AtSign />} type="email" autoComplete="username" required value={loginIdentifier} onChange={(event) => setLoginIdentifier(event.target.value)} />
         <div className="auth-label-row"><span className="auth-label">Senha</span><button type="button" className="auth-inline-link" onClick={() => addToast('Recuperação de senha', 'Conecte o fluxo de recuperação ao backend de autenticação.', 'warning')}>Esqueceu a senha?</button></div>
         <Input id="auth-login-password" label="Senha" startAdornment={<LockKeyhole />} type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onCopy={(event) => event.preventDefault()} onCut={(event) => event.preventDefault()} onChange={(event) => setPassword(event.target.value)} endAdornment={<button type="button" className="auth-icon-button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>} />
         <Button type="submit" variant="primary" className="auth-submit-button" disabled={isLoading}>{isLoading ? 'Entrando…' : 'Entrar'}<ArrowRight aria-hidden="true" /></Button>
@@ -153,7 +151,7 @@ export const AuthOnboardingModal: React.FC = () => {
         </>}
         {step === 2 && <>
           <Input id="auth-register-email" label="Email" startAdornment={<Mail />} type="email" autoComplete="email" autoFocus required value={email} onChange={(event) => setEmail(event.target.value)} />
-          {suggestions.length > 0 && <div className="auth-suggestions"><p>Ideias de usuário para seu email</p><div>{suggestions.map((suggestion) => { const used = accounts.some((account) => account.handle === suggestion); return <button key={suggestion} type="button" disabled={used} onClick={() => setHandle(suggestion)} aria-label={`Usar identificador ${suggestion}`} className={used ? 'is-disabled' : ''}>@{suggestion}</button>; })}</div></div>}
+          {suggestions.length > 0 && <div className="auth-suggestions"><p>Ideias de usuário para seu email</p><div>{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => setHandle(suggestion)} aria-label={`Usar identificador ${suggestion}`}>@{suggestion}</button>)}</div></div>}
           <Button type="submit" variant="primary" className="auth-submit-button">Continuar<ArrowRight aria-hidden="true" /></Button>
         </>}
         {step === 3 && <>

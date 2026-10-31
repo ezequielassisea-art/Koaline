@@ -37,6 +37,8 @@ export const AppContent: React.FC = () => {
     return () => window.removeEventListener('popstate', syncRoute);
   }, []);
 
+  if (!isLoggedIn) return <div className="app-shell flex h-screen w-screen flex-col overflow-hidden"><AuthOnboardingModal /><Toast /></div>;
+
   const closeOrbit = () => {
     if (window.location.pathname === '/orbit') window.history.pushState({}, '', '/');
     setIsOrbitPage(false);

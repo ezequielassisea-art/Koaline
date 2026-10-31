@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { canDeleteCommunityChannel, canModerateCommunity } from '../components/admin/adminAccess';
 import { audioManager } from '../services/AudioManager';
+import { supabase } from '../services/supabaseClient';
 
 const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'online', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
 
@@ -153,6 +154,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Auth & Profile
   const [currentUser, setCurrentUser] = useState<User>(() => { try { return { ...EMPTY_USER, ...JSON.parse(localStorage.getItem('koaline:current-user') || '{}') }; } catch { return EMPTY_USER; } });
   const [isLoggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) { setLoggedIn(false); return; }
+    const applySession = (session: Awaited<ReturnType<typeof client.auth.getSession>>['data']['session']) => {
+      const authUser = session?.user;
+      if (!authUser) { setLoggedIn(false); return; }
+      const metadata = authUser.user_metadata || {};
+      setCurrentUser((previous) => ({ ...previous, id: authUser.id, email: authUser.email || '', name: String(metadata.full_name || metadata.name || previous.name || authUser.email?.split('@')[0] || 'Usuário'), handle: String(metadata.username || metadata.user_name || previous.handle || authUser.email?.split('@')[0] || ''), avatar: String(metadata.avatar_url || metadata.picture || previous.avatar || ''), onboarding_completed: Boolean(metadata.onboarding_completed) }));
+      setLoggedIn(true);
+    };
+    let alive = true;
+    void client.auth.getSession().then(({ data }) => { if (alive) applySession(data.session); });
+    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => { if (alive) applySession(session); });
+    return () => { alive = false; subscription.unsubscribe(); };
+  }, []);
 
   // Navigation
   const [communities, setCommunities] = useState<Community[]>(() => {
@@ -328,12 +345,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setIsLoggedIn = (value: boolean) => {
-    if (value) setCurrentUser((prev) => {
-      const user = { ...prev, id: prev.id || crypto.randomUUID() };
-      localStorage.setItem('koaline:current-user', JSON.stringify(user));
-      return user;
-    });
-    setLoggedIn(value);
+    if (!value) {
+      setLoggedIn(false);
+      if (supabase) void supabase.auth.signOut();
+      return;
+    }
+    setLoggedIn(Boolean(supabase));
   };
 
   const createCommunity = ({ name, icon = '', visibility }: { name: string; icon?: string; visibility: 'public' | 'private' }) => {
