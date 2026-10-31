@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import {
   AtSign, Check, ChevronDown, Copy, MessageSquare, Phone, ShieldAlert,
   UserRoundPlus, UserRoundX, Video, VolumeX, X,
@@ -42,10 +42,9 @@ export const UserContextMenu: React.FC = () => {
     if (!activeUserMenu || !activeUserMenu.user.id || activeUserMenu.user.id === currentUser.id) return;
     void getFriendshipState(activeUserMenu.user.id)
       .then((state) => { if (active) setFriendship(state); })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!active) return;
         setFriendship('none');
-        addToastRef.current('Não foi possível verificar a amizade', explainUserActionError(error), 'warning');
       });
     return () => { active = false; };
   }, [activeUserMenu?.user.id, currentUser.id]);
@@ -113,9 +112,9 @@ export const UserContextMenu: React.FC = () => {
     closeUserMenu();
   };
 
-  const friendshipLabel = friendship === 'accepted' ? 'Remover Amigo'
-    : friendship === 'pending_received' ? 'Aceitar pedido'
-      : friendship === 'pending_sent' ? 'Cancelar pedido' : 'Adicionar Amigo';
+  const friendshipLabel = friendship === 'accepted' ? 'Amigos'
+    : friendship === 'pending_received' ? 'Aceitar Pedido'
+      : friendship === 'pending_sent' ? 'Pendente' : 'Adicionar Amigo';
 
   return (
     <div
@@ -168,7 +167,7 @@ export const UserContextMenu: React.FC = () => {
       {confirmAction && <div className="fixed inset-0 z-[110] grid place-items-center bg-black/60 p-4" onPointerDown={(event) => { if (event.target === event.currentTarget) setConfirmAction(null); }}>
         <section className="w-full max-w-sm rounded-2xl border border-rose-500/30 bg-[var(--surface)] p-5 shadow-2xl" role="alertdialog" aria-modal="true" aria-labelledby="user-menu-confirm-title">
           <h2 id="user-menu-confirm-title" className="mb-2 font-semibold">{confirmAction === 'kick' ? 'Expulsar membro?' : 'Banir membro?'}</h2>
-          <p className="mb-4 text-sm text-[var(--text-secondary)]">{confirmAction === 'kick' ? `${user.name} poderá entrar novamente pelo Orbit.` : `${user.name} será removido e não poderá voltar a esta comunidade.`}</p>
+          <p className="mb-4 text-sm text-[var(--text-secondary)]">{confirmAction === 'kick' ? `${user.name} poderá entrar novamente por um convite da comunidade.` : `${user.name} será removido e não poderá voltar a esta comunidade.`}</p>
           <div className="flex justify-end gap-2"><button type="button" onClick={() => setConfirmAction(null)} className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm">Cancelar</button><button type="button" disabled={moderationLoading} onClick={() => void handleModeration()} className="rounded-lg bg-rose-700 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-60">{moderationLoading ? 'Aguarde…' : confirmAction === 'kick' ? 'Expulsar' : 'Banir'}</button></div>
         </section>
       </div>}

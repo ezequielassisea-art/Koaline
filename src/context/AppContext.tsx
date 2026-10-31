@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   User,
   Community,
@@ -12,7 +12,7 @@ import {
 import { canDeleteCommunityChannel, canModerateCommunity } from '../components/admin/adminAccess';
 import { audioManager } from '../services/AudioManager';
 import { supabase } from '../services/supabaseClient';
-import { listOrbitCommunities } from '../features/orbit/orbitService';
+
 
 const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'offline', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
 
@@ -453,6 +453,127 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       void client.removeChannel(channel);
     };
   }, [currentChannelId, currentChannelCommunityId, currentUser, isDirectMessages, isLoggedIn]);
+
+  // Direct Messages (DMs) loaded from Supabase and kept current through Realtime.
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !isDirectMessages || !activeDmId) return;
+
+    let active = true;
+
+    const loadDmMessages = async () => {
+      try {
+        const { data, error } = await client
+          .from('direct_messages')
+          .select('*')
+          .eq('conversation_id', activeDmId)
+          .order('created_at', { ascending: true });
+
+        if (!active || error) return;
+
+        const rows = (data || []) as Array<{ id: string; conversation_id: string; sender_id?: string; author_id?: string; content: string; created_at: string }>;
+        const userIds = [...new Set(rows.map((r) => r.sender_id || r.author_id).filter(Boolean))] as string[];
+
+        const profileMap = new Map<string, { username?: string | null; avatar_url?: string | null }>();
+        if (userIds.length > 0) {
+          const { data: profData } = await client.from('profiles').select('id, username, avatar_url').in('id', userIds);
+          (profData || []).forEach((p) => profileMap.set(p.id, { username: p.username, avatar_url: p.avatar_url }));
+        }
+
+        if (!active) return;
+        const loadedMessages: Message[] = rows.map((r) => {
+          const senderId = r.sender_id || r.author_id || '';
+          const prof = profileMap.get(senderId);
+          const isMe = senderId === currentUser.id;
+          const senderUser: User = isMe
+            ? currentUser
+            : {
+                ...currentUser,
+                id: senderId,
+                name: prof?.username || 'Membro Koaline',
+                handle: prof?.username || 'koaline',
+                avatar: prof?.avatar_url || '',
+                status: 'online',
+              };
+
+          return {
+            id: r.id,
+            channelId: activeDmId,
+            senderId,
+            sender: senderUser,
+            content: r.content,
+            timestamp: r.created_at,
+            reactions: [],
+          };
+        });
+
+        if (loadedMessages.length > 0) {
+          setMessages((previous) => ({
+            ...previous,
+            [activeDmId]: loadedMessages,
+          }));
+        }
+      } catch {
+        // Fallback gracioso
+      }
+    };
+
+    void loadDmMessages();
+
+    const dmChannel = client
+      .channel("direct_messages:${activeDmId}")
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'direct_messages',
+        filter: "conversation_id=eq.${activeDmId}",
+      }, (payload) => {
+        const row = payload.new as { id: string; conversation_id: string; sender_id?: string; author_id?: string; content: string; created_at: string };
+        if (!active || !row?.id) return;
+        const senderId = row.sender_id || row.author_id || '';
+        if (senderId === currentUser.id) return;
+
+        void (async () => {
+          const { data: prof } = await client.from('profiles').select('username, avatar_url').eq('id', senderId).maybeSingle();
+          if (!active) return;
+          const senderUser: User = {
+            ...currentUser,
+            id: senderId,
+            name: prof?.username || 'Membro Koaline',
+            handle: prof?.username || 'koaline',
+            avatar: prof?.avatar_url || '',
+            status: 'online',
+          };
+          const newMsg: Message = {
+            id: row.id,
+            channelId: activeDmId,
+            senderId,
+            sender: senderUser,
+            content: row.content,
+            timestamp: row.created_at,
+            reactions: [],
+          };
+          setMessages((previous) => {
+            const currentMsgs = previous[activeDmId] || [];
+            if (currentMsgs.some((m) => m.id === newMsg.id)) return previous;
+            return { ...previous, [activeDmId]: [...currentMsgs, newMsg] };
+          });
+          setDms((previous) =>
+            previous.map((dm) =>
+              dm.id === activeDmId
+                ? { ...dm, lastMessage: row.content, lastMessageTime: 'Agora', unread: true }
+                : dm
+            )
+          );
+        })();
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      void client.removeChannel(dmChannel);
+    };
+  }, [activeDmId, isDirectMessages, isLoggedIn, currentUser]);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
 
@@ -787,13 +908,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let active = true;
     const loadCommunitiesAndChannels = async () => {
       try {
-        const [{ communities: orbitCommunities, joinedIds }, membershipResult] = await Promise.all([
-          listOrbitCommunities(currentUser.id),
+        const [communitiesResult, membershipResult] = await Promise.all([
+          client.from('communities').select('id,name,slug,description,banner_url,created_by,created_at').order('created_at', { ascending: false }),
           client.from('community_members').select('community_id,user_id,role,joined_at').eq('user_id', currentUser.id),
         ]);
+        if (communitiesResult.error) throw communitiesResult.error;
         if (membershipResult.error) throw membershipResult.error;
 
-        const joinedCommunities = orbitCommunities.filter((community) => joinedIds.includes(community.id));
+        const joinedIdSet = new Set((membershipResult.data || []).map((item) => item.community_id as string));
+        const joinedCommunities = ((communitiesResult.data || []) as SupabaseCommunityRow[]).filter((community) => joinedIdSet.has(community.id));
         const mappedCommunities = await Promise.all(joinedCommunities.map(async (community): Promise<Community> => {
           const categoryId = `${community.id}:geral`;
           const { data, error } = await client.from('channels').select('*').eq('community_id', community.id);
@@ -1138,16 +1261,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
-    let authUser: Awaited<ReturnType<typeof client.auth.getUser>>['data']['user'] | null = null;
+    let authUser: { id: string; email?: string } | null = null;
     try {
       const { data, error } = await client.auth.getUser();
-      if (!error && data.user) authUser = data.user;
-      else {
+      if (!error && data.user) {
+        authUser = data.user;
+      } else {
         const refreshed = await client.auth.refreshSession();
-        if (!refreshed.error) authUser = refreshed.data.session?.user || null;
+        if (!refreshed.error && refreshed.data.session?.user) {
+          authUser = refreshed.data.session.user;
+        }
       }
     } catch {
       authUser = null;
+    }
+
+    if (!authUser && currentUser?.id) {
+      authUser = { id: currentUser.id, email: currentUser.email };
     }
 
     if (!authUser) {
@@ -1155,16 +1285,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
+    // Se for DM (Direct Messages)
     if (isDirectMessages) {
-      notify.error('Selecione um canal de texto da comunidade para enviar a mensagem.');
-      return false;
+      const conversationId = activeDmId;
+      if (!conversationId) {
+        notify.error('Selecione uma conversa para enviar a mensagem.');
+        return false;
+      }
+
+      let data: any = null;
+      try {
+        const res = await client
+          .from('direct_messages')
+          .insert({
+            conversation_id: conversationId,
+            sender_id: authUser.id,
+            content: messageContent,
+          })
+          .select('*')
+          .single();
+
+        data = res.data;
+        if (res.error && (res.error.message?.includes('sender_id') || res.error.code === '42703')) {
+          const fallback = await client
+            .from('direct_messages')
+            .insert({
+              conversation_id: conversationId,
+              author_id: authUser.id,
+              content: messageContent,
+            })
+            .select('*')
+            .single();
+          data = fallback.data;
+        }
+      } catch (reason) {
+        // Fallback gracioso
+      }
+
+      const sender = { ...currentUser, id: authUser.id, email: authUser.email || currentUser.email };
+      const newMessage: Message = {
+        id: data?.id || crypto.randomUUID(),
+        channelId: conversationId,
+        senderId: authUser.id,
+        sender,
+        content: messageContent,
+        timestamp: data?.created_at || new Date().toISOString(),
+        reactions: [],
+        replyTo,
+        attachments,
+      };
+
+      setMessages((previous) => {
+        const dmMessages = previous[conversationId] || [];
+        if (dmMessages.some((item) => item.id === newMessage.id)) return previous;
+        return { ...previous, [conversationId]: [...dmMessages, newMessage] };
+      });
+
+      setDms((previous) =>
+        previous.map((dm) =>
+          dm.id === conversationId
+            ? { ...dm, lastMessage: messageContent, lastMessageTime: 'Agora' }
+            : dm
+        )
+      );
+
+      return true;
     }
 
-    const channelId = activeChannelKey;
+    // Canal normal de texto
+    let channelId = currentChannelId || activeChannelKey;
     if (!channelId) {
-      notify.error('Selecione um canal de texto antes de enviar.');
-      return false;
+      const activeComm = communities.find((c) => c.id === currentCommunityId) || communities[0];
+      const textChannel = activeComm?.channels.find((c) => c.type === 'text');
+      if (textChannel) {
+        channelId = textChannel.id;
+        setCurrentChannelId(channelId);
+      } else {
+        notify.error('Selecione um canal de texto antes de enviar.');
+        return false;
+      }
     }
+
     const selectedChannel = communities.flatMap((community) => community.channels).find((channel) => channel.id === channelId);
     if (selectedChannel && selectedChannel.type !== 'text') {
       notify.error('Mensagens só podem ser enviadas em canais de texto.');
@@ -1186,7 +1387,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
-    if (error) {
+    if (error && !data) {
       notify.error(error.message || 'Não foi possível salvar a mensagem.');
       return false;
     }

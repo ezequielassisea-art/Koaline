@@ -11,15 +11,15 @@ import {
   LogOut,
   Sparkles,
   MessageSquare,
-  Globe,
-  ArrowLeft,
+
+
   Volume2,
   VolumeX,
 } from 'lucide-react';
 import { parseAppDate } from '../../utils/time';
 import { audioManager } from '../../services/AudioManager';
 
-export const TopBar: React.FC<{ isOrbitPage: boolean }> = ({ isOrbitPage }) => {
+export const TopBar: React.FC = () => {
   const {
     currentUser,
     communities,
@@ -104,8 +104,8 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
     <header className="h-16 px-4 md:px-6 bg-slate-900 border-b border-border flex items-center justify-between sticky top-0 z-30 transition-colors">
       {/* LEFT: Wordmark + Community Selector Pill */}
       <div className="flex items-center gap-3 sm:gap-4">
-        <button type="button" className="orbit-nav-trigger" title={isOrbitPage ? 'Voltar ao Koaline' : 'Abrir Orbit'} aria-label={isOrbitPage ? 'Voltar ao Koaline' : 'Abrir feed Orbit'} onClick={() => { const nextPath = isOrbitPage ? '/' : '/orbit'; if (window.location.pathname !== nextPath) window.history.pushState({}, '', nextPath); window.dispatchEvent(new PopStateEvent('popstate')); }}>{isOrbitPage ? <ArrowLeft size={18} strokeWidth={2} /> : <Globe size={18} strokeWidth={2} />}<span>{isOrbitPage ? 'Voltar ao Koaline' : 'Orbit'}</span></button>
-        <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+
+
 
 
         {/* Community Selector Pill */}

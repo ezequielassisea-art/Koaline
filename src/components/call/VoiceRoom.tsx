@@ -23,7 +23,6 @@ import { getGroupSounds } from '../../services/GroupSoundStore';
 import { supabase } from '../../services/supabaseClient';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Avatar } from '../common/Avatar';
-
 import { User } from '../../types';
 import { canModerateCommunity } from '../admin/adminAccess';
 
@@ -49,18 +48,40 @@ type VoicePresenceMeta = {
 type VoicePresenceParticipant = VoicePresenceMeta & { user_id: string };
 type VoiceProfile = { username?: string | null; full_name?: string | null; avatar_url?: string | null };
 
-const ParticipantTile: React.FC<{ participant: Participant; user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; onOpen: () => void }> = ({ participant, user, isMuted, onOpen }) => {
+const LiveParticipantTile: React.FC<{ participant: Participant; user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; onOpen: () => void }> = ({ participant, user, isMuted, onOpen }) => {
   const isSpeaking = useIsSpeaking(participant);
 
-  return <div onClick={onOpen} className="group relative flex w-full max-w-xs cursor-pointer flex-col items-center rounded-nest border border-slate-800 bg-slate-900 p-5 shadow-xl transition-all hover:border-indigo-500/50">
-    <div className="relative mb-3">
-      <Avatar src={user.avatar} name={user.name} className={`h-24 w-24 rounded-full transition-all duration-200 ${isSpeaking ? 'scale-105 ring-4 ring-indigo-500 shadow-glow-speaking' : isMuted ? 'opacity-60 ring-2 ring-slate-800' : 'ring-2 ring-slate-700'}`} />
-      {isMuted && <span className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-rose-400 shadow-md"><MicOff className="h-3.5 w-3.5" /></span>}
-      {isSpeaking && <span className="absolute -top-1 right-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm animate-pulse">Falando</span>}
+  return (
+    <div onClick={onOpen} className="group relative flex w-full max-w-xs cursor-pointer flex-col items-center rounded-nest border border-slate-800 bg-slate-900 p-5 shadow-xl transition-all hover:border-indigo-500/50">
+      <div className="relative mb-3">
+        <Avatar src={user.avatar} name={user.name} className={`h-24 w-24 rounded-full transition-all duration-200 ${isSpeaking ? 'scale-105 ring-4 ring-indigo-500 shadow-glow-speaking' : isMuted ? 'opacity-60 ring-2 ring-slate-800' : 'ring-2 ring-slate-700'}`} />
+        {isMuted && <span className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-rose-400 shadow-md"><MicOff className="h-3.5 w-3.5" /></span>}
+        {isSpeaking && <span className="absolute -top-1 right-1 rounded-full bg-indigo-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm animate-pulse">Falando</span>}
+      </div>
+      <span className="max-w-[180px] truncate text-xs font-title font-bold text-white">{user.name}</span>
+      <span className="mt-0.5 text-[10px] text-slate-400">@{user.handle}</span>
     </div>
-    <span className="max-w-[180px] truncate text-xs font-title font-bold text-white">{user.name}</span>
-    <span className="mt-0.5 text-[10px] text-slate-400">@{user.handle}</span>
-  </div>;
+  );
+};
+
+const StaticParticipantTile: React.FC<{ user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; onOpen: () => void }> = ({ user, isMuted, onOpen }) => {
+  return (
+    <div onClick={onOpen} className="group relative flex w-full max-w-xs cursor-pointer flex-col items-center rounded-nest border border-slate-800 bg-slate-900 p-5 shadow-xl transition-all hover:border-indigo-500/50">
+      <div className="relative mb-3">
+        <Avatar src={user.avatar} name={user.name} className={`h-24 w-24 rounded-full transition-all duration-200 ${isMuted ? 'opacity-60 ring-2 ring-slate-800' : 'ring-2 ring-slate-700'}`} />
+        {isMuted && <span className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-rose-400 shadow-md"><MicOff className="h-3.5 w-3.5" /></span>}
+      </div>
+      <span className="max-w-[180px] truncate text-xs font-title font-bold text-white">{user.name}</span>
+      <span className="mt-0.5 text-[10px] text-slate-400">@{user.handle}</span>
+    </div>
+  );
+};
+
+const ParticipantTile: React.FC<{ participant?: Participant | null; user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; onOpen: () => void }> = ({ participant, user, isMuted, onOpen }) => {
+  if (participant) {
+    return <LiveParticipantTile participant={participant} user={user} isMuted={isMuted} onOpen={onOpen} />;
+  }
+  return <StaticParticipantTile user={user} isMuted={isMuted} onOpen={onOpen} />;
 };
 
 export const VoiceRoom: React.FC = () => {
@@ -71,10 +92,12 @@ export const VoiceRoom: React.FC = () => {
   const addToastRef = useRef(addToast);
   const hasConnectedRef = useRef(false);
   const isMountedRef = useRef(true);
+
   useEffect(() => {
     isMountedRef.current = true;
     return () => { isMountedRef.current = false; };
   }, []);
+
   useEffect(() => { hasConnectedRef.current = false; }, [callChannelId]);
   useEffect(() => { addToastRef.current = addToast; }, [addToast]);
 
@@ -85,7 +108,7 @@ export const VoiceRoom: React.FC = () => {
       try {
         const credentials = await tokenSource.fetch({
           roomName: callChannelId,
-          participantName: currentUser.name || currentUser.handle || 'Participante Koaline',
+          participantName: (!currentUser.name || isUuid(currentUser.name)) ? 'Membro Koaline' : currentUser.name,
           participantIdentity: currentUser.id || currentUser.handle || fallbackIdentity,
         });
         if (!cancelled) setTokenResult({ channelId: callChannelId, token: credentials.participantToken });
@@ -103,36 +126,69 @@ export const VoiceRoom: React.FC = () => {
   if (!activeCall) return null;
   const token = tokenResult?.channelId === activeCall.channelId ? tokenResult.token : null;
   const tokenError = tokenResult?.channelId === activeCall.channelId ? tokenResult.error : null;
-  if (!token) return <div className="flex h-full w-full items-center justify-center bg-slate-950 text-sm text-slate-300">{tokenError ? <div className="text-center"><p className="mb-3 text-rose-300">{tokenError}</p><button onClick={() => leaveCall()} className="rounded-lg bg-slate-800 px-4 py-2 hover:bg-slate-700">Sair da chamada</button></div> : 'Conectando à sala de voz…'}</div>;
+  if (!token) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-slate-950 text-sm text-slate-300">
+        {tokenError ? (
+          <div className="text-center">
+            <p className="mb-3 text-rose-300">{tokenError}</p>
+            <button onClick={() => leaveCall()} className="rounded-lg bg-slate-800 px-4 py-2 hover:bg-slate-700">
+              Sair da chamada
+            </button>
+          </div>
+        ) : (
+          'Conectando à sala de voz…'
+        )}
+      </div>
+    );
+  }
 
-  return <LiveKitRoom
-    token={token}
-    serverUrl={LIVEKIT_SERVER_URL}
-    connect={true}
-    audio={false}
-    video={false}
-    options={LIVEKIT_ROOM_OPTIONS}
-    onMediaDeviceFailure={(_failure, kind) => { if (kind === 'audioinput') addToast('Microfone não autorizado', 'Permita o acesso ao microfone nas configurações do navegador para falar na chamada.', 'warning'); }}
-    onError={(error) => addToast('Falha na chamada', error.message || 'Não foi possível conectar ao LiveKit.', 'warning')}
-    onConnected={() => { if (!hasConnectedRef.current) { hasConnectedRef.current = true; void audioManager.play('join_call'); } }}
-    onDisconnected={(reason) => {
-      if (!isMountedRef.current || !hasConnectedRef.current) return;
-      hasConnectedRef.current = false;
-      if (reason && reason !== DisconnectReason.CLIENT_INITIATED) {
-        leaveCall(callChannelId, true);
-        addToast('Conexão encerrada', 'A conexão com a call foi perdida.', 'warning');
-        return;
-      }
-      leaveCall(callChannelId);
-    }}
-  >
-    <VoiceRoomConnected />
-  </LiveKitRoom>;
+  return (
+    <LiveKitRoom
+      token={token}
+      serverUrl={LIVEKIT_SERVER_URL}
+      connect={true}
+      audio={false}
+      video={false}
+      options={LIVEKIT_ROOM_OPTIONS}
+      onMediaDeviceFailure={(_failure, kind) => {
+        if (kind === 'audioinput') {
+          addToast('Microfone não autorizado', 'Permita o acesso ao microfone nas configurações do navegador para falar na chamada.', 'warning');
+        }
+      }}
+      onError={(error) => addToast('Falha na chamada', error.message || 'Não foi possível conectar ao LiveKit.', 'warning')}
+      onConnected={() => {
+        if (!hasConnectedRef.current) {
+          hasConnectedRef.current = true;
+          void audioManager.play('join_call');
+        }
+      }}
+      onDisconnected={(reason) => {
+        if (!isMountedRef.current || !hasConnectedRef.current) return;
+        hasConnectedRef.current = false;
+        if (reason && reason !== DisconnectReason.CLIENT_INITIATED) {
+          leaveCall(callChannelId, true);
+          addToast('Conexão encerrada', 'A conexão com a call foi perdida.', 'warning');
+          return;
+        }
+        leaveCall(callChannelId);
+      }}
+    >
+      <VoiceRoomConnected />
+    </LiveKitRoom>
+  );
 };
 
 const RemoteAudioTracks: React.FC<{ volumes: Record<string, number>; muted: Record<string, boolean> }> = ({ volumes, muted }) => {
   const tracks = useTracks([Track.Source.Microphone, Track.Source.Unknown]);
-  return <>{tracks.filter((ref) => !ref.participant.isLocal).map((ref) => { const id = ref.participant.identity; return <AudioTrack key={`${id}-${ref.publication.trackSid || ref.source}`} trackRef={ref} volume={muted[id] ? 0 : (volumes[id] ?? 1)} />; })}</>;
+  return (
+    <>
+      {tracks.filter((ref) => !ref.participant.isLocal).map((ref) => {
+        const id = ref.participant.identity;
+        return <AudioTrack key={`${id}-${ref.publication.trackSid || ref.source}`} trackRef={ref} volume={muted[id] ? 0 : (volumes[id] ?? 1)} />;
+      })}
+    </>
+  );
 };
 
 const VoiceRoomConnected: React.FC = () => {
@@ -149,11 +205,11 @@ const VoiceRoomConnected: React.FC = () => {
     watchScreen,
     stopWatchingScreen,
     currentUser,
-    theme,
     syncVoiceParticipants,
     leaveCall,
     addToast
   } = useApp();
+
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
   const liveParticipants = useParticipants();
   const participantSignature = liveParticipants.map((participant) => `${participant.identity}:${participant.name}`).sort().join('|');
@@ -168,6 +224,29 @@ const VoiceRoomConnected: React.FC = () => {
 
   useEffect(() => { profileCacheRef.current = profilesById; }, [profilesById]);
 
+  // Busca de perfis na tabela profiles
+  const fetchProfiles = async (ids: string[]) => {
+    if (!supabase) return;
+    const missing = [...new Set(ids)].filter((id) => id && !profileCacheRef.current[id] && !profileRequestsRef.current.has(id));
+    if (!missing.length) return;
+    missing.forEach((id) => profileRequestsRef.current.add(id));
+    try {
+      const { data, error } = await supabase.from('profiles').select('id,username,full_name,avatar_url').in('id', missing);
+      if (error) throw error;
+      const loaded = Object.fromEntries((data || []).map((profile) => [profile.id, {
+        username: profile.username,
+        full_name: profile.full_name,
+        avatar_url: profile.avatar_url,
+      }]));
+      setProfilesById((previous) => ({ ...previous, ...loaded }));
+      Object.keys(loaded).forEach((id) => profileRequestsRef.current.delete(id));
+      missing.filter((id) => !loaded[id]).forEach((id) => profileRequestsRef.current.delete(id));
+    } catch {
+      missing.forEach((id) => profileRequestsRef.current.delete(id));
+    }
+  };
+
+  // Supabase Presence e Broadcast
   useEffect(() => {
     if (!activeCall || !currentUser.id || room.name !== activeCall.channelId || !supabase) return;
     let active = true;
@@ -179,27 +258,6 @@ const VoiceRoomConnected: React.FC = () => {
     setPresenceParticipants([]);
     setBroadcastMuteStates({});
     profileRequestsRef.current.clear();
-
-    const fetchProfiles = async (ids: string[]) => {
-      const missing = [...new Set(ids)].filter((id) => id && !profileCacheRef.current[id] && !profileRequestsRef.current.has(id));
-      if (!missing.length) return;
-      missing.forEach((id) => profileRequestsRef.current.add(id));
-      try {
-        const { data, error } = await client.from('profiles').select('id,username,full_name,avatar_url').in('id', missing);
-        if (error) throw error;
-        if (!active) return;
-        const loaded = Object.fromEntries((data || []).map((profile) => [profile.id, {
-          username: profile.username,
-          full_name: profile.full_name,
-          avatar_url: profile.avatar_url,
-        }]));
-        setProfilesById((previous) => ({ ...previous, ...loaded }));
-        Object.keys(loaded).forEach((id) => profileRequestsRef.current.delete(id));
-        missing.filter((id) => !loaded[id]).forEach((id) => profileRequestsRef.current.delete(id));
-      } catch {
-        missing.forEach((id) => profileRequestsRef.current.delete(id));
-      }
-    };
 
     const syncPresence = () => {
       const state = channel.presenceState<VoicePresenceMeta>();
@@ -215,10 +273,17 @@ const VoiceRoomConnected: React.FC = () => {
 
     channel
       .on('presence', { event: 'sync' }, syncPresence)
+      .on('presence', { event: 'join' }, syncPresence)
+      .on('presence', { event: 'leave' }, syncPresence)
       .on('broadcast', { event: 'play_sound' }, ({ payload }) => {
-        const audioUrl = typeof payload?.audioUrl === 'string' ? payload.audioUrl : '';
+        const audioUrl = typeof payload?.url === 'string' ? payload.url : (typeof payload?.audioUrl === 'string' ? payload.audioUrl : '');
         if (!audioUrl) return;
-        audioManager.playCustom(audioUrl);
+        try {
+          const audio = new Audio(audioUrl);
+          audio.play().catch(() => audioManager.playCustom(audioUrl));
+        } catch {
+          audioManager.playCustom(audioUrl);
+        }
         const soundId = typeof payload?.soundId === 'string' ? payload.soundId : '';
         if (soundId) {
           soundAnimationNonce.current += 1;
@@ -233,16 +298,42 @@ const VoiceRoomConnected: React.FC = () => {
       })
       .subscribe(async (status) => {
         if (status !== 'SUBSCRIBED' || !active) return;
-        await fetchProfiles([currentUser.id]);
-        const profile = profileCacheRef.current[currentUser.id];
+        
+        // Ao entrar na call, busca o perfil na tabela profiles (select username, avatar_url)
+        let resolvedUsername = (!currentUser.name || isUuid(currentUser.name)) ? 'Membro Koaline' : currentUser.name;
+        let resolvedAvatar = currentUser.avatar || '';
+
+        try {
+          const { data: myProfile } = await client
+            .from('profiles')
+            .select('username, avatar_url')
+            .eq('id', currentUser.id)
+            .maybeSingle();
+
+          if (myProfile?.username && !isUuid(myProfile.username)) {
+            resolvedUsername = myProfile.username;
+          }
+          if (myProfile?.avatar_url) {
+            resolvedAvatar = myProfile.avatar_url;
+          }
+          setProfilesById((prev) => ({
+            ...prev,
+            [currentUser.id]: { username: resolvedUsername, avatar_url: resolvedAvatar }
+          }));
+        } catch {
+          // Se falhar, usa "Membro Koaline"
+          resolvedUsername = 'Membro Koaline';
+        }
+
         await channel.track({
           user_id: currentUser.id,
-          username: profile?.username || currentUser.handle || undefined,
-          full_name: profile?.full_name || currentUser.name || undefined,
-          avatar_url: profile?.avatar_url || currentUser.avatar || undefined,
+          username: resolvedUsername,
+          full_name: resolvedUsername,
+          avatar_url: resolvedAvatar || undefined,
           status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
           muted: !localParticipant.isMicrophoneEnabled,
         } satisfies VoicePresenceMeta);
+
         syncPresence();
       });
 
@@ -253,62 +344,83 @@ const VoiceRoomConnected: React.FC = () => {
     };
   }, [activeCall?.channelId, currentUser.id, room.name]);
 
+  // Atualização em tempo real do estado de microfone via Presence & Broadcast
   useEffect(() => {
     const channel = presenceChannelRef.current;
     if (!channel || !currentUser.id) return;
     const muted = !isMicrophoneEnabled;
     const profile = profileCacheRef.current[currentUser.id];
+    const username = firstVisibleLabel(profile?.username, profile?.full_name, currentUser.name, currentUser.handle) || 'Membro Koaline';
+    const avatar = profile?.avatar_url || currentUser.avatar || '';
+
     void channel.track({
       user_id: currentUser.id,
-      username: profile?.username || currentUser.handle || undefined,
-      full_name: profile?.full_name || currentUser.name || undefined,
-      avatar_url: profile?.avatar_url || currentUser.avatar || undefined,
+      username,
+      full_name: username,
+      avatar_url: avatar || undefined,
       status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
       muted,
     } satisfies VoicePresenceMeta);
+
     void channel.send({ type: 'broadcast', event: 'microphone_state', payload: { userId: currentUser.id, muted } });
   }, [isMicrophoneEnabled, currentUser.id]);
 
-  const knownUsers = communities.flatMap((community) => community.channels).flatMap((channel) => channel.connectedUsers || []);
-  const participantUser = (participant: Participant, presence?: VoicePresenceParticipant): User => {
-    const id = presence?.user_id || participant.identity;
+  const participantUser = (participant?: Participant, presence?: VoicePresenceParticipant, explicitId?: string): User => {
+    const id = explicitId || presence?.user_id || participant?.identity || '';
     const profile = profilesById[id];
-    if (id === currentUser.id) return {
-      ...currentUser,
-      name: firstVisibleLabel(profile?.full_name, profile?.username, currentUser.name) || 'Membro Koaline',
-      handle: firstVisibleLabel(profile?.username, currentUser.handle) || 'koaline',
-      avatar: profile?.avatar_url || currentUser.avatar || '',
-      status: 'online',
-      statusKnown: true,
-    };
-    const known = knownUsers.find((user) => user.id === id || user.handle === id);
-    let metadata: Partial<User> = {};
-    try { metadata = JSON.parse(participant.metadata || '{}') as Partial<User>; } catch { /* Usa os dados públicos do perfil. */ }
-    const visibleName = firstVisibleLabel(profile?.full_name, profile?.username, presence?.full_name, presence?.username, metadata.name, known?.name, participant.name) || 'Membro Koaline';
-    const visibleHandle = firstVisibleLabel(profile?.username, presence?.username, metadata.handle, known?.handle, id) || 'koaline';
+
+    const visibleName = firstVisibleLabel(
+      profile?.full_name,
+      profile?.username,
+      presence?.full_name,
+      presence?.username,
+      id === currentUser.id ? currentUser.name : undefined,
+      participant?.name
+    ) || 'Membro Koaline';
+
+    const visibleHandle = firstVisibleLabel(
+      profile?.username,
+      presence?.username,
+      id === currentUser.id ? currentUser.handle : undefined
+    ) || 'koaline';
+
+    const avatar = profile?.avatar_url || presence?.avatar_url || (id === currentUser.id ? currentUser.avatar : '') || '';
+
     return {
       ...currentUser,
-      ...known,
-      ...metadata,
       id,
       name: visibleName,
       handle: visibleHandle,
-      avatar: profile?.avatar_url || presence?.avatar_url || metadata.avatar || known?.avatar || '',
+      avatar,
       status: 'online',
       statusKnown: true,
     };
   };
 
+  const liveById = new Map(liveParticipants.map((participant) => [participant.identity, participant]));
+
+  // Reúne todos os participantes da Presence e do LiveKit em tempo real
+  const allParticipantIds = new Set<string>();
+  presenceParticipants.forEach((p) => { if (p.user_id) allParticipantIds.add(p.user_id); });
+  liveParticipants.forEach((p) => { if (p.identity) allParticipantIds.add(p.identity); });
+  if (currentUser.id) allParticipantIds.add(currentUser.id);
+
+  const participants = Array.from(allParticipantIds).map((id) => {
+    const presence = presenceParticipants.find((p) => p.user_id === id);
+    const participant = liveById.get(id);
+    const user = participantUser(participant, presence, id);
+    const isMuted = broadcastMuteStates[id] ?? presence?.muted ?? (participant ? !participant.isMicrophoneEnabled : false);
+    return {
+      id,
+      participant,
+      user,
+      isMuted,
+    };
+  });
+
   useEffect(() => {
     if (!activeCall || room.name !== activeCall.channelId) return;
-    const liveById = new Map(liveParticipants.map((participant) => [participant.identity, participant]));
-    const rows = presenceParticipants.length
-      ? presenceParticipants.flatMap((presence) => {
-        const participant = liveById.get(presence.user_id);
-        return participant ? [{ participant, user: participantUser(participant, presence), muted: broadcastMuteStates[presence.user_id] ?? presence.muted ?? !participant.isMicrophoneEnabled }] : [];
-      })
-      : liveParticipants.map((participant) => ({ participant, user: participantUser(participant), muted: broadcastMuteStates[participant.identity] ?? !participant.isMicrophoneEnabled }));
-    syncVoiceParticipants(activeCall.channelId, rows.map((row) => row.user));
+    syncVoiceParticipants(activeCall.channelId, participants.map((row) => row.user));
   }, [activeCall?.channelId, participantSignature, presenceParticipants, profilesById, broadcastMuteStates, room.name]);
 
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -321,10 +433,12 @@ const VoiceRoomConnected: React.FC = () => {
   const [remoteVolumes, setRemoteVolumes] = useState<Record<string, number>>({});
   const [locallyMuted, setLocallyMuted] = useState<Record<string, boolean>>({});
   const [kickTarget, setKickTarget] = useState<{ id: string; name: string } | null>(null);
+
   const currentCommunity = communities.find((item) => item.id === currentCommunityId) || communities[0];
   const callCommunity = communities.find((item) => item.channels.some((channel) => channel.id === activeCall?.channelId));
   const soundCommunityId = activeCall?.channelId.startsWith('dm-call-') ? '' : callCommunity?.id || currentCommunityId;
   const mayKick = !!currentCommunity && canModerateCommunity(currentCommunity.id, currentUser, currentCommunity.ownerId || currentCommunity.creatorId);
+
   const latestLeaveCallRef = useRef(leaveCall);
   const latestToastRef = useRef(addToast);
   useEffect(() => { latestLeaveCallRef.current = leaveCall; latestToastRef.current = addToast; }, [leaveCall, addToast]);
@@ -346,8 +460,12 @@ const VoiceRoomConnected: React.FC = () => {
     const handleData = (payload: Uint8Array) => {
       try {
         const data = JSON.parse(new TextDecoder().decode(payload)) as { type?: string };
-        if (data.type === 'koaline:call-kick') { if (activeCall) leaveCall(activeCall.channelId, true); void room.disconnect(); addToast('Removido da call', 'Você foi removido da call pelo administrador.', 'warning'); }
-      } catch { /* Ignora eventos de dados que não pertencem ao Koaline. */ }
+        if (data.type === 'koaline:call-kick') {
+          if (activeCall) leaveCall(activeCall.channelId, true);
+          void room.disconnect();
+          addToast('Removido da call', 'Você foi removido da call pelo administrador.', 'warning');
+        }
+      } catch { /* Ignora eventos de dados externos */ }
     };
     room.on(RoomEvent.DataReceived, handleData);
     return () => { room.off(RoomEvent.DataReceived, handleData); };
@@ -364,24 +482,38 @@ const VoiceRoomConnected: React.FC = () => {
 
   useEffect(() => {
     if (!contextUser) return;
-    try { const saved = localStorage.getItem(`koaline:volume_${contextUser.id}`); if (saved !== null) setRemoteVolumes((prev) => ({ ...prev, [contextUser.id]: Number(saved) })); } catch { /* Volume padrão. */ }
+    try {
+      const saved = localStorage.getItem(`koaline:volume_${contextUser.id}`);
+      if (saved !== null) setRemoteVolumes((prev) => ({ ...prev, [contextUser.id]: Number(saved) }));
+    } catch { /* Volume padrão */ }
   }, [contextUser?.id]);
 
   const saveRemoteVolume = (id: string, volume: number) => {
     setRemoteVolumes((prev) => ({ ...prev, [id]: volume }));
-    try { localStorage.setItem(`koaline:volume_${id}`, String(volume)); } catch { /* Volume permanece na sessão atual. */ }
+    try { localStorage.setItem(`koaline:volume_${id}`, String(volume)); } catch { /* Volume na sessão */ }
   };
+
+  // Disparo do Soundboard para tocar no próprio navegador e broadcast para todos
   const playSoundInCall = async (sound: SoundDraft) => {
     soundAnimationNonce.current += 1;
     setSoundAnimation({ id: sound.id, nonce: soundAnimationNonce.current });
-    void audioManager.playCustom(sound.url);
+
+    // Toca no próprio navegador imediatamente
+    try {
+      const audio = new Audio(sound.url);
+      audio.play().catch(() => audioManager.playCustom(sound.url));
+    } catch {
+      audioManager.playCustom(sound.url);
+    }
+
+    // Dispara Supabase Broadcast para todos na sala
     try {
       const channel = presenceChannelRef.current;
       if (!channel) throw new Error('A conexão de presença da sala ainda não está pronta.');
       const result = await channel.send({
         type: 'broadcast',
         event: 'play_sound',
-        payload: { audioUrl: sound.url, soundId: sound.id, emoji: sound.emoji },
+        payload: { url: sound.url, audioUrl: sound.url, soundId: sound.id, emoji: sound.emoji },
       });
       if (result !== 'ok') throw new Error('O Supabase não confirmou o envio do som para a sala.');
     } catch (reason) {
@@ -391,16 +523,31 @@ const VoiceRoomConnected: React.FC = () => {
 
   const kickParticipant = async () => {
     if (!kickTarget || !mayKick) return;
-    try { await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type: 'koaline:call-kick' })), { reliable: true, destinationIdentities: [kickTarget.id] }); addToast('Participante removido', `${kickTarget.name} foi expulso da call.`, 'success'); }
-    catch { addToast('Falha ao expulsar', 'Não foi possível enviar o comando ao participante.', 'warning'); }
-    setKickTarget(null); setContextUser(null);
+    try {
+      await room.localParticipant.publishData(new TextEncoder().encode(JSON.stringify({ type: 'koaline:call-kick' })), {
+        reliable: true,
+        destinationIdentities: [kickTarget.id]
+      });
+      addToast('Participante removido', `${kickTarget.name} foi expulso da call.`, 'success');
+    } catch {
+      addToast('Falha ao expulsar', 'Não foi possível enviar o comando ao participante.', 'warning');
+    }
+    setKickTarget(null);
+    setContextUser(null);
   };
+
   const screenVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (!soundCommunityId) { setMySounds([]); return; }
     let mounted = true;
-    const loadSounds = () => { void getGroupSounds(soundCommunityId).then((saved) => { if (mounted) setMySounds(saved); }).catch(() => { if (mounted) setMySounds([]); }); };
+    const loadSounds = () => {
+      void getGroupSounds(soundCommunityId).then((saved) => {
+        if (mounted) setMySounds(saved);
+      }).catch(() => {
+        if (mounted) setMySounds([]);
+      });
+    };
     const handleGroupSoundsUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ communityId?: string; sounds?: SoundDraft[] }>).detail;
       if (detail?.communityId === soundCommunityId && Array.isArray(detail.sounds)) setMySounds(detail.sounds);
@@ -421,7 +568,7 @@ const VoiceRoomConnected: React.FC = () => {
   }, [activeCall?.screenStream, activeCall?.isWatchingScreen]);
 
   useEffect(() => {
-    let timeout: any;
+    let timeout: ReturnType<typeof setTimeout>;
     const handleMove = () => {
       setControlsVisible(true);
       clearTimeout(timeout);
@@ -443,19 +590,8 @@ const VoiceRoomConnected: React.FC = () => {
   if (!activeCall) return null;
 
   const currentComm = communities.find((c) => c.id === currentCommunityId) || communities[0];
-  const voiceChannels = currentComm.channels.filter((c) => c.type === 'voice');
+  const voiceChannels = currentComm?.channels?.filter((c) => c.type === 'voice') || [];
 
-  const liveById = new Map(liveParticipants.map((participant) => [participant.identity, participant]));
-  const participants = presenceParticipants.length
-    ? presenceParticipants.flatMap((presence) => {
-      const participant = liveById.get(presence.user_id);
-      return participant ? [{ participant, user: participantUser(participant, presence), isMuted: broadcastMuteStates[presence.user_id] ?? presence.muted ?? !participant.isMicrophoneEnabled }] : [];
-    })
-    : liveParticipants.map((participant) => ({
-      participant,
-      user: participantUser(participant),
-      isMuted: broadcastMuteStates[participant.identity] ?? !participant.isMicrophoneEnabled,
-    }));
   const pCount = participants.length;
   let gridColsClass = 'grid-cols-1 md:grid-cols-2';
   if (pCount === 1) gridColsClass = 'grid-cols-1 max-w-md';
@@ -515,14 +651,37 @@ const VoiceRoomConnected: React.FC = () => {
         </button>
       </div>
 
-      {activeCall.isScreenSharing && <div className="absolute right-6 top-20 z-30 flex items-center gap-3 rounded-xl border border-sky-500/40 bg-slate-900 px-4 py-3 text-white shadow-2xl"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500"/><div><p className="text-xs font-semibold">Você está transmitindo</p><p className="text-[10px] text-slate-400">Áudio da transmissão disponível apenas com LiveKit integrado</p></div><button onClick={toggleScreenShare} className="rounded-lg bg-rose-600 px-3 py-2 text-[11px] font-semibold hover:bg-rose-500">Parar Transmissão</button></div>}
-      {activeCall.isScreenSharing && !activeCall.isWatchingScreen && <button onClick={watchScreen} className="absolute left-1/2 top-20 z-20 -translate-x-1/2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-xs text-white shadow-xl hover:border-sky-500"><span className="font-semibold">{currentUser.name || 'Usuário'} está transmitindo.</span> <span className="text-sky-300">Assistir</span></button>}
+      {activeCall.isScreenSharing && (
+        <div className="absolute right-6 top-20 z-30 flex items-center gap-3 rounded-xl border border-sky-500/40 bg-slate-900 px-4 py-3 text-white shadow-2xl">
+          <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500"/>
+          <div>
+            <p className="text-xs font-semibold">Você está transmitindo</p>
+            <p className="text-[10px] text-slate-400">Áudio da transmissão disponível apenas com LiveKit integrado</p>
+          </div>
+          <button onClick={toggleScreenShare} className="rounded-lg bg-rose-600 px-3 py-2 text-[11px] font-semibold hover:bg-rose-500">
+            Parar Transmissão
+          </button>
+        </div>
+      )}
+
+      {activeCall.isScreenSharing && !activeCall.isWatchingScreen && (
+        <button onClick={watchScreen} className="absolute left-1/2 top-20 z-20 -translate-x-1/2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-xs text-white shadow-xl hover:border-sky-500">
+          <span className="font-semibold">{currentUser.name || 'Usuário'} está transmitindo.</span> <span className="text-sky-300">Assistir</span>
+        </button>
+      )}
 
       {/* Center Participants Grid */}
       {activeCall.isWatchingScreen && activeCall.screenStream ? (
         <div className="relative my-4 flex min-h-0 w-full max-w-5xl flex-1 flex-col items-center justify-center overflow-hidden rounded-2xl border border-sky-500/40 bg-black shadow-2xl">
           <video ref={screenVideoRef} autoPlay playsInline className="h-full max-h-full w-full object-contain" />
-          <div className="absolute bottom-4 right-4 flex gap-2"><button onClick={() => screenVideoRef.current?.requestFullscreen?.()} className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800"><Maximize2 className="mr-1 inline h-3.5 w-3.5"/>Tela Cheia</button><button onClick={stopWatchingScreen} className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800">Sair da transmissão</button></div>
+          <div className="absolute bottom-4 right-4 flex gap-2">
+            <button onClick={() => screenVideoRef.current?.requestFullscreen?.()} className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800">
+              <Maximize2 className="mr-1 inline h-3.5 w-3.5"/>Tela Cheia
+            </button>
+            <button onClick={stopWatchingScreen} className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800">
+              Sair da transmissão
+            </button>
+          </div>
           <p className="absolute left-4 top-4 rounded-lg bg-slate-900 px-3 py-2 text-[10px] text-slate-300">Áudio da transmissão disponível apenas com LiveKit integrado</p>
         </div>
       ) : (
@@ -533,7 +692,7 @@ const VoiceRoomConnected: React.FC = () => {
             <div className={`grid ${gridColsClass} gap-6 w-full justify-items-center items-center`}>
               {participants.map((p) => (
                 <ParticipantTile
-                  key={p.participant.identity}
+                  key={p.id}
                   participant={p.participant}
                   user={p.user}
                   isMuted={p.isMuted || !!locallyMuted[p.user.id]}
@@ -545,16 +704,35 @@ const VoiceRoomConnected: React.FC = () => {
         </div>
       )}
 
-      {activeCall.isScreenSharing && <div className="absolute bottom-24 left-6 z-20 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-[10px] text-slate-300"><span>Assistindo:</span>{(activeCall.screenViewers || []).length ? (activeCall.screenViewers || []).map((viewer) => <button key={viewer.id} onClick={() => openUserProfile(viewer)} title={viewer.name}><img src={viewer.avatar || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(viewer.name)}`} alt={viewer.name} className="h-6 w-6 rounded-full object-cover"/></button>) : <span className="text-slate-500">ninguém ainda</span>}</div>}
+      {activeCall.isScreenSharing && (
+        <div className="absolute bottom-24 left-6 z-20 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-[10px] text-slate-300">
+          <span>Assistindo:</span>
+          {(activeCall.screenViewers || []).length ? (
+            (activeCall.screenViewers || []).map((viewer) => (
+              <button key={viewer.id} onClick={() => openUserProfile(viewer)} title={viewer.name}>
+                <img src={viewer.avatar || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(viewer.name)}`} alt={viewer.name} className="h-6 w-6 rounded-full object-cover"/>
+              </button>
+            ))
+          ) : (
+            <span className="text-slate-500">ninguém ainda</span>
+          )}
+        </div>
+      )}
 
       {/* Floating Bottom Control Bar */}
       <div
-        className={`relative z-20 flex items-center gap-3 px-5 py-3 rounded-nest-pill bg-slate-900 border border-slate-700 shadow-2xl  transition-all duration-300 ${
+        className={`relative z-20 flex items-center gap-3 px-5 py-3 rounded-nest-pill bg-slate-900 border border-slate-700 shadow-2xl transition-all duration-300 ${
           controlsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'
         }`}
       >
         <button
-          onClick={async () => { try { await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, MICROPHONE_CAPTURE_OPTIONS); } catch (error) { addToast('Microfone não autorizado', error instanceof Error ? error.message : 'Permita o acesso ao microfone para falar na chamada.', 'warning'); } }}
+          onClick={async () => {
+            try {
+              await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled, MICROPHONE_CAPTURE_OPTIONS);
+            } catch (error) {
+              addToast('Microfone não autorizado', error instanceof Error ? error.message : 'Permita o acesso ao microfone para falar na chamada.', 'warning');
+            }
+          }}
           title={isMicrophoneEnabled ? 'Silenciar' : 'Ativar microfone'}
           className={`p-3 rounded-full transition-all active:scale-95 ${
             !isMicrophoneEnabled
@@ -607,12 +785,22 @@ const VoiceRoomConnected: React.FC = () => {
           <Minimize2 className="w-5 h-5" />
         </button>
 
-        <button type="button" onClick={() => setSoundboardOpen((open) => !open)} title="Meus Sons" aria-label="Abrir Soundboard" aria-expanded={soundboardOpen} className="p-3 rounded-full bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors">
+        <button
+          type="button"
+          onClick={() => setSoundboardOpen((open) => !open)}
+          title="Meus Sons"
+          aria-label="Abrir Soundboard"
+          aria-expanded={soundboardOpen}
+          className="p-3 rounded-full bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors"
+        >
           <Music className="w-5 h-5" />
         </button>
 
         <button
-          onClick={() => { if (activeCall) leaveCall(activeCall.channelId); void room.disconnect(); }}
+          onClick={() => {
+            if (activeCall) leaveCall(activeCall.channelId);
+            void room.disconnect();
+          }}
           title="Sair da sala"
           className="p-3 px-5 rounded-nest-pill bg-rose-600 hover:bg-rose-500 text-white font-medium text-xs shadow-md transition-all active:scale-95 flex items-center gap-2"
         >
@@ -620,19 +808,91 @@ const VoiceRoomConnected: React.FC = () => {
           <span>Sair</span>
         </button>
       </div>
-      {soundboardOpen && <div className="absolute bottom-24 left-1/2 z-40 w-72 -translate-x-1/2 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-white shadow-2xl" role="dialog" aria-label="Sons do grupo">
-        <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Sons do grupo</h2><button type="button" onClick={() => setSoundboardOpen(false)} className="text-xs text-slate-400 hover:text-white">Fechar</button></div>
-        {mySounds.length ? <div className="grid grid-cols-2 gap-2">{mySounds.map((sound) => <div key={sound.id || sound.url} className="relative min-w-0"><button type="button" onClick={() => void playSoundInCall(sound)} className="flex w-full items-center justify-center gap-1.5 truncate rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white hover:border-cyan-500" title={sound.name}><span>{sound.emoji || '🔊'}</span><span className="truncate">{sound.name}</span></button>{soundAnimation?.id === sound.id && <span key={soundAnimation.nonce} className="soundboard-float-emoji" aria-hidden="true">{sound.emoji || '🔊'}</span>}</div>)}</div> : <p className="text-xs leading-relaxed text-slate-400">{soundCommunityId ? 'Este grupo ainda não tem sons. Eles podem ser adicionados em Configurações do grupo › Áudios.' : 'Sons de grupo não estão disponíveis em chamadas diretas.'}</p>}
-      </div>}
-      {contextUser && <div className="absolute inset-0 z-50 grid place-items-center bg-black/55 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setContextUser(null); }}><section className="w-full max-w-xs rounded-2xl border border-slate-700 bg-slate-900 p-4 text-white shadow-2xl" role="dialog" aria-modal="true" aria-label={`Opções de ${contextUser.name}`}>
-        <div className="mb-4 flex items-center gap-3">{contextUser.avatar ? <img src={contextUser.avatar} alt="" className="h-12 w-12 rounded-full object-cover" /> : <span className="grid h-12 w-12 place-items-center rounded-full bg-slate-700 font-bold">{contextUser.name.slice(0, 1)}</span>}<div><strong className="block text-sm">{contextUser.name}</strong><span className="text-xs text-slate-400">@{contextUser.handle}</span></div><button type="button" onClick={() => setContextUser(null)} className="ml-auto text-slate-400">×</button></div>
-        <label className="mb-4 block text-xs text-slate-300">Volume individual: {Math.round((remoteVolumes[contextUser.id] ?? 1) * 100)}%<input type="range" min="0" max="100" value={Math.round((remoteVolumes[contextUser.id] ?? 1) * 100)} onChange={(event) => saveRemoteVolume(contextUser.id, Number(event.target.value) / 100)} className="mt-2 w-full accent-sky-500" /></label>
-        <button type="button" onClick={() => setLocallyMuted((prev) => ({ ...prev, [contextUser.id]: !prev[contextUser.id] }))} className="mb-2 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-left text-xs hover:bg-slate-700">{locallyMuted[contextUser.id] ? 'Ativar áudio para mim' : 'Silenciar para mim'}</button>
-        {mayKick && contextUser.id !== currentUser.id && <button type="button" onClick={() => setKickTarget({ id: contextUser.id, name: contextUser.name })} className="w-full rounded-xl bg-rose-600 px-3 py-2 text-left text-xs font-semibold text-white hover:bg-rose-500">Expulsar da Call</button>}
-      </section></div>}
-      {kickTarget && <div className="absolute inset-0 z-[60] grid place-items-center bg-black/60 p-4"><section className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 text-white shadow-2xl" role="alertdialog" aria-modal="true"><h2 className="mb-2 font-semibold">Expulsar participante?</h2><p className="mb-4 text-sm text-slate-300">Tem certeza que deseja expulsar @{kickTarget.name}?</p><div className="flex justify-end gap-2"><button type="button" onClick={() => setKickTarget(null)} className="rounded-xl border border-slate-600 px-3 py-2 text-sm">Cancelar</button><button type="button" onClick={() => void kickParticipant()} className="rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white">Expulsar</button></div></section></div>}
+
+      {soundboardOpen && (
+        <div className="absolute bottom-24 left-1/2 z-40 w-72 -translate-x-1/2 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-white shadow-2xl" role="dialog" aria-label="Sons do grupo">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Sons do grupo</h2>
+            <button type="button" onClick={() => setSoundboardOpen(false)} className="text-xs text-slate-400 hover:text-white">
+              Fechar
+            </button>
+          </div>
+          {mySounds.length ? (
+            <div className="grid grid-cols-2 gap-2">
+              {mySounds.map((sound) => (
+                <div key={sound.id || sound.url} className="relative min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => void playSoundInCall(sound)}
+                    className="flex w-full items-center justify-center gap-1.5 truncate rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white hover:border-cyan-500"
+                    title={sound.name}
+                  >
+                    <span>{sound.emoji || '🔊'}</span>
+                    <span className="truncate">{sound.name}</span>
+                  </button>
+                  {soundAnimation?.id === sound.id && (
+                    <span key={soundAnimation.nonce} className="soundboard-float-emoji" aria-hidden="true">
+                      {sound.emoji || '🔊'}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs leading-relaxed text-slate-400">
+              {soundCommunityId ? 'Este grupo ainda não tem sons. Eles podem ser adicionados em Configurações do grupo › Áudios.' : 'Sons de grupo não estão disponíveis em chamadas diretas.'}
+            </p>
+          )}
+        </div>
+      )}
+
+      {contextUser && (
+        <div className="absolute inset-0 z-50 grid place-items-center bg-black/55 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setContextUser(null); }}>
+          <section className="w-full max-w-xs rounded-2xl border border-slate-700 bg-slate-900 p-4 text-white shadow-2xl" role="dialog" aria-modal="true" aria-label={`Opções de ${contextUser.name}`}>
+            <div className="mb-4 flex items-center gap-3">
+              {contextUser.avatar ? (
+                <img src={contextUser.avatar} alt="" className="h-12 w-12 rounded-full object-cover" />
+              ) : (
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-slate-700 font-bold">{contextUser.name.slice(0, 1)}</span>
+              )}
+              <div>
+                <strong className="block text-sm">{contextUser.name}</strong>
+                <span className="text-xs text-slate-400">@{contextUser.handle}</span>
+              </div>
+              <button type="button" onClick={() => setContextUser(null)} className="ml-auto text-slate-400">×</button>
+            </div>
+            <label className="mb-4 block text-xs text-slate-300">
+              Volume individual: {Math.round((remoteVolumes[contextUser.id] ?? 1) * 100)}%
+              <input type="range" min="0" max="100" value={Math.round((remoteVolumes[contextUser.id] ?? 1) * 100)} onChange={(event) => saveRemoteVolume(contextUser.id, Number(event.target.value) / 100)} className="mt-2 w-full accent-sky-500" />
+            </label>
+            <button type="button" onClick={() => setLocallyMuted((prev) => ({ ...prev, [contextUser.id]: !prev[contextUser.id] }))} className="mb-2 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-left text-xs hover:bg-slate-700">
+              {locallyMuted[contextUser.id] ? 'Ativar áudio para mim' : 'Silenciar para mim'}
+            </button>
+            {mayKick && contextUser.id !== currentUser.id && (
+              <button type="button" onClick={() => setKickTarget({ id: contextUser.id, name: contextUser.name })} className="w-full rounded-xl bg-rose-600 px-3 py-2 text-left text-xs font-semibold text-white hover:bg-rose-500">
+                Expulsar da Call
+              </button>
+            )}
+          </section>
+        </div>
+      )}
+
+      {kickTarget && (
+        <div className="absolute inset-0 z-[60] grid place-items-center bg-black/60 p-4">
+          <section className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 text-white shadow-2xl" role="alertdialog" aria-modal="true">
+            <h2 className="mb-2 font-semibold">Expulsar participante?</h2>
+            <p className="mb-4 text-sm text-slate-300">Tem certeza que deseja expulsar @{kickTarget.name}?</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setKickTarget(null)} className="rounded-xl border border-slate-600 px-3 py-2 text-sm">
+                Cancelar
+              </button>
+              <button type="button" onClick={() => void kickParticipant()} className="rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white">
+                Expulsar
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 };
-
-

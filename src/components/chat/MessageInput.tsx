@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Send,
@@ -14,6 +14,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { Message, User } from '../../types';
+import { supabase } from '../../services/supabaseClient';
 const EmojiPickerPopover = React.lazy(() => import('../common/EmojiPickerPopover').then((module) => ({ default: module.EmojiPickerPopover })));
 
 interface MessageInputProps {
@@ -138,6 +139,15 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
           content: replyTarget.content,
         }
       : undefined;
+
+    // Busca o usuário logado direto do Supabase no momento do envio
+    if (supabase) {
+      try {
+        await supabase.auth.getUser();
+      } catch {
+        /* fallback gerenciado pelo AppContext */
+      }
+    }
 
     const sent = await sendMessage(text, replyData, attachmentsList);
     if (!sent) return;
