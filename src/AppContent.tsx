@@ -15,6 +15,7 @@ import { CreateChannelModal } from './components/channels/CreateChannelModal';
 import { AuthOnboardingModal } from './components/auth/AuthOnboardingModal';
 import { AdminPanel } from './components/admin/AdminPanel';
 import { ConfirmModal } from './components/common/ConfirmModal';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Channel } from './types';
 
 const VoiceRoom = React.lazy(() => import('./components/call/VoiceRoom').then((module) => ({ default: module.VoiceRoom })));
@@ -32,6 +33,11 @@ export const AppContent: React.FC = () => {
   const [isNotFound, setIsNotFound] = React.useState(() => window.location.pathname !== '/' && window.location.pathname !== '/orbit');
   const isCallFullscreen = activeCall && !activeCall.isMinimized;
   const openAdminPanel = React.useCallback(() => setIsAdminPanelOpen(true), []);
+  const closeOrbit = React.useCallback(() => {
+    if (window.location.pathname === '/orbit') window.history.pushState({}, '', '/');
+    setIsOrbitPage(false);
+    setIsNotFound(false);
+  }, []);
 
   React.useEffect(() => {
     const syncRoute = () => {
@@ -50,12 +56,6 @@ export const AppContent: React.FC = () => {
 
   if (!isLoggedIn) return <div className="app-shell flex h-screen w-screen flex-col overflow-hidden"><AuthOnboardingModal /><Toast /></div>;
 
-  const closeOrbit = React.useCallback(() => {
-    if (window.location.pathname === '/orbit') window.history.pushState({}, '', '/');
-    setIsOrbitPage(false);
-    setIsNotFound(false);
-  }, []);
-
   return (
     <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-200">
       <TopBar isOrbitPage={isOrbitPage} />
@@ -69,7 +69,9 @@ export const AppContent: React.FC = () => {
         </div>
 
         {(isOrbitPage || hasVisitedOrbit) && <div className="min-h-0 flex-1 overflow-hidden" style={{ display: isOrbitPage ? 'flex' : 'none' }}>
-          <React.Suspense fallback={<main className="flex flex-1 items-center justify-center bg-slate-950 text-sm text-slate-400">Carregando Orbit…</main>}><OrbitPage onBack={closeOrbit} /></React.Suspense>
+          <ErrorBoundary fullScreen={false} title="Algo deu errado no Orbit" message="O feed não conseguiu ser exibido. O restante do Koaline continua disponível.">
+            <React.Suspense fallback={<main className="flex flex-1 items-center justify-center bg-slate-950 text-sm text-slate-400">Carregando Orbit…</main>}><OrbitPage onBack={closeOrbit} /></React.Suspense>
+          </ErrorBoundary>
         </div>}
 
         {isNotFound && <main className="koaline-not-found"><div><span>404</span><h1>Esta página não foi encontrada</h1><p>Confira o endereço ou volte para suas conversas.</p><button type="button" onClick={() => { window.history.pushState({}, '', '/'); window.dispatchEvent(new PopStateEvent('popstate')); }}>Voltar ao Koaline</button></div></main>}
