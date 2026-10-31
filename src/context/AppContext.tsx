@@ -12,6 +12,7 @@ import {
 import { canDeleteCommunityChannel, canModerateCommunity } from '../components/admin/adminAccess';
 import { audioManager } from '../services/AudioManager';
 import { supabase } from '../services/supabaseClient';
+import { listOrbitCommunities } from '../features/orbit/orbitService';
 
 const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'online', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
 
@@ -23,6 +24,33 @@ type SupabaseMessageRow = {
   created_at: string;
   profiles?: { username?: string | null; avatar_url?: string | null } | Array<{ username?: string | null; avatar_url?: string | null }> | null;
 };
+
+type SupabaseCommunityRow = {
+  id: string;
+  name: string;
+  description?: string | null;
+  banner_url?: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+type SupabaseChannelRow = {
+  id: string;
+  community_id: string;
+  name: string;
+  type: 'text' | 'voice';
+  created_at?: string;
+};
+
+const toCommunityChannel = (row: SupabaseChannelRow, categoryId: string, ownerId?: string): Channel => ({
+  id: row.id,
+  communityId: row.community_id,
+  name: row.name,
+  type: row.type,
+  categoryId,
+  ownerId,
+  connectedUsers: row.type === 'voice' ? [] : undefined,
+});
 
 const toChatMessage = (row: SupabaseMessageRow, currentUser: User): Message => {
   const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
@@ -65,11 +93,12 @@ interface AppContextType {
   updateCurrentUser: (updates: Partial<User>) => void;
   isLoggedIn: boolean;
   setIsLoggedIn: (val: boolean) => void;
-  createCommunity: (input: { name: string; icon?: string; visibility: 'public' | 'private' }) => Community | null;
+  createCommunity: (input: { name: string; icon?: string; visibility: 'public' | 'private' }) => Promise<Community | null>;
   joinCommunityByInvite: (code: string) => boolean;
   
   // Communities & Channels
   communities: Community[];
+  members: Array<{id:string;communityId:string;userId:string;role:'owner'|'admin'|'moderator'|'member';joinedAt:string}>;
   currentCommunityId: string;
   setCurrentCommunityId: (id: string) => void;
   currentChannelId: string;
@@ -81,7 +110,7 @@ interface AppContextType {
   dms: DirectMessageConversation[];
   toggleArchiveDm: (id: string) => void;
   openDirectMessage: (user: User) => void;
-  createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => void;
+  createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => Promise<boolean>;
   updateCommunity: (id: string, updates: Partial<Community>) => void;
   updateChannel: (id: string, updates: Partial<Channel>) => void;
   deleteChannel: (id: string) => boolean;
@@ -204,30 +233,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Navigation
-  const [communities, setCommunities] = useState<Community[]>(() => {
-    try { return JSON.parse(localStorage.getItem('koaline:communities') || '[]'); } catch { return []; }
-  });
-  const [currentCommunityId, setCurrentCommunityId] = useState<string>(() => localStorage.getItem('koaline:current-community') || '');
-  const [currentChannelId, setCurrentChannelId] = useState<string>(() => localStorage.getItem('koaline:current-channel') || '');
+  const [communities, setCommunities] = useState<Community[]>([]);
+  const [currentCommunityId, setCurrentCommunityId] = useState<string>('');
+  const [currentChannelId, setCurrentChannelId] = useState<string>('');
   const [isDirectMessages, setIsDirectMessages] = useState<boolean>(false);
   const [activeDmId, setActiveDmId] = useState<string | null>(null);
   const [dms, setDms] = useState<DirectMessageConversation[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:dms') || '[]'); } catch { return []; } });
-  const [members, setMembers] = useState<Array<{id:string;communityId:string;userId:string;role:'owner'|'admin'|'moderator'|'member';joinedAt:string}>>(() => { try { return JSON.parse(localStorage.getItem('koaline:members') || '[]'); } catch { return []; } });
-  const [flatChannels, setFlatChannels] = useState<Array<{id:string;communityId:string;name:string;type:'text'|'voice';category:string;position:number;isPrivate:boolean;isArchived:boolean;createdAt:string}>>(() => { try { return JSON.parse(localStorage.getItem('koaline:channels') || '[]'); } catch { return []; } });
+  const [members, setMembers] = useState<Array<{id:string;communityId:string;userId:string;role:'owner'|'admin'|'moderator'|'member';joinedAt:string}>>([]);
   const [invites, setInvites] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:invites') || '[]'); } catch { return []; } });
   const [logs, setLogs] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:logs') || '[]'); } catch { return []; } });
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
 
   useEffect(() => {
-    localStorage.setItem('koaline:communities', JSON.stringify(communities));
-    localStorage.setItem('koaline:current-community', currentCommunityId);
-    localStorage.setItem('koaline:current-channel', currentChannelId);
     localStorage.setItem('koaline:dms', JSON.stringify(dms));
-    localStorage.setItem('koaline:members', JSON.stringify(members));
-    localStorage.setItem('koaline:channels', JSON.stringify(flatChannels));
     localStorage.setItem('koaline:invites', JSON.stringify(invites));
     localStorage.setItem('koaline:logs', JSON.stringify(logs));
-  }, [communities, currentCommunityId, currentChannelId, dms, members, flatChannels, invites, logs]);
+  }, [dms, invites, logs]);
   // A persisted voice-channel selection is not a call session. Return to text on reload/deep link.
   useEffect(() => {
     if (activeCallRef.current) return;
@@ -238,25 +259,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsDirectMessages(false);
     setActiveDmId(null);
   }, [communities, currentCommunityId, currentChannelId]);
-
-  useEffect(() => {
-    if (localStorage.getItem('koaline:migrated_clean') === '1') return;
-    try {
-      const stored = JSON.parse(localStorage.getItem('koaline:communities') || '[]') as Community[];
-      const legacyIds = new Set(stored.filter((item) => !item.ownerId && (item.id.startsWith('comm-koala-') || item.id.startsWith('comm-tech-') || (item as Community & { isDemo?: boolean; mock?: boolean }).isDemo || (item as Community & { mock?: boolean }).mock)).map((item) => item.id));
-      if (legacyIds.size) {
-        const valid = stored.filter((item) => !legacyIds.has(item.id) || !!item.ownerId);
-        setCommunities(valid);
-        setFlatChannels((prev) => prev.filter((item) => !legacyIds.has(item.communityId)));
-        setMembers((prev) => prev.filter((item) => !legacyIds.has(item.communityId)));
-        setInvites((prev) => (prev as Array<{communityId?:string}>).filter((item) => !item.communityId || !legacyIds.has(item.communityId)));
-        setLogs((prev) => (prev as Array<{communityId?:string}>).filter((item) => !item.communityId || !legacyIds.has(item.communityId)));
-        if (legacyIds.has(localStorage.getItem('koaline:current-community') || '')) { setCurrentCommunityId(''); setCurrentChannelId(''); }
-        setDms((prev) => prev.filter((item) => !['user-leo','user-clara','user-thiago','user-beatriz'].includes(item.user.id)));
-      }
-    } catch { /* Dados locais inválidos são preservados para não apagar conteúdo não identificado. */ }
-    localStorage.setItem('koaline:migrated_clean', '1');
-  }, []);
 
   // Text channel messages are loaded from Supabase and kept current through Realtime.
   useEffect(() => {
@@ -426,19 +428,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLoggedIn(Boolean(supabase));
   };
 
-  const createCommunity = ({ name, icon = '', visibility }: { name: string; icon?: string; visibility: 'public' | 'private' }) => {
-    if (!currentUser.id || !name.trim()) return null;
-    const id = crypto.randomUUID(); const createdAt = new Date().toISOString(); const category = 'Geral';
-    const generalId = crypto.randomUUID(); const voiceId = crypto.randomUUID();
-    const community: Community = { id, name: name.trim(), icon: icon || '◇', tagline: '', description: '', visibility, ownerId: currentUser.id, creatorId: currentUser.id, createdAt, membersCount: 1, categories: [{ id: `${id}:geral`, communityId: id, name: category }], channels: [
-      { id: generalId, communityId: id, name: 'geral', type: 'text', categoryId: `${id}:geral` },
-      { id: voiceId, communityId: id, name: 'Sala de voz', type: 'voice', categoryId: `${id}:geral`, connectedUsers: [] },
-    ] };
-    const member = { id: crypto.randomUUID(), communityId: id, userId: currentUser.id, role: 'owner' as const, joinedAt: createdAt };
-    setCommunities((prev) => [...prev, community]); setMembers((prev) => [...prev, member]);
-    setFlatChannels((prev) => [...prev, { id: generalId, communityId: id, name: 'geral', type: 'text', category, position: 0, isPrivate: false, isArchived: false, createdAt }, { id: voiceId, communityId: id, name: 'Sala de voz', type: 'voice', category, position: 1, isPrivate: false, isArchived: false, createdAt }]);
-    setLogs((prev) => [{ id: crypto.randomUUID(), communityId: id, userId: currentUser.id, action: 'community_created', targetId: id, metadata: {}, createdAt }, ...prev]);
-    setCurrentCommunityId(id); setCurrentChannelId(generalId); setIsDirectMessages(false); localStorage.setItem('koaline:current-community', id); localStorage.setItem('koaline:current-channel', generalId);
+  const createCommunity = async ({ name, icon = '', visibility }: { name: string; icon?: string; visibility: 'public' | 'private' }): Promise<Community | null> => {
+    const cleanName = name.trim();
+    const client = supabase;
+    if (!client || !currentUser.id || !cleanName) {
+      addToast('Não foi possível criar a comunidade', 'Entre na sua conta e informe um nome para continuar.', 'error');
+      return null;
+    }
+
+    const slugBase = cleanName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'comunidade';
+    const slug = `${slugBase}-${crypto.randomUUID().slice(0, 8)}`;
+    const { data, error } = await client.rpc('create_orbit_community', {
+      p_name: cleanName,
+      p_slug: slug,
+      p_description: '',
+      p_banner_url: icon || null,
+    });
+
+    if (error) {
+      addToast('Não foi possível criar a comunidade', error.message, 'error');
+      return null;
+    }
+
+    const row = (Array.isArray(data) ? data[0] : data) as SupabaseCommunityRow | null;
+    if (!row?.id) {
+      addToast('Não foi possível criar a comunidade', 'O Supabase não retornou a comunidade criada.', 'error');
+      return null;
+    }
+
+    const categoryId = `${row.id}:geral`;
+    const defaultChannelResults = await Promise.all([
+      { name: 'geral', type: 'text' as const },
+      { name: 'Sala de voz', type: 'voice' as const },
+    ].map(({ name: channelName, type }) => client
+      .from('channels')
+      .insert({ community_id: row.id, name: channelName, type })
+      .select('*')
+      .single()));
+
+    const channelRows = defaultChannelResults.flatMap((result) => result.error || !result.data ? [] : [result.data as SupabaseChannelRow]);
+    const channels = channelRows.map((channel) => toCommunityChannel(channel, categoryId, row.created_by));
+    if (defaultChannelResults.some((result) => result.error)) {
+      const channelError = defaultChannelResults.find((result) => result.error)?.error;
+      addToast('Comunidade criada com aviso', `Não foi possível criar todos os canais iniciais: ${channelError?.message || 'erro desconhecido'}.`, 'warning');
+    }
+
+    const community: Community = {
+      id: row.id,
+      name: row.name,
+      tagline: row.description || '',
+      description: row.description || '',
+      icon: row.banner_url || '◇',
+      banner: row.banner_url || undefined,
+      visibility,
+      ownerId: row.created_by,
+      creatorId: row.created_by,
+      createdAt: row.created_at,
+      membersCount: 1,
+      categories: [{ id: categoryId, communityId: row.id, name: 'Geral' }],
+      channels,
+    };
+    setCommunities((previous) => previous.some((item) => item.id === community.id) ? previous : [...previous, community]);
+    setMembers((previous) => [...previous, { id: `${row.id}:${currentUser.id}`, communityId: row.id, userId: currentUser.id, role: 'admin', joinedAt: row.created_at }]);
+    setLogs((previous) => [{ id: crypto.randomUUID(), communityId: row.id, userId: currentUser.id, action: 'community_created', targetId: row.id, metadata: {}, createdAt: row.created_at }, ...previous]);
+    setCurrentCommunityId(row.id);
+    setCurrentChannelId(channels.find((channel) => channel.type === 'text')?.id || '');
+    setIsDirectMessages(false);
+    addToast('Comunidade criada', `${cleanName} está pronta.`, 'success');
     return community;
   };
 
@@ -478,6 +534,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       toastTimerRef.current = window.setTimeout(() => removeToast(id), duration);
     }
   };
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !currentUser.id) {
+      setCommunities([]);
+      setMembers([]);
+      return;
+    }
+
+    let active = true;
+    const loadCommunitiesAndChannels = async () => {
+      try {
+        const [{ communities: orbitCommunities, joinedIds }, membershipResult] = await Promise.all([
+          listOrbitCommunities(currentUser.id),
+          client.from('community_members').select('community_id,user_id,role,joined_at').eq('user_id', currentUser.id),
+        ]);
+        if (membershipResult.error) throw membershipResult.error;
+
+        const joinedCommunities = orbitCommunities.filter((community) => joinedIds.includes(community.id));
+        const mappedCommunities = await Promise.all(joinedCommunities.map(async (community): Promise<Community> => {
+          const categoryId = `${community.id}:geral`;
+          const { data, error } = await client.from('channels').select('*').eq('community_id', community.id);
+          if (error) throw error;
+          const channels = ((data || []) as SupabaseChannelRow[]).map((row) => toCommunityChannel(row, categoryId, community.created_by));
+          return {
+            id: community.id,
+            name: community.name,
+            tagline: community.description || '',
+            description: community.description || '',
+            icon: community.banner_url || '◇',
+            banner: community.banner_url || undefined,
+            visibility: 'public',
+            ownerId: community.created_by,
+            creatorId: community.created_by,
+            createdAt: community.created_at,
+            membersCount: 1,
+            categories: [{ id: categoryId, communityId: community.id, name: 'Geral' }],
+            channels,
+          };
+        }));
+        if (!active) return;
+
+        setMembers(((membershipResult.data || []) as Array<{ community_id: string; user_id: string; role: string; joined_at: string }>).map((row) => ({
+          id: `${row.community_id}:${row.user_id}`,
+          communityId: row.community_id,
+          userId: row.user_id,
+          role: row.role === 'admin' ? 'admin' : 'member',
+          joinedAt: row.joined_at,
+        })));
+        setCommunities(mappedCommunities);
+
+        const selectedCommunity = mappedCommunities.find((community) => community.id === currentCommunityId) || mappedCommunities[0];
+        const selectedChannel = selectedCommunity?.channels.find((channel) => channel.id === currentChannelId)
+          || getDefaultTextChannel(selectedCommunity || undefined);
+        setCurrentCommunityId(selectedCommunity?.id || '');
+        setCurrentChannelId(selectedChannel?.id || '');
+      } catch (error) {
+        if (active) addToast('Não foi possível carregar as comunidades', error instanceof Error ? error.message : 'Tente novamente.', 'error');
+      }
+    };
+
+    void loadCommunitiesAndChannels();
+    return () => { active = false; };
+  }, [isLoggedIn, currentUser.id]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !currentCommunityId) return;
+    const community = communities.find((item) => item.id === currentCommunityId);
+    if (!community) return;
+
+    const channel = client
+      .channel(`channels:${currentCommunityId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'channels',
+        filter: `community_id=eq.${currentCommunityId}`,
+      }, (payload) => {
+        const row = payload.new as SupabaseChannelRow;
+        if (!row?.id) return;
+        const newChannel = toCommunityChannel(row, community.categories[0]?.id || `${community.id}:geral`, community.ownerId);
+        setCommunities((previous) => previous.map((item) => item.id !== community.id || item.channels.some((existing) => existing.id === newChannel.id)
+          ? item
+          : { ...item, channels: [...item.channels, newChannel] }));
+      })
+      .subscribe();
+
+    return () => { void client.removeChannel(channel); };
+  }, [communities, currentCommunityId, isLoggedIn]);
 
   const removeToast = (id: string) => {
     clearToastTimer();
@@ -617,27 +763,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsColumn1Collapsed(false);
   };
 
-  const createChannel = (name: string, type: 'text' | 'voice', categoryId: string) => {
+  const createChannel = async (name: string, type: 'text' | 'voice', categoryId: string): Promise<boolean> => {
     const cleanName = name.trim().toLowerCase().replace(/\s+/g, '-');
     const activeCommunity = communities.find((community) => community.id === currentCommunityId);
     if (!/^[a-z0-9_-]+$/.test(cleanName)) {
       addToast('Nome inválido', 'Use letras, números, hífen ou sublinhado.', 'warning');
-      return;
+      return false;
     }
     if (activeCommunity?.channels.some((channel) => channel.name === cleanName)) {
       addToast('Nome em uso', 'Já existe um canal com esse nome nesta comunidade.', 'warning');
-      return;
+      return false;
     }
+    const client = supabase;
+    if (!client || !activeCommunity || !currentUser.id) {
+      addToast('Canal não criado', 'A sessão do Supabase ou a comunidade não está disponível.', 'error');
+      return false;
+    }
+
+    const { data, error } = await client
+      .from('channels')
+      .insert({ community_id: currentCommunityId, name: cleanName, type })
+      .select('*')
+      .single();
+    if (error || !data) {
+      addToast('Canal não criado', error?.message || 'O Supabase não retornou o canal criado.', 'error');
+      return false;
+    }
+
     const newChan: Channel = {
-      id: crypto.randomUUID(),
-      communityId: currentCommunityId,
-      ownerId: currentUser.id,
-      name: cleanName,
-      type,
-      categoryId,
+      ...toCommunityChannel(data as SupabaseChannelRow, categoryId, currentUser.id),
       topic: `Canal ${type === 'voice' ? 'de voz' : 'de texto'} criado recentemente`,
       unreadCount: 0,
-      connectedUsers: type === 'voice' ? [] : undefined,
     };
 
     setCommunities((prev) =>
@@ -645,17 +801,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         c.id === currentCommunityId ? { ...c, channels: [...c.channels, newChan] } : c
       )
     );
-    setFlatChannels((prev) => [...prev, { id: newChan.id, communityId: currentCommunityId, name: cleanName, type, category: activeCommunity?.categories.find((item) => item.id === categoryId)?.name || 'Geral', position: activeCommunity?.channels.length || 0, isPrivate: false, isArchived: false, createdAt: new Date().toISOString() }]);
     setLogs((prev) => [{ id: crypto.randomUUID(), communityId: currentCommunityId, userId: currentUser.id, action: 'channel_created', targetId: newChan.id, metadata: { name: cleanName, type }, createdAt: new Date().toISOString() }, ...prev]);
-    try {
-      const key = `koaline:admin:${currentCommunityId}`;
-      const saved = JSON.parse(localStorage.getItem(key) || '{}');
-      const entry = { id: `audit-${Date.now()}`, actor: currentUser.name, action: 'Canal criado', target: cleanName, time: Date.now(), type: 'channel' };
-      localStorage.setItem(key, JSON.stringify({ ...saved, audit: [entry, ...(saved.audit || [])] }));
-    } catch { /* A criação continua disponível mesmo se o armazenamento local estiver indisponível. */ }
     setIsCreateChannelModalOpen(false);
     setCurrentChannelId(newChan.id);
     addToast('Canal Criado', `#${cleanName} foi criado com sucesso!`, 'success');
+    return true;
   };
 
   const updateCommunity = (id: string, updates: Partial<Community>) => {
@@ -667,12 +817,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...community,
       channels: community.channels.map((channel) => channel.id === id ? { ...channel, ...updates } : channel),
     })));
-    setFlatChannels((prev) => prev.map((channel) => {
-      if (channel.id !== id) return channel;
-      const community = communities.find((item) => item.id === channel.communityId);
-      const category = updates.categoryId ? community?.categories.find((item) => item.id === updates.categoryId)?.name : channel.category;
-      return { ...channel, ...(updates.name ? { name: updates.name } : {}), ...(category ? { category } : {}), ...(updates.isPrivate !== undefined ? { isPrivate: updates.isPrivate } : {}), ...(updates.isArchived !== undefined ? { isArchived: updates.isArchived } : {}) };
-    }));
   };
 
   const deleteChannel = (id: string): boolean => {
@@ -685,7 +829,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...item,
       channels: item.channels.filter((itemChannel) => itemChannel.id !== id),
     })));
-    setFlatChannels((prev) => prev.filter((item) => item.id !== id));
     setMessages((prev) => { const next = { ...prev }; delete next[id]; return next; });
     setLastReadAtByChannel((prev) => { const next = { ...prev }; delete next[id]; return next; });
     try {
@@ -711,7 +854,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const remaining = communities.filter((community) => community.id !== id);
     const removedChannelIds = new Set(communities.find((community) => community.id === id)?.channels.map((channel) => channel.id) || []);
     setCommunities(remaining);
-    setFlatChannels((prev) => prev.filter((channel) => channel.communityId !== id));
     setMembers((prev) => prev.filter((member) => member.communityId !== id));
     setInvites((prev) => (prev as Array<{ communityId?: string }>).filter((item) => item.communityId !== id));
     setLogs((prev) => (prev as Array<{ communityId?: string }>).filter((item) => item.communityId !== id));
@@ -1058,6 +1200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createCommunity,
         joinCommunityByInvite,
         communities,
+        members,
         currentCommunityId,
         setCurrentCommunityId,
         currentChannelId,
