@@ -1782,7 +1782,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Se for DM (Direct Messages)
     if (isDirectMessages) {
       const conversationId = activeDmId;
-      if (dms.find((dm) => dm.id === conversationId)?.isSystem) {
+      // Only block if conversation exists AND is explicitly marked as system
+      const conversation = dms.find((dm) => dm.id === conversationId);
+      if (conversation && conversation.isSystem === true) {
         notify.warning('Você não pode responder a este chat de notificações.');
         return false;
       }

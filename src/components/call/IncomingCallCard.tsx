@@ -56,7 +56,7 @@ const playRingtone = (): { stop: () => void } | null => {
 };
 
 export const IncomingCallCard: React.FC = () => {
-  const { incomingCall, outgoingCall, acceptIncomingCall, rejectIncomingCall, addToast } = useApp();
+  const { incomingCall, outgoingCall, acceptIncomingCall, rejectIncomingCall, leaveCall, addToast } = useApp();
   const ringtoneRef = useRef<{ stop: () => void } | null>(null);
 
   // Play ringtone when incoming call appears
@@ -181,8 +181,9 @@ export const IncomingCallCard: React.FC = () => {
 
             <button
               onClick={() => {
-                // Cancel the outgoing call
-                // The leaveCall will handle cleanup
+                if (outgoingCall) {
+                  leaveCall(outgoingCall.callId);
+                }
               }}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600/20 text-rose-400 hover:bg-rose-600/30 transition-colors"
               title="Cancelar"

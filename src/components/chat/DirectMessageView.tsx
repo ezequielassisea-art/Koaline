@@ -284,8 +284,8 @@ export const DirectMessageView: React.FC = () => {
               type="dms"
               title={conversation?.user?.name ? `Conversa com @${conversation.user.name}` : 'Início da conversa'}
               description="Envie uma mensagem para começar este bate-papo privado."
-              onAction={conversation?.isSystem ? undefined : () => sendMessage('Olá! 👋')}
-              actionText={conversation?.isSystem ? undefined : 'Dizer Olá'}
+              onAction={conversation && conversation.isSystem === true ? undefined : () => sendMessage('Olá! 👋')}
+              actionText={conversation && conversation.isSystem === true ? undefined : 'Dizer Olá'}
             />
           </div>
         ) : (
@@ -366,7 +366,7 @@ export const DirectMessageView: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {conversation?.isSystem ? <div className="border-t border-slate-800 px-4 py-3 text-center text-xs text-slate-400" role="note">Você não pode responder a este chat de notificações.</div> : <MessageInput replyTarget={replyTarget} onClearReply={() => setReplyTarget(null)} />}
+      {conversation && conversation.isSystem === true ? <div className="border-t border-slate-800 px-4 py-3 text-center text-xs text-slate-400" role="note">Você não pode responder a este chat de notificações.</div> : <MessageInput replyTarget={replyTarget} onClearReply={() => setReplyTarget(null)} />}
     </div>
   );
 };
