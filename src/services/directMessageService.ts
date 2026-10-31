@@ -50,3 +50,30 @@ export async function getOrCreateConversation(targetUserId: string): Promise<str
 
   return conversation.id;
 }
+
+export async function sendCommunityInviteMessage(input: {
+  conversationId: string;
+  communityId: string;
+  communityName: string;
+  customMessage: string;
+  notificationId: string;
+}): Promise<void> {
+  const client = requireSupabase();
+  const { data: { user }, error: authError } = await client.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('Faça login para enviar um convite.');
+
+  const content = JSON.stringify({
+    type: 'invite_card',
+    communityId: input.communityId,
+    communityName: input.communityName,
+    message: input.customMessage,
+    notificationId: input.notificationId,
+  });
+  const { error } = await client.from('direct_messages').insert({
+    conversation_id: input.conversationId,
+    author_id: user.id,
+    content,
+  });
+  if (error) throw error;
+}

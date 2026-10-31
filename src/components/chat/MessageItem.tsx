@@ -27,6 +27,22 @@ interface MessageItemProps {
 
 const COMMON_EMOJIS = ['🔥', '⚡', '✨', '🚀', '👍', '❤️', '👀'];
 const YOUTUBE_URL_REGEX = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
+const renderLinkedText = (value: string) => {
+  const parts: React.ReactNode[] = [];
+  const matcher = /https?:\/\/[^\s<>"']+/gi;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = matcher.exec(value))) {
+    let url = match[0];
+    let punctuation = '';
+    while (/[.,!?;:)\]]$/.test(url)) { punctuation = url.slice(-1) + punctuation; url = url.slice(0, -1); }
+    if (match.index > lastIndex) parts.push(value.slice(lastIndex, match.index));
+    parts.push(<a key={`${match.index}-${url}`} href={url} target="_blank" rel="noopener noreferrer" className="text-[var(--primary)] hover:underline">{url}</a>, punctuation);
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < value.length) parts.push(value.slice(lastIndex));
+  return parts;
+};
 
 const getImageSource = (content: string): string | null => {
   const value = content.trim();
@@ -99,6 +115,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
     togglePinMessage,
     communities,
     currentCommunityId,
+    acceptCommunityInvite,
   } = useApp();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -122,6 +139,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
         avatar: typeof message.sender?.avatar === 'string' ? message.sender.avatar : '',
       };
   const content = typeof message.content === 'string' ? message.content : '';
+  let inviteCard: { type: 'invite_card'; communityId: string; communityName?: string; message?: string; notificationId?: string } | null = null;
+  if (content.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed?.type === 'invite_card' && typeof parsed.communityId === 'string') inviteCard = parsed;
+    } catch { /* Mensagem comum em texto. */ }
+  }
   const imageSource = getImageSource(content);
   const audioSource = getMediaSource(content, 'audio');
   const videoSource = getMediaSource(content, 'video');
@@ -237,7 +261,14 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                 <span className="truncate"><strong>{message.replyTo.senderName}</strong>: {message.replyTo.content}</span>
               </div>
             )}
-            {imageSource ? (
+            {inviteCard ? (
+              <div className="my-2 max-w-lg rounded-2xl border border-[var(--primary)]/60 bg-[var(--surface)] p-5 shadow-lg">
+                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--primary)]">Convite para comunidade</div>
+                <h3 className="text-lg font-bold text-white">{inviteCard.communityName || communities.find((item) => item.id === inviteCard?.communityId)?.name || 'Comunidade Koaline'}</h3>
+                {inviteCard.message && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{inviteCard.message}</p>}
+                <button type="button" onClick={() => void acceptCommunityInvite(inviteCard!.communityId, inviteCard!.notificationId)} className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-110">Entrar na Comunidade</button>
+              </div>
+            ) : imageSource ? (
               <a href={imageSource} target="_blank" rel="noreferrer" aria-label="Abrir imagem em nova aba" className="inline-block">
                 <img src={imageSource} alt="Imagem enviada" className="max-w-[300px] max-h-[300px] rounded-xl object-cover cursor-pointer" />
               </a>
@@ -259,7 +290,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                 </button>
               </>
             ) : content.trim() ? (
-              <p className={`message-content-text whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{content}</p>
+              <p className={`message-content-text whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{renderLinkedText(content)}</p>
             ) : null}
             <time className="koaline-message-time" dateTime={message.timestamp} title={formatRelativeTime(message.timestamp)}>{timeLabel || ''}</time>
             {!imageSource && !audioSource && !videoSource && content.length > 400 && <button type="button" className="message-expand-button" onClick={() => setIsExpanded((expanded) => !expanded)}>{isExpanded ? 'Ver menos' : 'Ver mais'}</button>}

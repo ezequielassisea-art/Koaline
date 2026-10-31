@@ -124,6 +124,7 @@ interface AppContextType {
   toggleArchiveDm: (id: string) => void;
   isDmLoading: boolean;
   openDirectMessage: (user: User) => Promise<boolean>;
+  acceptCommunityInvite: (communityId: string, notificationId?: string) => Promise<boolean>;
   createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => Promise<boolean>;
   updateCommunity: (id: string, updates: Partial<Community>) => void;
   updateChannel: (id: string, updates: Partial<Channel>) => void;
@@ -1300,6 +1301,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const acceptCommunityInvite = async (communityId: string, notificationId?: string): Promise<boolean> => {
+    const client = supabase;
+    if (!client || !currentUser.id) {
+      addToast('Não foi possível entrar', 'Sua sessão não está disponível.', 'error');
+      return false;
+    }
+    const { error: joinError } = await client.rpc('join_orbit_community', { p_community_id: communityId });
+    if (joinError) {
+      addToast('Não foi possível entrar na comunidade', joinError.message, 'error');
+      return false;
+    }
+    if (notificationId) {
+      await client.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', notificationId).eq('user_id', currentUser.id);
+    }
+
+    const [{ data: row, error: communityError }, { data: channelRows, error: channelsError }] = await Promise.all([
+      client.from('communities').select('id,name,description,banner_url,created_by,created_at').eq('id', communityId).single(),
+      client.from('channels').select('*').eq('community_id', communityId),
+    ]);
+    if (communityError || !row || channelsError) {
+      addToast('Você entrou na comunidade', 'Atualize a página para carregar seus canais.', 'success');
+      return true;
+    }
+    const categoryId = `${row.id}:geral`;
+    const joined: Community = {
+      id: row.id,
+      name: row.name,
+      tagline: row.description || '',
+      description: row.description || '',
+      icon: row.banner_url || '◇',
+      banner: row.banner_url || undefined,
+      visibility: 'public',
+      ownerId: row.created_by,
+      creatorId: row.created_by,
+      createdAt: row.created_at,
+      membersCount: 1,
+      categories: [{ id: categoryId, communityId: row.id, name: 'Geral' }],
+      channels: ((channelRows || []) as SupabaseChannelRow[]).map((channel) => toCommunityChannel(channel, categoryId, row.created_by)),
+    };
+    setCommunities((previous) => previous.some((community) => community.id === joined.id)
+      ? previous.map((community) => community.id === joined.id ? { ...community, ...joined } : community)
+      : [joined, ...previous]);
+    setMembers((previous) => previous.some((member) => member.communityId === communityId && member.userId === currentUser.id)
+      ? previous
+      : [...previous, { id: `${communityId}:${currentUser.id}`, communityId, userId: currentUser.id, role: 'member', joinedAt: new Date().toISOString() }]);
+    setCurrentCommunityId(communityId);
+    setCurrentChannelId(getDefaultTextChannel(joined)?.id || '');
+    setIsDirectMessages(false);
+    setActiveDmId(null);
+    setIsColumn1Collapsed(false);
+    addToast('Bem-vindo à comunidade', `Você entrou em ${joined.name}.`, 'success');
+    return true;
+  };
+
   const createChannel = async (name: string, type: 'text' | 'voice', categoryId: string): Promise<boolean> => {
     const cleanName = name.trim().toLowerCase().replace(/\s+/g, '-');
     const activeCommunity = communities.find((community) => community.id === currentCommunityId);
@@ -1871,6 +1926,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleArchiveDm,
         isDmLoading,
         openDirectMessage,
+        acceptCommunityInvite,
         createChannel,
         updateCommunity,
         updateChannel,
