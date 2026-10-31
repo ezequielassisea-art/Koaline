@@ -88,6 +88,9 @@ const getDefaultTextChannel = (community?: Community) => {
     || null;
 };
 
+const getDirectCallRoomId = (firstUserId: string, secondUserId: string) =>
+  `dm-call-${[firstUserId, secondUserId].sort().join('-')}`;
+
 type PendingCallRequest =
   | { type: 'channel'; channel: Channel; mode: 'voice' | 'video'; isDeafened: boolean }
   | { type: 'direct'; targetUser: User; mode: 'voice' | 'video' };
@@ -1205,7 +1208,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const connectToDirectCall = (targetUser: User, mode: 'voice' | 'video') => {
     const nextCall: ActiveCall = {
-      channelId: `dm-call-${targetUser.id}`,
+      channelId: getDirectCallRoomId(currentUser.id, targetUser.id),
       channelName: targetUser.name,
       communityName: 'Chamada Direta',
       type: mode,
@@ -1237,7 +1240,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const startDirectCall = (targetUser: User, mode: 'voice' | 'video') => {
-    const targetCallId = `dm-call-${targetUser.id}`;
+    const targetCallId = getDirectCallRoomId(currentUser.id, targetUser.id);
     if (activeCallRef.current && activeCallRef.current.channelId !== targetCallId) {
       setPendingCallRequest({ type: 'direct', targetUser, mode });
       return;

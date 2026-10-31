@@ -8,7 +8,15 @@ import './OrbitPage.css';
 const PAGE_SIZE = 12;
 type ModalKind = 'community' | 'post' | null;
 const slugify = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'comunidade';
-const errorText = (error: unknown) => error instanceof Error ? error.message : 'Ocorreu uma falha inesperada. Tente novamente.';
+const errorText = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const result = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const message = [result.message, result.details, result.hint].filter((value): value is string => typeof value === 'string' && value.trim().length > 0).join(' — ');
+    if (message) return result.code ? `${message} (${String(result.code)})` : message;
+  }
+  return typeof error === 'string' && error ? error : 'Ocorreu uma falha inesperada. Tente novamente.';
+};
 
 function useObjectUrl(file: File | null) {
   const [url, setUrl] = useState('');

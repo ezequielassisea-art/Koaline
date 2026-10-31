@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  AtSign, Check, ChevronDown, Copy, MessageSquare, ShieldAlert,
-  UserRoundPlus, UserRoundX, VolumeX, X,
+  AtSign, Check, ChevronDown, Copy, MessageSquare, Phone, ShieldAlert,
+  UserRoundPlus, UserRoundX, Video, VolumeX, X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getFriendshipState, manageCommunityMember, toggleFriendship, type FriendshipState } from '../../services/userContextService';
@@ -11,9 +11,11 @@ const statusLabels = { online: 'Online', idle: 'Ausente', dnd: 'Não perturbe', 
 export const UserContextMenu: React.FC = () => {
   const {
     activeUserMenu, closeUserMenu, openUserProfile, openDirectMessage,
-    currentUser, currentCommunityId, communities, members, isDirectMessages, activeCall, addToast,
+    currentUser, currentCommunityId, communities, members, isDirectMessages, activeCall, addToast, startDirectCall,
   } = useApp();
   const menuRef = useRef<HTMLDivElement>(null);
+  const addToastRef = useRef(addToast);
+  addToastRef.current = addToast;
   const [friendship, setFriendship] = useState<FriendshipState>('none');
   const [friendshipLoading, setFriendshipLoading] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
@@ -40,7 +42,11 @@ export const UserContextMenu: React.FC = () => {
     if (!activeUserMenu || !activeUserMenu.user.id || activeUserMenu.user.id === currentUser.id) return;
     void getFriendshipState(activeUserMenu.user.id)
       .then((state) => { if (active) setFriendship(state); })
-      .catch(() => { if (active) setFriendship('none'); });
+      .catch((error: unknown) => {
+        if (!active) return;
+        setFriendship('none');
+        addToastRef.current('Não foi possível verificar a amizade', explainUserActionError(error), 'warning');
+      });
     return () => { active = false; };
   }, [activeUserMenu?.user.id, currentUser.id]);
 
@@ -68,7 +74,7 @@ export const UserContextMenu: React.FC = () => {
       const label = next === 'accepted' ? 'Pedido aceito' : next === 'pending_sent' ? 'Pedido enviado' : 'Amizade removida';
       addToast(label, next === 'pending_sent' ? `Pedido de amizade enviado para ${user.name}.` : next === 'accepted' ? `${user.name} agora está na sua lista de amigos.` : `A conexão com ${user.name} foi removida.`, 'success');
     } catch (error) {
-      addToast('Não foi possível atualizar a amizade', error instanceof Error ? error.message : 'Tente novamente.', 'warning');
+      addToast('Não foi possível atualizar a amizade', explainUserActionError(error), 'warning');
     } finally { setFriendshipLoading(false); }
   };
 
@@ -134,6 +140,10 @@ export const UserContextMenu: React.FC = () => {
 
       <div className="space-y-0.5 border-t border-[var(--border)] pt-2">
         <MenuAction icon={<MessageSquare size={16} />} label="Mensagem Direta" onClick={() => { closeUserMenu(); openDirectMessage(user); }} />
+        {!isSelf && <>
+          <MenuAction icon={<Phone size={16} />} label="Ligar por voz" onClick={() => { closeUserMenu(); startDirectCall(user, 'voice'); }} />
+          <MenuAction icon={<Video size={16} />} label="Ligar por vídeo" onClick={() => { closeUserMenu(); startDirectCall(user, 'video'); }} />
+        </>}
         {!isSelf && <MenuAction icon={<UserRoundPlus size={16} />} label={friendshipLoading ? 'Atualizando…' : friendshipLabel} disabled={friendshipLoading} onClick={() => void handleFriendAction()} />}
         {!isSelf && friendship === 'pending_received' && <span className="block px-2 pb-1 text-[10px] text-[var(--text-muted)]">Pedido de amizade recebido</span>}
         <MenuAction icon={<AtSign size={16} />} label="Mencionar" onClick={mention} />
@@ -175,3 +185,16 @@ const MenuAction: React.FC<{ icon: React.ReactNode; label: string; onClick: () =
 const RoleAction: React.FC<{ label: string; onClick: () => void; disabled?: boolean }> = ({ label, onClick, disabled }) => (
   <button type="button" disabled={disabled} onClick={onClick} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-[var(--bg-hover)] disabled:opacity-50"><Check size={13} className="opacity-40" />{label}</button>
 );
+
+function explainUserActionError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const result = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const message = [result.message, result.details, result.hint].filter((value): value is string => typeof value === 'string' && value.trim().length > 0).join(' — ');
+    if (message) {
+      if (result.code === 'PGRST202' || result.code === '42883' || result.code === 'PGRST205' || result.code === '42P01') return `${message}. Confirme se a migration de amizades foi aplicada no Supabase.`;
+      return result.code ? `${message} (${String(result.code)})` : message;
+    }
+  }
+  return typeof error === 'string' && error ? error : 'Ocorreu um erro inesperado. Tente novamente.';
+}
