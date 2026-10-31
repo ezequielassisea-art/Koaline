@@ -1,9 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL?.trim();
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const isSupabaseConfigured = Boolean(supabaseUrl?.trim() && supabaseAnonKey?.trim());
 
-export const supabase = url && anonKey ? createClient(url, anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }) : null;
+if (!isSupabaseConfigured) {
+  console.error('ERRO CRÍTICO: Variáveis do Supabase não encontradas no Vite. Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no ambiente de build.');
+}
+
+export const supabase = isSupabaseConfigured
+  ? createClient(supabaseUrl!.trim(), supabaseAnonKey!.trim(), { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
+  : null;
 export const requireSupabase = () => {
   if (!supabase) throw new Error('Autenticação não configurada. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.');
   return supabase;

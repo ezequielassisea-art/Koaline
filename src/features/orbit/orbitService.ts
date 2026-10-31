@@ -1,23 +1,16 @@
-import { type SupabaseClient } from '@supabase/supabase-js';
 import type { User } from '../../types';
+import { requireSupabase, supabase } from '../../services/supabaseClient';
 
 export interface OrbitCommunity { id: string; name: string; slug: string; description: string; banner_url: string | null; created_by: string; created_at: string; role?: 'admin' | 'member'; }
 export interface OrbitPost { id: string; community_id: string; author_id: string; content: string; media_url: string | null; media_type: 'image' | 'video' | null; created_at: string; community: OrbitCommunity; author: { display_name: string; handle: string; avatar_url: string | null }; like_count: number; liked_by_me: boolean; }
 const env = import.meta.env;
-const supabaseUrl = env.VITE_SUPABASE_URL?.trim();
-const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY?.trim();
 const cloudName = env.VITE_CLOUDINARY_CLOUD_NAME?.trim();
 const uploadPreset = env.VITE_CLOUDINARY_UPLOAD_PRESET?.trim();
-let clientPromise: Promise<SupabaseClient> | null = null;
-export const isOrbitBackendConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const isOrbitBackendConfigured = Boolean(supabase);
 export const isOrbitMediaConfigured = Boolean(cloudName && uploadPreset);
 
-export async function getOrbitClient(): Promise<SupabaseClient> {
-  if (!supabaseUrl || !supabaseAnonKey) throw new Error('Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY para habilitar o Orbit.');
-  if (!clientPromise) {
-    clientPromise = import('@supabase/supabase-js').then(({ createClient }) => createClient(supabaseUrl, supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } }));
-  }
-  return clientPromise;
+export async function getOrbitClient() {
+  return requireSupabase();
 }
 
 export async function ensureOrbitIdentity(user: User): Promise<string> {
