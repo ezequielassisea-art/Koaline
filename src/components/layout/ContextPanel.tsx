@@ -10,7 +10,8 @@ import {
   Palette,
   Award,
   Users,
-  Plus
+  Plus,
+  Loader2,
 } from 'lucide-react';
 
 export const ContextPanel: React.FC = () => {
@@ -23,6 +24,7 @@ export const ContextPanel: React.FC = () => {
     dms,
     addToast,
     openDirectMessage,
+    isDmLoading,
     openUserProfile,
     setIsProfileEditorOpen,
     setIsThemeCustomizerOpen,
@@ -201,14 +203,14 @@ export const ContextPanel: React.FC = () => {
           </div>
         ) : (
           <button
-            onClick={() => {
-              void openDirectMessage(user);
-              closeContextPanel();
+            disabled={isDmLoading}
+            onClick={async () => {
+              if (await openDirectMessage(user)) closeContextPanel();
             }}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-nest-pill bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-lg shadow-indigo-600/30 mb-5 transition-all"
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-nest-pill bg-indigo-600 hover:bg-indigo-500 disabled:opacity-70 disabled:cursor-wait text-white font-medium text-xs shadow-lg shadow-indigo-600/30 mb-5 transition-all"
           >
-            <MessageSquare className="w-4 h-4" />
-            <span>Enviar Mensagem Direta</span>
+            {isDmLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
+            <span>{isDmLoading ? 'Carregando conversa…' : 'Enviar Mensagem Direta'}</span>
           </button>
         )}
 

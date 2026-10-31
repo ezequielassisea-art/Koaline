@@ -123,7 +123,7 @@ interface AppContextType {
   dms: DirectMessageConversation[];
   toggleArchiveDm: (id: string) => void;
   isDmLoading: boolean;
-  openDirectMessage: (user: User) => Promise<void>;
+  openDirectMessage: (user: User) => Promise<boolean>;
   createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => Promise<boolean>;
   updateCommunity: (id: string, updates: Partial<Community>) => void;
   updateChannel: (id: string, updates: Partial<Channel>) => void;
@@ -410,13 +410,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       if (!active) return;
       const loadedMessages = rows.map((row) => toChatMessage(row, currentUser, roleByUserId.get(row.author_id)));
-      setMessages((previous) => ({ ...previous, [currentChannelId]: loadedMessages }));
+      setMessages((previous) => {
+        const merged = new Map(loadedMessages.map((message) => [message.id, message]));
+        (previous[currentChannelId] || []).forEach((message) => merged.set(message.id, message));
+        return { ...previous, [currentChannelId]: Array.from(merged.values()) };
+      });
     };
 
     void loadMessages();
 
     const channel = client
-      .channel(`messages:${currentChannelId}`)
+      .channel(`chat_${currentChannelId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -1212,7 +1216,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveDmId(existing.id);
       setIsDirectMessages(true);
       setIsColumn1Collapsed(false);
-      return;
+      return true;
     }
 
     setIsDmLoading(true);
@@ -1235,9 +1239,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveDmId(conversationId);
       setIsDirectMessages(true);
       setIsColumn1Collapsed(false);
+      return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível abrir a conversa direta.';
       addToast('Conversa não aberta', message, 'error');
+      return false;
     } finally {
       setIsDmLoading(false);
     }
