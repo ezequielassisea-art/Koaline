@@ -12,11 +12,13 @@ import {
   Volume2,
   VolumeX,
   Maximize2,
-  Music
+  Music,
+  Play,
+  X,
 } from 'lucide-react';
 import { audioManager } from '../../services/AudioManager';
 import { EmptyState } from '../common/EmptyState';
-import { AudioTrack, LiveKitRoom, useIsSpeaking, useLocalParticipant, useParticipants, useRoomContext, useTracks, useConnectionState } from '@livekit/components-react';
+import { AudioTrack, LiveKitRoom, VideoTrack, useIsSpeaking, useLocalParticipant, useParticipants, useRoomContext, useTracks, useConnectionState } from '@livekit/components-react';
 import { ConnectionState, DisconnectReason, Participant, RoomEvent, TokenSource, Track } from 'livekit-client';
 import { SoundDraft } from './SoundEditorModal';
 import { getGroupSounds } from '../../services/GroupSoundStore';
@@ -48,11 +50,11 @@ type VoicePresenceMeta = {
 type VoicePresenceParticipant = VoicePresenceMeta & { user_id: string };
 type VoiceProfile = { username?: string | null; full_name?: string | null; avatar_url?: string | null };
 
-const LiveParticipantTile: React.FC<{ participant: Participant; user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; onOpen: () => void }> = ({ participant, user, isMuted, onOpen }) => {
+const LiveParticipantTile: React.FC<{ participant: Participant; user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; isSharingScreen?: boolean; onOpen: () => void }> = ({ participant, user, isMuted, isSharingScreen, onOpen }) => {
   const isSpeaking = useIsSpeaking(participant);
 
   return (
-    <div onClick={onOpen} className="group relative flex w-full max-w-xs cursor-pointer flex-col items-center rounded-nest border border-slate-800 bg-slate-900 p-5 shadow-xl transition-all hover:border-indigo-500/50">
+    <div onClick={onOpen} className={`group relative flex w-full max-w-xs cursor-pointer flex-col items-center rounded-nest border bg-slate-900 p-5 shadow-xl transition-all hover:border-indigo-500/50 ${isSharingScreen ? 'border-sky-400 ring-2 ring-sky-500/40' : 'border-slate-800'}`}>
       <div className="relative mb-3">
         <Avatar src={user.avatar} name={user.name} className={`h-24 w-24 rounded-full transition-all duration-200 ${isSpeaking ? 'scale-105 ring-4 ring-indigo-500 shadow-glow-speaking' : isMuted ? 'opacity-60 ring-2 ring-slate-800' : 'ring-2 ring-slate-700'}`} />
         {isMuted && <span className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-rose-400 shadow-md"><MicOff className="h-3.5 w-3.5" /></span>}
@@ -64,9 +66,9 @@ const LiveParticipantTile: React.FC<{ participant: Participant; user: { id: stri
   );
 };
 
-const StaticParticipantTile: React.FC<{ user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; onOpen: () => void }> = ({ user, isMuted, onOpen }) => {
+const StaticParticipantTile: React.FC<{ user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; isSharingScreen?: boolean; onOpen: () => void }> = ({ user, isMuted, isSharingScreen, onOpen }) => {
   return (
-    <div onClick={onOpen} className="group relative flex w-full max-w-xs cursor-pointer flex-col items-center rounded-nest border border-slate-800 bg-slate-900 p-5 shadow-xl transition-all hover:border-indigo-500/50">
+    <div onClick={onOpen} className={`group relative flex w-full max-w-xs cursor-pointer flex-col items-center rounded-nest border bg-slate-900 p-5 shadow-xl transition-all hover:border-indigo-500/50 ${isSharingScreen ? 'border-sky-400 ring-2 ring-sky-500/40' : 'border-slate-800'}`}>
       <div className="relative mb-3">
         <Avatar src={user.avatar} name={user.name} className={`h-24 w-24 rounded-full transition-all duration-200 ${isMuted ? 'opacity-60 ring-2 ring-slate-800' : 'ring-2 ring-slate-700'}`} />
         {isMuted && <span className="absolute bottom-1 right-1 flex h-7 w-7 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-rose-400 shadow-md"><MicOff className="h-3.5 w-3.5" /></span>}
@@ -77,11 +79,11 @@ const StaticParticipantTile: React.FC<{ user: { id: string; name: string; handle
   );
 };
 
-const ParticipantTile: React.FC<{ participant?: Participant | null; user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; onOpen: () => void }> = ({ participant, user, isMuted, onOpen }) => {
+const ParticipantTile: React.FC<{ participant?: Participant | null; user: { id: string; name: string; handle: string; avatar: string }; isMuted: boolean; isSharingScreen?: boolean; onOpen: () => void }> = ({ participant, user, isMuted, isSharingScreen, onOpen }) => {
   if (participant) {
-    return <LiveParticipantTile participant={participant} user={user} isMuted={isMuted} onOpen={onOpen} />;
+    return <LiveParticipantTile participant={participant} user={user} isMuted={isMuted} isSharingScreen={isSharingScreen} onOpen={onOpen} />;
   }
-  return <StaticParticipantTile user={user} isMuted={isMuted} onOpen={onOpen} />;
+  return <StaticParticipantTile user={user} isMuted={isMuted} isSharingScreen={isSharingScreen} onOpen={onOpen} />;
 };
 
 export const VoiceRoom: React.FC = () => {
@@ -212,6 +214,15 @@ const VoiceRoomConnected: React.FC = () => {
 
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
   const liveParticipants = useParticipants();
+  const screenShareTracks = useTracks([Track.Source.ScreenShare]).filter((trackRef) => !trackRef.participant.isLocal);
+  const [watchingScreenTrackSid, setWatchingScreenTrackSid] = useState<string | null>(null);
+  const activeRemoteScreen = screenShareTracks[0];
+  const activeRemoteScreenSid = activeRemoteScreen?.publication.trackSid || null;
+  useEffect(() => {
+    if (watchingScreenTrackSid && !screenShareTracks.some((trackRef) => trackRef.publication.trackSid === watchingScreenTrackSid)) {
+      setWatchingScreenTrackSid(null);
+    }
+  }, [watchingScreenTrackSid, screenShareTracks.map((trackRef) => trackRef.publication.trackSid).join('|')]);
   const participantSignature = liveParticipants.map((participant) => `${participant.identity}:${participant.name}`).sort().join('|');
   const room = useRoomContext();
   const connectionState = useConnectionState(room);
@@ -673,6 +684,25 @@ const VoiceRoomConnected: React.FC = () => {
         </button>
       )}
 
+      {activeRemoteScreen && (
+        <div className="absolute right-6 top-20 z-30 h-36 w-60 overflow-hidden rounded-xl border border-sky-400/70 bg-slate-950 shadow-2xl ring-1 ring-sky-400/20">
+          <VideoTrack trackRef={activeRemoteScreen} className="h-full w-full object-cover" />
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-950/55 backdrop-blur-[2px]">
+            <button onClick={() => setWatchingScreenTrackSid(activeRemoteScreenSid)} className="flex items-center gap-2 rounded-full border border-sky-300/40 bg-sky-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-sky-950/40 transition hover:scale-105 hover:bg-sky-500">
+              <Play className="h-4 w-4 fill-current" /> Assistir transmissão
+            </button>
+          </div>
+          <span className="absolute left-2 top-2 rounded bg-slate-950/80 px-2 py-1 text-[10px] text-white">{participants.find((p) => p.id === activeRemoteScreen.participant.identity)?.user.name || 'Membro Koaline'} transmitindo</span>
+        </div>
+      )}
+
+      {watchingScreenTrackSid && activeRemoteScreen && activeRemoteScreenSid === watchingScreenTrackSid && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm">
+          <button onClick={() => setWatchingScreenTrackSid(null)} aria-label="Fechar transmissão" className="absolute right-5 top-5 z-10 rounded-full border border-white/20 bg-slate-900/90 p-3 text-white hover:bg-slate-700"><X className="h-5 w-5" /></button>
+          <VideoTrack trackRef={activeRemoteScreen} className="max-h-full max-w-full rounded-xl object-contain" />
+        </div>
+      )}
+
       {/* Center Participants Grid */}
       {activeCall.isWatchingScreen && activeCall.screenStream ? (
         <div className="relative my-4 flex min-h-0 w-full max-w-5xl flex-1 flex-col items-center justify-center overflow-hidden rounded-2xl border border-sky-500/40 bg-black shadow-2xl">
@@ -699,6 +729,7 @@ const VoiceRoomConnected: React.FC = () => {
                   participant={p.participant}
                   user={p.user}
                   isMuted={p.isMuted || !!locallyMuted[p.user.id]}
+                  isSharingScreen={p.id === activeRemoteScreen?.participant.identity}
                   onOpen={() => setContextUser(p.user)}
                 />
               ))}
