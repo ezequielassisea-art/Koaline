@@ -88,6 +88,9 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [dangerInput, setDangerInput] = useState('');
   const [transferId, setTransferId] = useState('');
   const [confirmTransfer, setConfirmTransfer] = useState(false);
+  const [isDeleteCommunityOpen, setIsDeleteCommunityOpen] = useState(false);
+  const [deleteCommunityName, setDeleteCommunityName] = useState('');
+  const [isDeletingCommunity, setIsDeletingCommunity] = useState(false);
   const [editingChannel, setEditingChannel] = useState<string | null>(null);
   const [channelToDelete, setChannelToDelete] = useState<Channel | null>(null);
   const [channelDraft, setChannelDraft] = useState({ name: '', topic: '', categoryId: '', isPrivate: false });
@@ -309,13 +312,14 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
               }}>{confirmTransfer ? 'Confirmar transferência' : 'Transferir propriedade'}</button>
               {confirmTransfer && <button className={button} onClick={() => setConfirmTransfer(false)}>Cancelar</button>}
             </div>
-            <div className="admin-card admin-danger"><h3>Excluir comunidade</h3><p>{'Digite o nome da comunidade para confirmar a exclusão.'}</p>{input(dangerInput, setDangerInput, community.name)}<button className={`${button} danger`} disabled={dangerInput !== community.name} onClick={() => { if (window.confirm(`Excluir ${community.name} permanentemente?`) && removeCommunity(community.id)) { addToast('Comunidade excluída', 'A comunidade foi removida deste dispositivo.', 'success'); onClose(); } }}>Excluir comunidade</button></div>
+            {isAdmin && <div className="admin-card admin-danger"><h3>Excluir comunidade</h3><p>Essa ação remove a comunidade e seus dados permanentemente.</p><button className={`${button} danger`} onClick={() => { setDeleteCommunityName(''); setIsDeleteCommunityOpen(true); }}>Excluir Comunidade</button></div>}
             <div className="admin-card admin-danger"><h3>Resetar configurações</h3><p>Apaga cargos, convites, banimentos e auditoria locais desta comunidade.</p><button className={button} onClick={() => { if (window.confirm('Resetar as configurações locais da comunidade?')) { localStorage.removeItem(`koaline:admin:${community.id}`); persist({ ...blank, ownerId: currentUser.id }); addToast('Configurações resetadas', 'Os dados locais do painel foram reiniciados.', 'success'); } }}>Resetar configurações</button></div>
           </>}
         </main>
       </div>
     </section>
   </div>
+  {isDeleteCommunityOpen && <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-community-title"><div className="w-full max-w-md rounded-2xl border border-rose-700/60 bg-slate-950 p-6 text-white shadow-2xl"><h2 id="delete-community-title" className="text-lg font-bold text-rose-300">Excluir comunidade</h2><p className="mt-2 text-sm text-slate-300">Para confirmar, digite exatamente <strong>{community.name}</strong>. Canais e mensagens relacionados também serão excluídos.</p><input autoFocus value={deleteCommunityName} onChange={(event) => setDeleteCommunityName(event.target.value)} className="mt-4 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-rose-500" aria-label="Nome exato da comunidade"/><div className="mt-5 flex justify-end gap-2"><button className={button} disabled={isDeletingCommunity} onClick={() => setIsDeleteCommunityOpen(false)}>Cancelar</button><button className={`${button} danger`} disabled={isDeletingCommunity || deleteCommunityName !== community.name || !isAdmin} onClick={async () => { setIsDeletingCommunity(true); const removed = await removeCommunity(community.id); setIsDeletingCommunity(false); if (removed) { setIsDeleteCommunityOpen(false); onClose(); } }}>{isDeletingCommunity ? 'Excluindo…' : 'Excluir permanentemente'}</button></div></div></div>}
   <ConfirmModal isOpen={!!channelToDelete} title="Excluir canal?" description="Essa ação é irreversível. Todas as mensagens serão apagadas. Deseja continuar?" confirmLabel="Sim, excluir" cancelLabel="Cancelar" onConfirm={confirmDeleteChannel} onCancel={() => setChannelToDelete(null)} />
   </>;
 };

@@ -128,7 +128,7 @@ interface AppContextType {
   updateCommunity: (id: string, updates: Partial<Community>) => void;
   updateChannel: (id: string, updates: Partial<Channel>) => void;
   deleteChannel: (id: string) => boolean;
-  removeCommunity: (id: string) => void;
+  removeCommunity: (id: string) => Promise<boolean>;
 
   // Messaging
   messages: Record<string, Message[]>;
@@ -278,7 +278,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: authUser.id,
         email: authUser.email || '',
         name: String(metadata.full_name || metadata.name || previous.name || authUser.email?.split('@')[0] || 'Usuário'),
-        handle: String(metadata.username || metadata.user_name || previous.handle || authUser.email?.split('@')[0] || ''),
+        handle: String(metadata.username || metadata.user_name || previous.handle || ''),
         avatar: String(metadata.avatar_url || metadata.picture || previous.avatar || ''),
         onboarding_completed: undefined,
       }));
@@ -294,7 +294,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!profile) {
           const inserted = await client.from('profiles').upsert({
             id: authUser.id,
-            username: String(metadata.username || metadata.user_name || authUser.email?.split('@')[0] || ''),
+            username: String(metadata.username || metadata.user_name || ''),
             full_name: String(metadata.full_name || metadata.name || authUser.email?.split('@')[0] || 'Usuário'),
             avatar_url: String(metadata.avatar_url || metadata.picture || '') || null,
             onboarding_completed: false,
@@ -312,7 +312,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           name: String(profile.full_name || metadata.full_name || metadata.name || authUser.email?.split('@')[0] || 'Usuário'),
           handle: String(profile.username || metadata.username || metadata.user_name || authUser.email?.split('@')[0] || ''),
           avatar: String(profile.avatar_url || metadata.avatar_url || metadata.picture || ''),
-          onboarding_completed: profile.onboarding_completed === true,
+          onboarding_completed: profile.onboarding_completed === true && Boolean(profile.username && /^[a-z0-9_]{3,20}$/i.test(profile.username)),
         }));
         setIsAuthLoading(false);
       } catch (error) {
@@ -883,8 +883,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const next = { ...currentUser, ...updates, onboarding_completed: true };
+    const username = next.handle.trim().replace(/^@/, '').toLowerCase();
+    if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+      addToast('Escolha seu @', 'Informe um username válido para concluir o perfil.', 'warning');
+      return false;
+    }
+    const { data: usernameMatches, error: usernameCheckError } = await client.from('profiles').select('id').eq('username', username).neq('id', currentUser.id).limit(1);
+    if (usernameCheckError || usernameMatches?.length) {
+      addToast('Username indisponível', usernameCheckError?.message || 'Esse @ já está em uso. Escolha outro.', 'error');
+      return false;
+    }
     const { data, error } = await client.from('profiles').update({
-      username: next.handle.replace(/^@/, ''),
+      username,
       full_name: next.name,
       avatar_url: next.avatar || null,
       onboarding_completed: true,
@@ -1370,7 +1380,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const removeCommunity = (id: string) => {
+  const removeCommunity = async (id: string): Promise<boolean> => {
+    const client = supabase;
+    if (!client) { addToast('Comunidade não excluída', 'Supabase não está configurado.', 'error'); return false; }
+    const { error } = await client.from('communities').delete().eq('id', id);
+    if (error) { addToast('Comunidade não excluída', error.message, 'error'); return false; }
     const remaining = communities.filter((community) => community.id !== id);
     const removedChannelIds = new Set(communities.find((community) => community.id === id)?.channels.map((channel) => channel.id) || []);
     setCommunities(remaining);
@@ -1384,6 +1398,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentCommunityId(nextCommunity?.id || '');
       setCurrentChannelId(nextCommunity?.channels.find((channel) => channel.type === 'text')?.id || '');
     }
+    addToast('Comunidade excluída', 'A comunidade e os dados relacionados foram removidos.', 'success');
     return true;
   };
 

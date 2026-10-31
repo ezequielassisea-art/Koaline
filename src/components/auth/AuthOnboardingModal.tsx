@@ -40,6 +40,8 @@ export const AuthOnboardingModal: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingHandle, setIsCheckingHandle] = useState(false);
+  const [isHandleAvailable, setIsHandleAvailable] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (mode === 'home') return;
@@ -47,12 +49,32 @@ export const AuthOnboardingModal: React.FC = () => {
     catch { /* A etapa continua disponível na sessão mesmo sem armazenamento. */ }
   }, [mode, step, handle, email, loginIdentifier]);
 
-  if (isLoggedIn) return null;
-
   const normalizedHandle = handle.trim().replace(/^@/, '').toLowerCase();
   const handleValid = HANDLE_PATTERN.test(normalizedHandle);
-  const handleTaken = currentUser.handle.toLowerCase() === normalizedHandle && !!currentUser.email && currentUser.email.toLowerCase() !== email.trim().toLowerCase();
-  const handleMessage = !handle ? 'Exemplo: @seunome' : !handleValid ? 'Use de 3 a 20 letras, números ou _.' : handleTaken ? 'Esse identificador já está em uso.' : 'Identificador disponível';
+  useEffect(() => {
+    if (mode !== 'register' || step !== 1 || !handleValid) {
+      setIsHandleAvailable(null);
+      setIsCheckingHandle(false);
+      return;
+    }
+    let active = true;
+    setIsCheckingHandle(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const { data, error } = await requireSupabase().from('profiles').select('username').eq('username', normalizedHandle).limit(1);
+        if (!active) return;
+        if (error) throw error;
+        setIsHandleAvailable(!data?.length);
+      } catch { if (active) setIsHandleAvailable(null); }
+      finally { if (active) setIsCheckingHandle(false); }
+    }, 300);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [mode, step, normalizedHandle, handleValid]);
+
+  if (isLoggedIn) return null;
+
+  const handleTaken = isHandleAvailable === false;
+  const handleMessage = !handle ? 'Exemplo: @seunome' : !handleValid ? 'Use de 3 a 20 letras, números ou _.' : isCheckingHandle ? 'Verificando disponibilidade…' : isHandleAvailable === true ? '✅ @ disponível' : isHandleAvailable === false ? '❌ @ já em uso' : 'Não foi possível validar. Tente novamente.';
   const suggestions = emailNickSuggestions(email);
   const strength = [password.length >= 8, /[A-Z]/.test(password) && /[a-z]/.test(password), /\d/.test(password) || /[^a-zA-Z0-9]/.test(password)].filter(Boolean).length;
   const strengthLabel = ['', 'Fraca', 'Boa', 'Forte'][strength];
@@ -84,7 +106,7 @@ export const AuthOnboardingModal: React.FC = () => {
 
   const finishRegister = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!handleValid || handleTaken || !email.trim() || !passwordsMatch || strength < 2) return;
+    if (!handleValid || isHandleAvailable !== true || !email.trim() || !passwordsMatch || strength < 2) return;
     const displayName = name.trim() || normalizedHandle;
     setIsLoading(true);
     void (async () => {
@@ -138,12 +160,12 @@ export const AuthOnboardingModal: React.FC = () => {
         <Button variant="outline" className="auth-google-button" onClick={() => void loginWithGoogle()}><span className="auth-google-mark" aria-hidden="true">G</span>Continuar com Google</Button>
       </form>}
 
-      {mode === 'register' && <form className="auth-form" onSubmit={step < 3 ? (event) => { event.preventDefault(); if (step === 1 && (!handleValid || handleTaken)) return; if (step === 2 && !email.trim()) return; setStep(step + 1); } : finishRegister}>
+      {mode === 'register' && <form className="auth-form" onSubmit={step < 3 ? (event) => { event.preventDefault(); if (step === 1 && (!handleValid || isHandleAvailable !== true)) return; if (step === 2 && !email.trim()) return; setStep(step + 1); } : finishRegister}>
         <button type="button" className="auth-back-button" onClick={back}><ArrowLeft aria-hidden="true" />{step > 1 ? 'Etapa anterior' : 'Voltar'}</button>
         {step === 1 && <>
           <Input id="auth-handle" label="Nome de usuário" startAdornment={<AtSign />} autoComplete="username" autoFocus required minLength={3} maxLength={20} pattern="[A-Za-z0-9_]{3,20}" value={handle} onChange={(event) => setHandle(event.target.value.replace(/^@/, ''))} aria-describedby="auth-handle-help" aria-invalid={!!handle && (!handleValid || handleTaken)} />
-          <p id="auth-handle-help" className={`auth-field-hint ${handle && handleValid && !handleTaken ? 'is-success' : ''}`}>{handleMessage}</p>
-          <Button type="submit" variant="primary" className="auth-submit-button" disabled={!handleValid || handleTaken}>Continuar<ArrowRight aria-hidden="true" /></Button>
+          <p id="auth-handle-help" className={`auth-field-hint ${handle && handleValid && isHandleAvailable === true ? 'is-success' : ''}`}>{handleMessage}</p>
+          <Button type="submit" variant="primary" className="auth-submit-button" disabled={!handleValid || isHandleAvailable !== true || isCheckingHandle}>Continuar<ArrowRight aria-hidden="true" /></Button>
         </>}
         {step === 2 && <>
           <Input id="auth-register-email" label="Email" startAdornment={<Mail />} type="email" autoComplete="email" autoFocus required value={email} onChange={(event) => setEmail(event.target.value)} />

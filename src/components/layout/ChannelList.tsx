@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Hash,
@@ -17,6 +17,7 @@ import { canAccessAdminPanel } from '../admin/adminAccess';
 import { canModerateCommunity } from '../admin/adminAccess';
 import { DraggableUserCard, DropZoneCall } from '../call/VoiceDragDrop';
 import { formatRelativeTime } from '../../utils/time';
+import { supabase } from '../../services/supabaseClient';
 
 const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel: (channel: Channel) => void }> = ({ onOpenAdmin, onOpenVoiceChannel }) => {
   const {
@@ -45,6 +46,32 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChann
   const [showArchivedDms, setShowArchivedDms] = React.useState(false);
   const [isAddFriendOpen, setIsAddFriendOpen] = React.useState(false);
   const [friendQuery, setFriendQuery] = React.useState('');
+  const [userSearchResults, setUserSearchResults] = React.useState<User[]>([]);
+  const [userSearchLoading, setUserSearchLoading] = React.useState(false);
+  const cleanUserQuery = friendQuery.trim().replace(/^@/, '').trim();
+  React.useEffect(() => {
+    if (!isAddFriendOpen || !supabase || cleanUserQuery.length < 2) { setUserSearchResults([]); return; }
+    const client = supabase;
+    let active = true;
+    setUserSearchLoading(true);
+    const timer = window.setTimeout(async () => {
+      const { data, error } = await client.from('profiles')
+        .select('id, username, avatar_url, full_name')
+        .ilike('username', `%${cleanUserQuery}%`)
+        .limit(5);
+      if (!active) return;
+      setUserSearchResults(error ? [] : (data || []).filter((profile) => profile.username).map((profile) => ({
+        ...currentUser,
+        id: profile.id,
+        name: profile.full_name || profile.username || 'Membro Koaline',
+        handle: profile.username,
+        avatar: profile.avatar_url || '',
+        status: 'offline' as const,
+      })).filter((user) => user.id !== currentUser.id));
+      setUserSearchLoading(false);
+    }, 250);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [isAddFriendOpen, cleanUserQuery, currentUser.id]);
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
   if (!activeCommunity) return null;
@@ -73,6 +100,13 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChann
   const addFriend = (event: React.FormEvent) => {
     event.preventDefault();
     const query = friendQuery.trim().replace(/^[@#]/, '').toLowerCase();
+    const result = userSearchResults.find((user) => user.handle.toLowerCase() === query);
+    if (result) {
+      openDirectMessage(result);
+      setFriendQuery('');
+      setIsAddFriendOpen(false);
+      return;
+    }
     const candidates: Array<{ user: User; tag?: string }> = [
       ...dms.map((dm) => ({ user: dm.user, tag: dm.user.handle.match(/#(\d+)$/)?.[1] })),
       ...activeCommunity.channels.flatMap((channel) => (channel.connectedUsers || []).map((user) => ({ user, tag: user.handle.match(/#(\d+)$/)?.[1] }))),
@@ -332,7 +366,7 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChann
           </button>}
         </div>
       )}
-      {isAddFriendOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Adicionar amigo" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsAddFriendOpen(false); }}><form onSubmit={addFriend} className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold text-white">Adicionar amigo</h2><button type="button" onClick={() => setIsAddFriendOpen(false)} aria-label="Fechar" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"><X className="h-4 w-4" /></button></div><input autoFocus value={friendQuery} onChange={(event) => setFriendQuery(event.target.value)} placeholder="Digite o @usuario ou #1234 para adicionar" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-indigo-500"/><button type="submit" className="mt-3 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">Buscar e iniciar conversa</button><p className="mt-2 text-xs text-slate-500">Busca local entre contatos e usuários de demonstração.</p></form></div>}
+      {isAddFriendOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Adicionar amigo" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsAddFriendOpen(false); }}><form onSubmit={addFriend} className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"><div className="mb-4 flex items-center justify-between"><h2 className="text-base font-semibold text-white">Adicionar amigo</h2><button type="button" onClick={() => setIsAddFriendOpen(false)} aria-label="Fechar" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"><X className="h-4 w-4" /></button></div><input autoFocus value={friendQuery} onChange={(event) => setFriendQuery(event.target.value)} placeholder="Digite o @usuario ou #1234 para adicionar" className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white outline-none focus:border-indigo-500"/>{friendQuery.trim() && <div className="mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-700 bg-slate-950">{userSearchLoading ? <p className="px-3 py-2 text-xs text-slate-400">Buscando usuários…</p> : userSearchResults.map((user) => <button key={user.id} type="button" onClick={() => { void openDirectMessage(user); setFriendQuery(''); setIsAddFriendOpen(false); }} className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-slate-800"><img src={user.avatar || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(user.name)}`} alt="" className="h-8 w-8 rounded-full object-cover"/><span className="min-w-0"><strong className="block truncate text-sm text-white">{user.name}</strong><small className="text-xs text-slate-400">@{user.handle}</small></span></button>)}{!userSearchLoading && cleanUserQuery.length >= 2 && userSearchResults.length === 0 && <p className="px-3 py-2 text-xs text-slate-500">Nenhum usuário encontrado.</p>}</div>}<button type="submit" className="mt-3 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">Buscar e iniciar conversa</button><p className="mt-2 text-xs text-slate-500">Busca local entre contatos e usuários de demonstração.</p></form></div>}
     </aside>
   );
 };
