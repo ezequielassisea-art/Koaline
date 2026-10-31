@@ -12,8 +12,8 @@ export async function getOrCreateConversation(targetUserId: string): Promise<str
   if (!currentUserId) throw new Error('Faça login para iniciar uma conversa direta.');
   if (currentUserId === targetUserId) throw new Error('Não é possível iniciar uma conversa consigo mesmo.');
 
-  const { data: conversationId, error } = await client.rpc('get_or_create_dm', {
-    p_target_user_id: targetUserId,
+  const { data: conversationId, error } = await client.rpc('get_or_create_direct_conversation', {
+    p_other_user: targetUserId,
   });
   if (error) throw error;
   if (typeof conversationId !== 'string' || !conversationId) {
@@ -30,20 +30,21 @@ export async function createSystemConversation(targetUserId: string): Promise<st
   if (!user) throw new Error('Faça login para criar um chat de convite.');
   if (user.id === targetUserId) throw new Error('Não é possível convidar a própria conta.');
 
-  const { data: conversation, error: conversationError } = await client
-    .from('direct_conversations')
-    .insert({ is_system: true })
-    .select('id')
-    .single();
-  if (conversationError) throw conversationError;
-  if (!conversation?.id) throw new Error('O Supabase não retornou o ID da conversa de sistema.');
+  // Use the existing RPC to atomically get or create the conversation (prevents duplicates)
+  const { data: conversationId, error: rpcError } = await client.rpc('get_or_create_direct_conversation', {
+    p_other_user: targetUserId,
+  });
+  if (rpcError) throw rpcError;
+  if (!conversationId) throw new Error('O Supabase não retornou o ID da conversa direta.');
 
-  const { error: membersError } = await client.from('direct_conversation_members').insert([
-    { conversation_id: conversation.id, user_id: user.id },
-    { conversation_id: conversation.id, user_id: targetUserId },
-  ]);
-  if (membersError) throw membersError;
-  return conversation.id;
+  // Update the conversation to mark it as a system conversation
+  const { error: updateError } = await client
+    .from('direct_conversations')
+    .update({ is_system: true })
+    .eq('id', conversationId);
+  if (updateError) throw updateError;
+
+  return conversationId;
 }
 
 export async function sendCommunityInviteMessage(input: {

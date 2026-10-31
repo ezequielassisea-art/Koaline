@@ -39,6 +39,14 @@ export default {
       fontFamily: {
         title: ['Inter', 'system-ui', 'sans-serif'],
         body: ['Inter', 'sans-serif'],
+      },
+      fontSize: {
+        'h1': ['32px', { lineHeight: '1.2', letterSpacing: '-0.02em', fontWeight: '700' }],
+        'h2': ['24px', { lineHeight: '1.2', letterSpacing: '-0.01em', fontWeight: '600' }],
+        'h3': ['20px', { lineHeight: '1.5', fontWeight: '600' }],
+        'base': ['16px', { lineHeight: '1.5' }],
+        'sm': ['14px', { lineHeight: '1.5' }],
+        'xs': ['12px', { lineHeight: '1.5' }],
       }
     },
   },
