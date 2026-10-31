@@ -7,7 +7,9 @@ import {
   ActiveCall,
   ThemeSettings,
   DirectMessageConversation,
-  ToastMessage
+  ToastMessage,
+  IncomingCall,
+  OutgoingCall,
 } from '../types';
 import { canDeleteCommunityChannel, canModerateCommunity } from '../components/admin/adminAccess';
 import { audioManager } from '../services/AudioManager';
@@ -190,6 +192,12 @@ interface AppContextType {
   switchCallChannel: (channel: Channel) => void;
   moveVoiceUser: (userId: string, channelId: string) => boolean;
   syncVoiceParticipants: (channelId: string, users: User[], startedAt?: number) => void;
+
+  // Private Calls (1:1)
+  incomingCall: IncomingCall | null;
+  outgoingCall: OutgoingCall | null;
+  acceptIncomingCall: () => void;
+  rejectIncomingCall: (callId?: string) => void;
 
   // Themes
   theme: ThemeSettings;
@@ -779,6 +787,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [pendingCallRequest, setPendingCallRequest] = useState<PendingCallRequest | null>(null);
   const screenStreamRef = React.useRef<MediaStream | null>(null);
 
+  // Incoming/Outgoing Call Signaling
+  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const [outgoingCall, setOutgoingCall] = useState<OutgoingCall | null>(null);
+  const callSignalingChannelRef = useRef<ReturnType<NonNullable<typeof supabase>['channel']> | null>(null);
+  const incomingCallTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ringtoneAudioRef = useRef<HTMLAudioElement | null>(null);
+
   useEffect(() => {
     const client = supabase;
     if (!client || !isLoggedIn || isAuthLoading || !currentUser.id) {
@@ -849,6 +864,110 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
     });
   }, [currentUser.name, currentUser.handle, currentUser.avatar, currentUser.status, currentUser.id]);
+
+  // Call Signaling Channel - listens for incoming calls on user's personal channel
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || isAuthLoading || !currentUser.id) {
+      callSignalingChannelRef.current = null;
+      return;
+    }
+
+    let active = true;
+    const channel = client.channel(`koaline:calls:${currentUser.id}`, {
+      config: { presence: { key: currentUser.id } },
+    });
+    callSignalingChannelRef.current = channel;
+
+    const handleIncomingCall = (payload: IncomingCall) => {
+      if (!active) return;
+      // Don't show incoming call if already in a call or already have an incoming call
+      if (activeCallRef.current || incomingCall) return;
+
+      setIncomingCall(payload);
+      // Play ringtone
+      if (!ringtoneAudioRef.current) {
+        ringtoneAudioRef.current = new Audio('/sounds/ringtone.mp3');
+        ringtoneAudioRef.current.loop = true;
+        ringtoneAudioRef.current.volume = 0.5;
+      }
+      ringtoneAudioRef.current.play().catch(() => {
+        // Ignore autoplay policy errors
+      });
+
+      // Set 30-second timeout
+      if (incomingCallTimeoutRef.current) clearTimeout(incomingCallTimeoutRef.current);
+      const callId = payload.callId;
+      incomingCallTimeoutRef.current = setTimeout(() => {
+        // Use functional approach to check current state
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        setIncomingCall((current) => {
+          if (current && current.callId === callId) {
+            // Auto-reject after 30 seconds
+            rejectIncomingCall(callId);
+          }
+          return current;
+        });
+      }, 30000);
+    };
+
+    channel
+      .on('broadcast', { event: 'incoming_call' }, ({ payload }: { payload: IncomingCall }) => handleIncomingCall(payload))
+      .on('broadcast', { event: 'call_cancelled' }, ({ payload }: { payload: { callId: string } }) => {
+        if (incomingCall && incomingCall.callId === payload?.callId) {
+          setIncomingCall(null);
+          if (ringtoneAudioRef.current) {
+            ringtoneAudioRef.current.pause();
+            ringtoneAudioRef.current.currentTime = 0;
+          }
+          if (incomingCallTimeoutRef.current) clearTimeout(incomingCallTimeoutRef.current);
+          addToast('Chamada encerrada', 'O chamador cancelou a chamada.', 'info');
+        }
+      })
+      .on('broadcast', { event: 'call_accepted' }, ({ payload }: { payload: { callId: string; acceptedBy: string } }) => {
+        if (outgoingCall && outgoingCall.callId === payload?.callId) {
+          // Call was accepted by recipient
+          setOutgoingCall(null);
+          addToast('Chamada atendida', `${outgoingCall.targetUserName} atendeu a chamada.`, 'success');
+          // The connectToDirectCall was already called when initiating, so we're already in the call
+        }
+      })
+      .on('broadcast', { event: 'call_rejected' }, ({ payload }: { payload: { callId: string; rejectedBy: string } }) => {
+        if (outgoingCall && outgoingCall.callId === payload?.callId) {
+          // Call was rejected by recipient
+          setOutgoingCall(null);
+          // Leave the call since recipient rejected
+          leaveCall(outgoingCall.callId, true);
+          addToast('Chamada recusada', `${outgoingCall.targetUserName} recusou a chamada.`, 'warning');
+        }
+      })
+      .on('broadcast', { event: 'call_ended' }, ({ payload }: { payload: { callId: string; endedBy: string } }) => {
+        if (activeCallRef.current && activeCallRef.current.channelId === payload?.callId) {
+          // Other party ended the call
+          leaveCall(payload.callId, true);
+          addToast('Chamada encerrada', 'O outro participante saiu da chamada.', 'info');
+        }
+      })
+      .subscribe(async (status) => {
+        if (status !== 'SUBSCRIBED' || !active) return;
+        // Track presence in call signaling channel
+        await channel.track({
+          user_id: currentUser.id,
+          status: 'available',
+        });
+      });
+
+    return () => {
+      active = false;
+      if (callSignalingChannelRef.current === channel) callSignalingChannelRef.current = null;
+      if (ringtoneAudioRef.current) {
+        ringtoneAudioRef.current.pause();
+        ringtoneAudioRef.current.currentTime = 0;
+      }
+      if (incomingCallTimeoutRef.current) clearTimeout(incomingCallTimeoutRef.current);
+      void client.removeChannel(channel);
+    };
+  }, [isLoggedIn, isAuthLoading, currentUser.id, incomingCall]);
 
   // Theme
   const [theme, setTheme] = useState<ThemeSettings>(() => {
@@ -1892,9 +2011,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('Conectado', `Entrou na sala de voz ${channel.name}`, 'success');
   };
 
-  const connectToDirectCall = (targetUser: User, mode: 'voice' | 'video') => {
+  const connectToDirectCall = (targetUser: User, mode: 'voice' | 'video', isIncoming = false) => {
+    const callId = getDirectCallRoomId(currentUser.id, targetUser.id);
     const nextCall: ActiveCall = {
-      channelId: getDirectCallRoomId(currentUser.id, targetUser.id),
+      channelId: callId,
       channelName: targetUser.name,
       communityName: 'Chamada Direta',
       type: mode,
@@ -1914,7 +2034,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     activeCallRef.current = nextCall;
     setActiveCall(nextCall);
-    addToast('Chamando...', `Iniciando chamada com ${targetUser.name}`);
+
+    // Clear incoming call state if accepting
+    if (isIncoming) {
+      setIncomingCall(null);
+      if (ringtoneAudioRef.current) {
+        ringtoneAudioRef.current.pause();
+        ringtoneAudioRef.current.currentTime = 0;
+      }
+      if (incomingCallTimeoutRef.current) clearTimeout(incomingCallTimeoutRef.current);
+      addToast('Chamada atendida', `Conectando com ${targetUser.name}...`, 'success');
+    } else {
+      addToast('Chamando...', `Iniciando chamada com ${targetUser.name}`);
+    }
+  };
+
+  // Accept incoming call
+  const acceptIncomingCall = () => {
+    if (!incomingCall) return;
+    const callId = incomingCall.callId;
+    const callerId = incomingCall.callerId;
+    const callerName = incomingCall.callerName;
+    const callerHandle = incomingCall.callerHandle;
+    const callerAvatar = incomingCall.callerAvatar;
+    const type = incomingCall.type;
+
+    // Create target user object
+    const targetUser: User = {
+      id: callerId,
+      name: callerName,
+      handle: callerHandle,
+      avatar: callerAvatar,
+      status: 'online',
+      level: 1,
+      xp: 0,
+      xpMax: 100,
+      badges: [],
+      socials: [],
+    };
+
+    // Stop ringtone
+    if (ringtoneAudioRef.current) {
+      ringtoneAudioRef.current.pause();
+      ringtoneAudioRef.current.currentTime = 0;
+    }
+    if (incomingCallTimeoutRef.current) clearTimeout(incomingCallTimeoutRef.current);
+
+    // Send acceptance to caller via their call channel
+    const client = supabase;
+    if (client) {
+      const callerChannel = client.channel(`koaline:calls:${callerId}`);
+      void callerChannel.send({
+        type: 'broadcast',
+        event: 'call_accepted',
+        payload: { callId, acceptedBy: currentUser.id },
+      });
+      // Don't wait for response, just cleanup
+      setTimeout(() => void client.removeChannel(callerChannel), 1000);
+    }
+
+    // Connect to the call
+    connectToDirectCall(targetUser, type, true);
+  };
+
+  // Reject incoming call
+  const rejectIncomingCall = (callId?: string) => {
+    const callToReject = incomingCall;
+    if (!callToReject && !callId) return;
+
+    const targetCallId = callId || callToReject!.callId;
+    const callerId = callToReject?.callerId;
+
+    // Stop ringtone
+    if (ringtoneAudioRef.current) {
+      ringtoneAudioRef.current.pause();
+      ringtoneAudioRef.current.currentTime = 0;
+    }
+    if (incomingCallTimeoutRef.current) clearTimeout(incomingCallTimeoutRef.current);
+
+    // Send rejection to caller via their call channel
+    if (callerId) {
+      const client = supabase;
+      if (client) {
+        const callerChannel = client.channel(`koaline:calls:${callerId}`);
+        void callerChannel.send({
+          type: 'broadcast',
+          event: 'call_rejected',
+          payload: { callId: targetCallId, rejectedBy: currentUser.id },
+        });
+        setTimeout(() => void client.removeChannel(callerChannel), 1000);
+      }
+    }
+
+    setIncomingCall(null);
+    addToast('Chamada recusada', 'Você recusou a chamada.', 'info');
   };
 
   const startCall = (channel: Channel, mode: 'voice' | 'video', isDeafened = false) => {
@@ -1931,14 +2144,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setPendingCallRequest({ type: 'direct', targetUser, mode });
       return;
     }
+
+    // Send call invitation to target user
+    const callId = targetCallId;
+    const outgoingCallData: OutgoingCall = {
+      callId,
+      targetUserId: targetUser.id,
+      targetUserName: targetUser.name,
+      type: mode,
+      startedAt: Date.now(),
+    };
+    setOutgoingCall(outgoingCallData);
+
+    const client = supabase;
+    if (client) {
+      // Send incoming call notification to target user
+      const targetChannel = client.channel(`koaline:calls:${targetUser.id}`);
+      void targetChannel.send({
+        type: 'broadcast',
+        event: 'incoming_call',
+        payload: {
+          callId,
+          callerId: currentUser.id,
+          callerName: currentUser.name,
+          callerHandle: currentUser.handle,
+          callerAvatar: currentUser.avatar || '',
+          type: mode,
+          startedAt: Date.now(),
+        },
+      });
+      // Don't remove channel immediately, we might need it for acceptance/rejection
+      setTimeout(() => void client.removeChannel(targetChannel), 5000);
+    }
+
+    // Set timeout for call to be answered (30 seconds)
+    setTimeout(() => {
+      if (outgoingCall && outgoingCall.callId === callId && !activeCallRef.current) {
+        // Call not answered - cancel
+        setOutgoingCall(null);
+        // Notify target user that call was cancelled
+        if (client) {
+          const targetChannel = client.channel(`koaline:calls:${targetUser.id}`);
+          void targetChannel.send({
+            type: 'broadcast',
+            event: 'call_cancelled',
+            payload: { callId },
+          });
+          setTimeout(() => void client.removeChannel(targetChannel), 1000);
+        }
+        addToast('Chamada não atendida', `${targetUser.name} não atendeu a tempo.`, 'warning');
+      }
+    }, 30000);
+
+    // For the caller, we also connect to the call room and wait
     connectToDirectCall(targetUser, mode);
   };
 
   const leaveCall = (expectedChannelId?: string, silent = false) => {
     const callToLeave = activeCallRef.current;
     if (!callToLeave || (expectedChannelId && callToLeave.channelId !== expectedChannelId)) return;
+
+    // If it's a direct call, notify the other party
+    const isDirectCall = callToLeave.channelId.startsWith('dm-call-');
+    let otherUserId: string | null = null;
+    if (isDirectCall) {
+      // Find the other user in the call
+      const otherParticipant = callToLeave.participants.find((p) => p.user.id !== currentUser.id);
+      if (otherParticipant) {
+        otherUserId = otherParticipant.user.id;
+      }
+    }
+
     if (!silent) void audioManager.play('leave_call');
-    if (!callToLeave.channelId.startsWith('dm-call-')) {
+
+    if (!isDirectCall) {
       const callCommunity = communities.find((community) => community.channels.some((channel) => channel.id === callToLeave.channelId));
       const callChannel = callCommunity?.channels.find((channel) => channel.id === callToLeave.channelId);
       if (currentChannelId === callToLeave.channelId && callChannel?.type === 'voice' && callCommunity) {
@@ -1954,6 +2233,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : channel),
       })));
     }
+
+    // If we have an outgoing call that wasn't answered yet, cancel it
+    if (outgoingCall && outgoingCall.callId === callToLeave.channelId && !silent) {
+      setOutgoingCall(null);
+      // Notify the other party that the call was cancelled
+      if (otherUserId) {
+        const client = supabase;
+        if (client) {
+          const targetChannel = client.channel(`koaline:calls:${otherUserId}`);
+          void targetChannel.send({
+            type: 'broadcast',
+            event: 'call_cancelled',
+            payload: { callId: callToLeave.channelId },
+          });
+          setTimeout(() => void client.removeChannel(targetChannel), 1000);
+        }
+      }
+    }
+
+    // If we're in an active direct call, notify the other party we're leaving
+    if (isDirectCall && otherUserId && !silent) {
+      const client = supabase;
+      if (client) {
+        const targetChannel = client.channel(`koaline:calls:${otherUserId}`);
+        void targetChannel.send({
+          type: 'broadcast',
+          event: 'call_ended',
+          payload: { callId: callToLeave.channelId, endedBy: currentUser.id },
+        });
+        setTimeout(() => void client.removeChannel(targetChannel), 1000);
+      }
+    }
+
     screenStreamRef.current?.getTracks().forEach((track) => track.stop());
     screenStreamRef.current = null;
     activeCallRef.current = null;
@@ -2126,6 +2438,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         switchCallChannel,
         moveVoiceUser,
         syncVoiceParticipants,
+        // Private Calls (1:1)
+        incomingCall,
+        outgoingCall,
+        acceptIncomingCall,
+        rejectIncomingCall,
         theme,
         updateTheme,
         resetTheme,

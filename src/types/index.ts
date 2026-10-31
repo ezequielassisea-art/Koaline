@@ -155,3 +155,21 @@ export interface ToastMessage {
   type: 'info' | 'success' | 'warning' | 'error';
   duration?: number;
 }
+
+export interface IncomingCall {
+  callId: string;
+  callerId: string;
+  callerName: string;
+  callerHandle: string;
+  callerAvatar: string;
+  type: 'voice' | 'video';
+  startedAt: number;
+}
+
+export interface OutgoingCall {
+  callId: string;
+  targetUserId: string;
+  targetUserName: string;
+  type: 'voice' | 'video';
+  startedAt: number;
+}

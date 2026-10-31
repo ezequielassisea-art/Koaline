@@ -16,6 +16,7 @@ import { AuthOnboardingModal } from './components/auth/AuthOnboardingModal';
 import { AdminPanel } from './components/admin/AdminPanel';
 import { ConfirmModal } from './components/common/ConfirmModal';
 import { UpdatePasswordPage } from './components/auth/UpdatePasswordPage';
+import { IncomingCallCard } from './components/call/IncomingCallCard';
 
 const VoiceRoom = React.lazy(() => import('./components/call/VoiceRoom').then((module) => ({ default: module.VoiceRoom })));
 const isHomePath = (pathname: string) => pathname === '/' || pathname === '/chat' || pathname === '/home' || pathname === '/profile';
@@ -121,6 +122,7 @@ export const AppContent: React.FC = () => {
 
   return (
     <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-200">
+      <IncomingCallCard />
       <TopBar />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 flex-1 overflow-hidden" style={{ display: isNotFound ? 'none' : 'flex' }}>
