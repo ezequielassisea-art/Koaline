@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity, ArrowDown, ArrowUp, Ban, Check, Copy, Crown, GripVertical,
+  Activity, ArrowDown, ArrowUp, Ban, Check, Copy, Crown, GripVertical, Loader2,
   ImagePlus, LockKeyhole, Music, Plus, Search, Settings, Shield, Trash2, UserMinus, Users, X,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -8,6 +8,7 @@ import { Channel, User } from '../../types';
 import { ConfirmModal } from '../common/ConfirmModal';
 import { GroupAudioSettings } from './GroupAudioSettings';
 import { canDeleteCommunityChannel } from './adminAccess';
+import { supabase } from '../../services/supabaseClient';
 import './AdminPanel.css';
 
 type Tab = 'Geral' | 'Canais' | 'Áudios' | 'Membros' | 'Cargos' | 'Convites' | 'Logs / Auditoria' | 'Perigo';
@@ -57,10 +58,6 @@ const encodeCommunityBanner = async (file: File): Promise<string> => {
 const fmt = (timestamp: number) => new Date(timestamp).toLocaleString('pt-BR');
 const nowMs = () => Date.now();
 const inviteCode = () => Math.random().toString(36).slice(2, 10);
-const safeUsers = (self: User, communityId: string, members: Array<{ communityId: string; userId: string }>) => {
-  if (!self.id || !communityId) return [];
-  return members.some((member) => member.communityId === communityId && member.userId === self.id) ? [self] : [];
-};
 const joinedDate = (userId: string, communityId: string, members: Array<{ communityId: string; userId: string; joinedAt: string }>) => {
   const member = members.find((item) => item.communityId === communityId && item.userId === userId);
   return member ? new Date(member.joinedAt).toLocaleDateString('pt-BR') : '—';
@@ -94,12 +91,41 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [editingChannel, setEditingChannel] = useState<string | null>(null);
   const [channelToDelete, setChannelToDelete] = useState<Channel | null>(null);
   const [channelDraft, setChannelDraft] = useState({ name: '', topic: '', categoryId: '', isPrivate: false });
-  const users = useMemo(() => safeUsers(currentUser, currentCommunityId, members), [currentUser, currentCommunityId, members]);
+  const [communityUsers, setCommunityUsers] = useState<User[]>([]);
+  const [communityRoles, setCommunityRoles] = useState<Record<string, 'admin' | 'moderator' | 'member'>>({});
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!supabase || !currentCommunityId) { setCommunityUsers([]); return; }
+    let active = true;
+    void supabase.from('community_members')
+      .select('user_id, role, profiles:user_id (username, avatar_url)')
+      .eq('community_id', currentCommunityId)
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) { addToast('Não foi possível carregar os membros', error.message, 'error'); return; }
+        const loaded = (data || []).map((row: any) => {
+          const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+          const username = profile?.username && !/^[0-9a-f-]{30,}$/i.test(profile.username) ? profile.username : '';
+          return {
+            ...currentUser,
+            id: row.user_id,
+            name: username || 'Membro Koaline',
+            handle: username || 'koaline',
+            avatar: profile?.avatar_url || '',
+            status: 'offline' as const,
+          };
+        });
+        setCommunityRoles(Object.fromEntries((data || []).map((row: any) => [row.user_id, row.role])));
+        setCommunityUsers(loaded);
+      });
+    return () => { active = false; };
+  }, [currentCommunityId, currentUser.id]);
+  const users = useMemo(() => communityUsers.length ? communityUsers : (members.some((member) => member.communityId === currentCommunityId && member.userId === currentUser.id) ? [currentUser] : []), [communityUsers, members, currentCommunityId, currentUser]);
   const isOwner = state.ownerId === currentUser.id;
   const myRoleIds = state.memberRoles[currentUser.id] || [];
   const myRoles = state.roles.filter((role) => myRoleIds.includes(role.id));
   const myPerms = new Set(myRoles.flatMap((role) => role.permissions));
-  const isAdmin = isOwner || myRoles.some((role) => /^(adm|admin|administrador)$/i.test(role.name.trim()));
+  const isAdmin = isOwner || communityRoles[currentUser.id] === 'admin' || myRoles.some((role) => /^(adm|admin|administrador)$/i.test(role.name.trim()));
   const canAccess = isAdmin || myRoles.some((role) => role.permissions.length > 0);
   const can = (permission: Permission) => isAdmin || myPerms.has(permission);
   const canDeleteChannel = (channel: Channel) => !!community && canDeleteCommunityChannel(currentCommunityId, currentUser, community.ownerId || community.creatorId, channel.ownerId);
@@ -143,6 +169,21 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const next = { ...state.memberRoles, [userId]: assign ? [...new Set([...old, roleId])] : old.filter((id) => id !== roleId) };
     const target = users.find((user) => user.id === userId)?.name || userId;
     log(assign ? 'Cargo atribuído' : 'Cargo removido', target, 'role', { memberRoles: next });
+  };
+  const updateCommunityRole = async (targetUserId: string, newRole: 'admin' | 'moderator' | 'member') => {
+    if (!supabase || !isAdmin || targetUserId === state.ownerId) return;
+    setUpdatingMemberId(targetUserId);
+    const { error } = await supabase.from('community_members')
+      .update({ role: newRole })
+      .eq('user_id', targetUserId)
+      .eq('community_id', currentCommunityId);
+    setUpdatingMemberId(null);
+    if (error) {
+      addToast('Falha ao atualizar cargo', error.message, 'error');
+      return;
+    }
+    setCommunityRoles((previous) => ({ ...previous, [targetUserId]: newRole }));
+    addToast('Cargo atualizado com sucesso', 'O novo cargo foi salvo.', 'success');
   };
   const changeMemberStatus = (user: User, action: 'kick' | 'ban') => {
     if (user.id === state.ownerId || user.id === currentUser.id) return;
@@ -244,7 +285,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
           {visibleTab === 'Áudios' && <GroupAudioSettings communityId={currentCommunityId} />} {visibleTab === 'Canais' && <><div className="admin-title"><div><h1>Canais e categorias</h1><p>Organize conversas e salas da comunidade.</p></div><button className={`${button} primary`} onClick={() => setIsCreateChannelModalOpen(true)}><Plus /> Novo canal</button></div><div className="admin-card"><h3>Criar categoria</h3><div className="admin-inline">{input(categoryName, setCategoryName, 'Nome da categoria')}<button className={button} onClick={addCategory}><Plus /> Criar</button></div>{community.categories.map((category) => <div className="admin-category" key={category.id}><strong>{category.name}</strong><span>{community.channels.filter((channel) => channel.categoryId === category.id && !state.archived.includes(channel.id)).length} canais</span></div>)}</div><div className="admin-card"><h3>Canais ativos</h3>{orderedChannels.map((channel, index) => <div className="admin-channel" key={channel.id} draggable onDragStart={(event) => event.dataTransfer.setData('text/plain', channel.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const dragged = event.dataTransfer.getData('text/plain'); const order = orderedChannels.map((item) => item.id); const from = order.indexOf(dragged); const to = order.indexOf(channel.id); if (from >= 0 && to >= 0) { order.splice(to, 0, ...order.splice(from, 1)); updateState({ channelOrder: order }); log('Ordem de canais alterada', channel.name, 'channel'); } }}><GripVertical /><div className="admin-channel-main"><strong>{channel.type === 'text' ? '#' : '◉'} {channel.name}</strong>{editingChannel === channel.id ? <div className="admin-edit-grid">{input(channelDraft.name, (value) => setChannelDraft({ ...channelDraft, name: value }), 'Nome')}<input className={field} value={channelDraft.topic} onChange={(event) => setChannelDraft({ ...channelDraft, topic: event.target.value })} placeholder="Tópico" /><select className={field} value={channelDraft.categoryId} onChange={(event) => setChannelDraft({ ...channelDraft, categoryId: event.target.value })}>{community.categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><label className="admin-check"><input type="checkbox" checked={channelDraft.isPrivate} onChange={(event) => setChannelDraft({ ...channelDraft, isPrivate: event.target.checked })} /> Privado</label><button className={button} onClick={() => saveChannel(channel)}>Salvar</button><button className={button} onClick={() => setEditingChannel(null)}>Cancelar</button></div> : <span>{channel.topic || 'Sem tópico'} · {community.categories.find((item) => item.id === channel.categoryId)?.name || 'Sem categoria'}{channel.isPrivate ? ' · Privado' : ''}</span>}</div><div className="admin-actions">{index > 0 && <button title="Mover para cima" onClick={() => moveChannel(channel.id, -1)}><ArrowUp /></button>}{index < orderedChannels.length - 1 && <button title="Mover para baixo" onClick={() => moveChannel(channel.id, 1)}><ArrowDown /></button>}<select aria-label={`Mover ${channel.name} de categoria`} onChange={(event) => moveToCategory(channel.id, event.target.value)} value={channel.categoryId}>{community.categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button title="Editar canal" onClick={() => { setEditingChannel(channel.id); setChannelDraft({ name: channel.name, topic: channel.topic || '', categoryId: channel.categoryId, isPrivate: !!channel.isPrivate }); }}>Editar</button><button title="Arquivar canal" onClick={() => { updateState({ archived: [...state.archived, channel.id] }); updateChannel(channel.id, { isArchived: true }); log('Canal arquivado', channel.name, 'channel'); }}>Arquivar</button>{canDeleteChannel(channel) && <button className={`${button} danger`} title="Excluir canal" aria-label={`Excluir canal ${channel.name}`} onClick={() => setChannelToDelete(channel)}><Trash2 /> Excluir Canal</button>}</div></div>)}{orderedChannels.length === 0 && <p className="admin-muted">Nenhum canal ativo.</p>}</div><div className="admin-card"><h3>Arquivados</h3>{state.archived.map((id) => { const channel = community.channels.find((item) => item.id === id); return channel && <div className="admin-category" key={id}><span>{channel.name}</span><button className={button} onClick={() => { updateState({ archived: state.archived.filter((item) => item !== id) }); updateChannel(id, { isArchived: false }); log('Canal reativado', channel.name, 'channel'); }}>Reativar</button></div>; })}</div></>}
 
-          {visibleTab === 'Membros' && <><div className="admin-title"><div><h1>Membros</h1><p>Gerencie acesso, cargos e moderação.</p></div></div><label className="admin-search"><Search />{input(memberSearch, setMemberSearch, 'Buscar membro por nome ou @handle')}</label><div className="admin-card admin-table-wrap"><table className="admin-table"><thead><tr><th>Membro</th><th>Cargo</th><th>Entrada</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody>{memberRows.map((user) => <tr key={user.id}><td><button className="admin-person" onClick={() => openUserProfile(user)}>{user.avatar ? <img src={user.avatar} alt="" /> : <span className="admin-avatar-fallback">{user.name.trim().charAt(0).toUpperCase() || '◇'}</span>}<span>{user.name}<small>@{user.handle}</small></span></button>{user.id === state.ownerId && <span className="admin-owner"><Crown /> Proprietário</span>}</td><td>{state.roles.filter((role) => (state.memberRoles[user.id] || []).includes(role.id)).map((role) => <span key={role.id} className="admin-role-chip" style={{ '--role-color': role.color } as React.CSSProperties}>{role.name}</span>)}{user.id !== state.ownerId && can('roles') && <select aria-label={`Cargo para ${user.name}`} value="" onChange={(event) => event.target.value && setMemberRole(user.id, event.target.value, true)}><option value="">Atribuir cargo</option>{state.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select>}</td><td>{joinedDate(user.id, currentCommunityId, members)}</td><td><span className={'admin-presence ' + (user.status === 'online' ? 'is-online' : user.status === 'idle' ? 'is-idle' : 'is-offline')}><i aria-hidden="true" />{user.status === 'online' ? 'Online agora' : user.status === 'idle' ? 'Ausente' : 'Offline'}</span></td><td className="admin-actions"><button onClick={() => openUserProfile(user)}>Perfil</button>{user.id !== state.ownerId && user.id !== currentUser.id && <>{can('roles') && <select aria-label={`Remover cargo de ${user.name}`} value="" onChange={(event) => event.target.value && setMemberRole(user.id, event.target.value, false)}><option value="">Remover cargo…</option>{state.roles.filter((role) => (state.memberRoles[user.id] || []).includes(role.id)).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select>}{can('kick') && <button title="Expulsar membro" onClick={() => changeMemberStatus(user, 'kick')}><UserMinus /></button>}{can('ban') && <button title="Banir membro" onClick={() => changeMemberStatus(user, 'ban')}><Ban /></button>}</>}</td></tr>)}</tbody></table></div><div className="admin-card"><h3>Banidos</h3>{state.banned.length === 0 && <p className="admin-muted">Nenhum membro banido.</p>}{state.banned.map((entry) => <div className="admin-category" key={entry.id}><span>{users.find((user) => user.id === entry.id)?.name || entry.id} · {entry.reason || 'Sem motivo'}</span>{can('ban') && <button className={button} onClick={() => { updateState({ banned: state.banned.filter((item) => item.id !== entry.id) }); log('Membro desbanido', entry.id, 'ban'); }}>Desbanir</button>}</div>)}</div></>}
+          {visibleTab === 'Membros' && <><div className="admin-title"><div><h1>Membros</h1><p>Gerencie acesso, cargos e moderação.</p></div></div><label className="admin-search"><Search />{input(memberSearch, setMemberSearch, 'Buscar membro por nome ou @handle')}</label><div className="admin-card admin-table-wrap"><table className="admin-table"><thead><tr><th>Membro</th><th>Cargo</th><th>Entrada</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody>{memberRows.map((user) => <tr key={user.id}><td><button className="admin-person" onClick={() => openUserProfile(user)}>{user.avatar ? <img src={user.avatar} alt="" /> : <span className="admin-avatar-fallback">{user.name.trim().charAt(0).toUpperCase() || '◇'}</span>}<span>{user.name}<small>@{user.handle}</small></span></button>{user.id === state.ownerId && <span className="admin-owner"><Crown /> Proprietário</span>}</td><td>{state.roles.filter((role) => (state.memberRoles[user.id] || []).includes(role.id)).map((role) => <span key={role.id} className="admin-role-chip" style={{ '--role-color': role.color } as React.CSSProperties}>{role.name}</span>)}{user.id !== state.ownerId && can('roles') && <select aria-label={`Cargo para ${user.name}`} value="" onChange={(event) => event.target.value && void updateCommunityRole(user.id, event.target.value as 'admin' | 'moderator' | 'member')}><option value="">Mudar Cargo</option><option value="member">Membro</option><option value="moderator">Moderador</option><option value="admin">Admin</option></select>}</td><td>{joinedDate(user.id, currentCommunityId, members)}</td><td><span className={'admin-presence ' + (user.status === 'online' ? 'is-online' : user.status === 'idle' ? 'is-idle' : 'is-offline')}><i aria-hidden="true" />{user.status === 'online' ? 'Online agora' : user.status === 'idle' ? 'Ausente' : 'Offline'}</span></td><td className="admin-actions"><button onClick={() => openUserProfile(user)}>Perfil</button>{isAdmin && user.id !== state.ownerId && <span className="inline-flex items-center gap-1">{updatingMemberId === user.id && <Loader2 className="h-3 w-3 animate-spin" />}<select aria-label={`Mudar cargo de ${user.name}`} disabled={updatingMemberId === user.id} value={communityRoles[user.id] || 'member'} onChange={(event) => void updateCommunityRole(user.id, event.target.value as 'admin' | 'moderator' | 'member')}><option value="member">Membro</option><option value="moderator">Moderador</option><option value="admin">Admin</option></select></span>}{user.id !== state.ownerId && user.id !== currentUser.id && <>{can('roles') && <select aria-label={`Remover cargo de ${user.name}`} value="" onChange={(event) => event.target.value && setMemberRole(user.id, event.target.value, false)}><option value="">Remover cargo…</option>{state.roles.filter((role) => (state.memberRoles[user.id] || []).includes(role.id)).map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select>}{can('kick') && <button title="Expulsar membro" onClick={() => changeMemberStatus(user, 'kick')}><UserMinus /></button>}{can('ban') && <button title="Banir membro" onClick={() => changeMemberStatus(user, 'ban')}><Ban /></button>}</>}</td></tr>)}</tbody></table></div><div className="admin-card"><h3>Banidos</h3>{state.banned.length === 0 && <p className="admin-muted">Nenhum membro banido.</p>}{state.banned.map((entry) => <div className="admin-category" key={entry.id}><span>{users.find((user) => user.id === entry.id)?.name || entry.id} · {entry.reason || 'Sem motivo'}</span>{can('ban') && <button className={button} onClick={() => { updateState({ banned: state.banned.filter((item) => item.id !== entry.id) }); log('Membro desbanido', entry.id, 'ban'); }}>Desbanir</button>}</div>)}</div></>}
 
           {visibleTab === 'Cargos' && <><div className="admin-title"><div><h1>Cargos e permissões</h1><p>Defina permissões e a hierarquia da comunidade.</p></div></div><div className="admin-card"><h3>Criar cargo</h3><div className="admin-inline">{input(roleName, setRoleName, 'Nome do cargo')}<input aria-label="Cor do cargo" type="color" value={roleColor} onChange={(event) => setRoleColor(event.target.value)} /><button className={`${button} primary`} onClick={createRole}><Plus /> Criar cargo</button></div><div className="admin-permissions">{permissions.map((permission) => <label key={permission.id}><input type="checkbox" checked={rolePerms.includes(permission.id)} onChange={(event) => setRolePerms(event.target.checked ? [...rolePerms, permission.id] : rolePerms.filter((item) => item !== permission.id))} />{permission.label}</label>)}</div></div><div className="admin-card"><h3>Hierarquia</h3>{state.roles.map((role, index) => <div className="admin-role-row" key={role.id}><span className="admin-role-chip" style={{ '--role-color': role.color } as React.CSSProperties}>{role.name}</span><span>{role.permissions.length} permissões</span><button disabled={index === 0} onClick={() => { const roles = [...state.roles]; [roles[index - 1], roles[index]] = [roles[index], roles[index - 1]]; updateState({ roles }); }}>↑</button><button disabled={index === state.roles.length - 1} onClick={() => { const roles = [...state.roles]; [roles[index + 1], roles[index]] = [roles[index], roles[index + 1]]; updateState({ roles }); }}>↓</button><button onClick={() => { if (window.confirm(`Apagar o cargo ${role.name}?`)) updateState({ roles: state.roles.filter((item) => item.id !== role.id), memberRoles: Object.fromEntries(Object.entries(state.memberRoles).map(([uid, ids]) => [uid, ids.filter((id) => id !== role.id)])), defaultRole: state.defaultRole === role.id ? '' : state.defaultRole }); }}>Remover</button></div>)}</div><div className="admin-card"><label>Cargo padrão de novos membros<select className={field} value={state.defaultRole} onChange={(event) => updateState({ defaultRole: event.target.value })}><option value="">Sem cargo padrão</option>{state.roles.map((role) => <option key={role.id} value={role.id}>{role.name}</option>)}</select></label></div></>}
 

@@ -369,22 +369,11 @@ const VoiceRoomConnected: React.FC = () => {
     const id = explicitId || presence?.user_id || participant?.identity || '';
     const profile = profilesById[id];
 
-    const visibleName = firstVisibleLabel(
-      profile?.full_name,
-      profile?.username,
-      presence?.full_name,
-      presence?.username,
-      id === currentUser.id ? currentUser.name : undefined,
-      participant?.name
-    ) || 'Membro Koaline';
+    const visibleName = firstVisibleLabel(profile?.username, profile?.full_name) || 'Membro Koaline';
 
-    const visibleHandle = firstVisibleLabel(
-      profile?.username,
-      presence?.username,
-      id === currentUser.id ? currentUser.handle : undefined
-    ) || 'koaline';
+    const visibleHandle = firstVisibleLabel(profile?.username) || 'koaline';
 
-    const avatar = profile?.avatar_url || presence?.avatar_url || (id === currentUser.id ? currentUser.avatar : '') || '';
+    const avatar = profile?.avatar_url || '';
 
     return {
       ...currentUser,
