@@ -222,6 +222,22 @@ const VoiceRoomConnected: React.FC = () => {
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const modalVideoRef = useRef<HTMLVideoElement>(null);
   const remoteScreenTrackRef = useRef<MediaStreamTrack | null>(null);
+  const publishedScreenTrackRef = useRef<MediaStreamTrack | null>(null);
+  useEffect(() => {
+    const screenTrack = activeCall?.screenStream?.getVideoTracks()[0];
+    if (!screenTrack) return;
+    let active = true;
+    void localParticipant.publishTrack(screenTrack, { source: Track.Source.ScreenShare })
+      .then(() => { if (active) publishedScreenTrackRef.current = screenTrack; })
+      .catch((error) => {
+        if (active) addToast('Falha ao transmitir tela', error instanceof Error ? error.message : 'Não foi possível publicar a tela na chamada.', 'warning');
+      });
+    return () => {
+      active = false;
+      if (publishedScreenTrackRef.current === screenTrack) publishedScreenTrackRef.current = null;
+      void localParticipant.unpublishTrack(screenTrack);
+    };
+  }, [activeCall?.screenStream, localParticipant]);
   useEffect(() => {
     const clearRemoteScreen = (track: any, publication: any, participant: Participant) => {
       if (publication.source !== Track.Source.ScreenShare || track.kind !== Track.Kind.Video) return;
@@ -232,6 +248,7 @@ const VoiceRoomConnected: React.FC = () => {
       setIsWatchingRemoteScreen(false);
     };
     const onTrackSubscribed = (track: any, publication: any, participant: Participant) => {
+      console.log('Track recebida:', track.kind, publication.source, participant.identity);
       if (publication.source !== Track.Source.ScreenShare || track.kind !== Track.Kind.Video || participant.isLocal) return;
       remoteScreenTrackRef.current = track.mediaStreamTrack;
       setRemoteScreenStream(new MediaStream([track.mediaStreamTrack]));
@@ -427,7 +444,7 @@ const VoiceRoomConnected: React.FC = () => {
     const visibleHandle = firstVisibleLabel(
       profile?.username,
       id === currentUser.id ? currentUser.handle : undefined
-    ) || 'koaline';
+    ) || 'membro';
 
     const avatar = profile?.avatar_url || (id === currentUser.id ? currentUser.avatar : '') || '';
 
