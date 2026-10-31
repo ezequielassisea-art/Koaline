@@ -210,17 +210,20 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     setInviteSending(true);
     try {
       const conversationId = await createSystemConversation(inviteTarget.id);
+      const notificationId = crypto.randomUUID();
       const { data: notification, error } = await supabase.from('notifications').insert({
+        id: notificationId,
         user_id: inviteTarget.id,
         sender_id: currentUser.id,
         type: 'community_invite',
         payload: { community_id: community.id, community_name: community.name, inviter_id: currentUser.id, inviter_name: currentUser.name, custom_message: inviteMessage.trim(), conversation_id: conversationId, system_chat: true },
-      }).select('id').single();
+      }).select('id').maybeSingle();
       if (error) throw error;
+      const savedNotificationId = notification?.id || notificationId;
       try {
-        await sendCommunityInviteMessage({ conversationId, communityId: community.id, communityName: community.name, customMessage: inviteMessage.trim(), notificationId: notification.id });
+        await sendCommunityInviteMessage({ conversationId, communityId: community.id, communityName: community.name, customMessage: inviteMessage.trim(), notificationId: savedNotificationId });
       } catch (messageError) {
-        await supabase.from('notifications').delete().eq('id', notification.id).eq('sender_id', currentUser.id);
+        await supabase.from('notifications').delete().eq('id', savedNotificationId).eq('sender_id', currentUser.id);
         throw messageError;
       }
       addToast('Convite enviado', `@${inviteTarget.username} receberá sua mensagem e o convite para ${community.name}.`, 'success');
