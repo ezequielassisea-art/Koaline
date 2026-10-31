@@ -91,8 +91,12 @@ interface AppContextType {
   // User & Auth
   currentUser: User;
   updateCurrentUser: (updates: Partial<User>) => void;
+  completeOnboarding: (updates?: Partial<User>) => Promise<boolean>;
   isLoggedIn: boolean;
   setIsLoggedIn: (val: boolean) => void;
+  isAuthLoading: boolean;
+  authLoadError: string | null;
+  retryAuthProfileLoad: () => void;
   createCommunity: (input: { name: string; icon?: string; visibility: 'public' | 'private' }) => Promise<Community | null>;
   joinCommunityByInvite: (code: string) => boolean;
   
@@ -215,22 +219,117 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Auth & Profile
   const [currentUser, setCurrentUser] = useState<User>(() => { try { return { ...EMPTY_USER, ...JSON.parse(localStorage.getItem('koaline:current-user') || '{}') }; } catch { return EMPTY_USER; } });
   const [isLoggedIn, setLoggedIn] = useState(false);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [authLoadError, setAuthLoadError] = useState<string | null>(null);
+  const [profileLoadAttempt, setProfileLoadAttempt] = useState(0);
+  const lastProfileUserIdRef = useRef('');
+  const retryAuthProfileLoad = () => {
+    setAuthLoadError(null);
+    setIsAuthLoading(true);
+    setProfileLoadAttempt((attempt) => attempt + 1);
+  };
 
   useEffect(() => {
     const client = supabase;
-    if (!client) { setLoggedIn(false); return; }
-    const applySession = (session: Awaited<ReturnType<typeof client.auth.getSession>>['data']['session']) => {
+    if (!client) {
+      setLoggedIn(false);
+      setCurrentUser(EMPTY_USER);
+      setIsAuthLoading(false);
+      return;
+    }
+
+    let active = true;
+    let requestId = 0;
+    const applySession = async (session: Awaited<ReturnType<typeof client.auth.getSession>>['data']['session']) => {
+      const currentRequestId = ++requestId;
       const authUser = session?.user;
-      if (!authUser) { setLoggedIn(false); return; }
+      if (!authUser) {
+        lastProfileUserIdRef.current = '';
+        setLoggedIn(false);
+        setCurrentUser(EMPTY_USER);
+        setAuthLoadError(null);
+        setIsAuthLoading(false);
+        return;
+      }
+
       const metadata = authUser.user_metadata || {};
-      setCurrentUser((previous) => ({ ...previous, id: authUser.id, email: authUser.email || '', name: String(metadata.full_name || metadata.name || previous.name || authUser.email?.split('@')[0] || 'Usuário'), handle: String(metadata.username || metadata.user_name || previous.handle || authUser.email?.split('@')[0] || ''), avatar: String(metadata.avatar_url || metadata.picture || previous.avatar || ''), onboarding_completed: Boolean(metadata.onboarding_completed) }));
       setLoggedIn(true);
+      setAuthLoadError(null);
+      setIsAuthLoading(true);
+      setCurrentUser((previous) => ({
+        ...previous,
+        id: authUser.id,
+        email: authUser.email || '',
+        name: String(metadata.full_name || metadata.name || previous.name || authUser.email?.split('@')[0] || 'Usuário'),
+        handle: String(metadata.username || metadata.user_name || previous.handle || authUser.email?.split('@')[0] || ''),
+        avatar: String(metadata.avatar_url || metadata.picture || previous.avatar || ''),
+        onboarding_completed: undefined,
+      }));
+
+      try {
+        const selected = await client.from('profiles')
+          .select('id,username,full_name,avatar_url,onboarding_completed')
+          .eq('id', authUser.id)
+          .maybeSingle();
+        if (selected.error) throw selected.error;
+
+        let profile = selected.data;
+        if (!profile) {
+          const inserted = await client.from('profiles').upsert({
+            id: authUser.id,
+            username: String(metadata.username || metadata.user_name || authUser.email?.split('@')[0] || ''),
+            full_name: String(metadata.full_name || metadata.name || authUser.email?.split('@')[0] || 'Usuário'),
+            avatar_url: String(metadata.avatar_url || metadata.picture || '') || null,
+            onboarding_completed: false,
+          }, { onConflict: 'id' }).select('id,username,full_name,avatar_url,onboarding_completed').single();
+          if (inserted.error) throw inserted.error;
+          profile = inserted.data;
+        }
+
+        if (!active || currentRequestId !== requestId) return;
+        lastProfileUserIdRef.current = authUser.id;
+        setCurrentUser((previous) => ({
+          ...previous,
+          id: authUser.id,
+          email: authUser.email || '',
+          name: String(profile.full_name || metadata.full_name || metadata.name || authUser.email?.split('@')[0] || 'Usuário'),
+          handle: String(profile.username || metadata.username || metadata.user_name || authUser.email?.split('@')[0] || ''),
+          avatar: String(profile.avatar_url || metadata.avatar_url || metadata.picture || ''),
+          onboarding_completed: profile.onboarding_completed === true,
+        }));
+        setIsAuthLoading(false);
+      } catch (error) {
+        if (!active || currentRequestId !== requestId) return;
+        setAuthLoadError(error instanceof Error ? error.message : 'Não foi possível carregar seu perfil.');
+        setIsAuthLoading(false);
+      }
     };
-    let alive = true;
-    void client.auth.getSession().then(({ data }) => { if (alive) applySession(data.session); });
-    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => { if (alive) applySession(session); });
-    return () => { alive = false; subscription.unsubscribe(); };
-  }, []);
+
+    void client.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        setAuthLoadError(error.message);
+        setIsAuthLoading(false);
+        return;
+      }
+      void applySession(data.session);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setAuthLoadError(error instanceof Error ? error.message : 'Não foi possível verificar a sessão.');
+      setIsAuthLoading(false);
+    });
+
+    const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+      if (!active) return;
+      if (event === 'TOKEN_REFRESHED' && session?.user.id === lastProfileUserIdRef.current) return;
+      window.setTimeout(() => { if (active) void applySession(session); }, 0);
+    });
+    return () => {
+      active = false;
+      requestId += 1;
+      subscription.unsubscribe();
+    };
+  }, [profileLoadAttempt]);
 
   // Navigation
   const [communities, setCommunities] = useState<Community[]>([]);
@@ -417,6 +516,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try { localStorage.setItem('koaline:current-user', JSON.stringify(next)); }
     catch { addToast('Armazenamento cheio', 'Não foi possível salvar a imagem. Remova alguns dados locais e tente novamente.', 'warning'); return; }
     addToast('Perfil Atualizado', 'Suas alterações foram salvas com sucesso.', 'success');
+  };
+
+  const completeOnboarding = async (updates: Partial<User> = {}): Promise<boolean> => {
+    const client = supabase;
+    if (!client || !currentUser.id) {
+      addToast('Não foi possível salvar o perfil', 'Sua sessão não está disponível. Entre novamente e tente outra vez.', 'error');
+      return false;
+    }
+
+    const next = { ...currentUser, ...updates, onboarding_completed: true };
+    const { data, error } = await client.from('profiles').update({
+      username: next.handle.replace(/^@/, ''),
+      full_name: next.name,
+      avatar_url: next.avatar || null,
+      onboarding_completed: true,
+    }).eq('id', currentUser.id).select('onboarding_completed').single();
+
+    if (error || data?.onboarding_completed !== true) {
+      addToast('Não foi possível salvar o perfil', error?.message || 'O Supabase não confirmou a conclusão do perfil.', 'error');
+      return false;
+    }
+
+    setCurrentUser(next);
+    try { localStorage.setItem('koaline:current-user', JSON.stringify(next)); }
+    catch { addToast('Perfil salvo', 'Seu perfil foi salvo no servidor, mas a imagem não pôde ser mantida neste dispositivo.', 'warning'); return true; }
+    addToast('Perfil concluído', 'Suas preferências foram salvas.', 'success');
+    return true;
   };
 
   const setIsLoggedIn = (value: boolean) => {
@@ -1195,8 +1321,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentUser,
         updateCurrentUser,
+        completeOnboarding,
         isLoggedIn,
         setIsLoggedIn,
+        isAuthLoading,
+        authLoadError,
+        retryAuthProfileLoad,
         createCommunity,
         joinCommunityByInvite,
         communities,

@@ -9,7 +9,7 @@ import { AuthThemeToggle } from '../auth/AuthThemeToggle';
 type CropTarget = 'avatar' | 'cover';
 
 export const ProfileOnboarding: React.FC = () => {
-  const { currentUser, updateCurrentUser, addToast } = useApp();
+  const { currentUser, completeOnboarding, addToast } = useApp();
   const [avatar, setAvatar] = useState(currentUser.avatar || '');
   const [cover, setCover] = useState(currentUser.banner || '');
   const [cropImage, setCropImage] = useState('');
@@ -38,9 +38,15 @@ export const ProfileOnboarding: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const finish = () => {
+  const finish = async () => {
     setSaving(true);
-    updateCurrentUser({ avatar, banner: cover, onboarding_completed: true });
+    await completeOnboarding({ avatar, banner: cover });
+    setSaving(false);
+  };
+
+  const skip = async () => {
+    setSaving(true);
+    await completeOnboarding();
     setSaving(false);
   };
 
@@ -71,7 +77,7 @@ export const ProfileOnboarding: React.FC = () => {
       </div>
 
       <div className="profile-onboarding-footer">
-        <button type="button" className="auth-back-button" onClick={() => updateCurrentUser({ onboarding_completed: true })}>Pular por agora</button>
+        <button type="button" className="auth-back-button" disabled={saving} onClick={skip}>Pular por agora</button>
         <button type="button" className="auth-primary-button auth-submit-button" disabled={saving} onClick={finish}>{saving ? 'Salvando…' : 'Concluir'}<Check aria-hidden="true" /></button>
       </div>
     </main>

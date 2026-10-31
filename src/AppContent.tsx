@@ -21,7 +21,7 @@ const VoiceRoom = React.lazy(() => import('./components/call/VoiceRoom').then((m
 const OrbitPage = React.lazy(() => import('./features/orbit/OrbitPage').then((module) => ({ default: module.OrbitPage })));
 
 export const AppContent: React.FC = () => {
-  const { activeCall, pendingCallSwitch, confirmCallSwitch, cancelCallSwitch, communities, createCommunity, joinCommunityByInvite, addToast, isLoggedIn, currentUser, isProfileEditorOpen, isThemeCustomizerOpen, isCreateChannelModalOpen, activeUserMenu, startCall } = useApp();
+  const { activeCall, pendingCallSwitch, confirmCallSwitch, cancelCallSwitch, communities, createCommunity, joinCommunityByInvite, addToast, isLoggedIn, isAuthLoading, authLoadError, retryAuthProfileLoad, currentUser, isProfileEditorOpen, isThemeCustomizerOpen, isCreateChannelModalOpen, activeUserMenu, startCall } = useApp();
   const [isAdminPanelOpen, setIsAdminPanelOpen] = React.useState(false);
   const [selectedVoiceChannel, setSelectedVoiceChannel] = React.useState<Channel | null>(null);
   const [communityName, setCommunityName] = React.useState('');
@@ -36,6 +36,10 @@ export const AppContent: React.FC = () => {
     window.addEventListener('popstate', syncRoute);
     return () => window.removeEventListener('popstate', syncRoute);
   }, []);
+
+  if (isAuthLoading) return <div className="app-shell flex h-screen w-screen items-center justify-center overflow-hidden"><div className="flex flex-col items-center gap-3 text-sm text-slate-400" role="status" aria-live="polite"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-indigo-400" /><span>Carregando seu perfil…</span></div><Toast /></div>;
+
+  if (authLoadError) return <div className="app-shell flex h-screen w-screen items-center justify-center overflow-hidden"><div className="max-w-md px-6 text-center" role="alert"><h1 className="mb-2 text-lg font-semibold text-white">Não foi possível carregar seu perfil</h1><p className="mb-5 text-sm text-slate-400">{authLoadError}</p><button type="button" onClick={retryAuthProfileLoad} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Tentar novamente</button></div><Toast /></div>;
 
   if (!isLoggedIn) return <div className="app-shell flex h-screen w-screen flex-col overflow-hidden"><AuthOnboardingModal /><Toast /></div>;
 
