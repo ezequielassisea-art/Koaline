@@ -6,11 +6,13 @@ import {
   Image as ImageIcon,
   Check,
   RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import { UserStatus } from '../../types';
 import { ImageCropperModal } from '../common/ImageCropperModal';
 import { Avatar } from '../common/Avatar';
 import { CoverImage } from '../common/CoverImage';
+import { requireSupabase } from '../../services/supabaseClient';
 
 export const ProfileEditor: React.FC = () => {
   const {
@@ -34,6 +36,28 @@ export const ProfileEditor: React.FC = () => {
   const [newInterest, setNewInterest] = useState('');
   const [cropImage, setCropImage] = useState('');
   const [cropTarget, setCropTarget] = useState<'avatar' | 'banner' | null>(null);
+  const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  const deleteOwnAccount = async () => {
+    if (deleteConfirmation !== 'EXCLUIR' || isDeletingAccount) return;
+    setIsDeletingAccount(true);
+    try {
+      const client = requireSupabase();
+      const { error } = await client.rpc('delete_own_account');
+      if (error) throw error;
+      await client.auth.signOut();
+      localStorage.removeItem('koaline:current-user');
+      setIsDeleteAccountOpen(false);
+      setIsProfileEditorOpen(false);
+      addToast('Conta excluída', 'Sua conta e os dados associados foram removidos.', 'success');
+    } catch (error) {
+      addToast('Erro ao excluir conta', error instanceof Error ? error.message : 'Tente novamente.', 'error');
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
 
   const handleImageFile = (event: React.ChangeEvent<HTMLInputElement>, target: 'avatar' | 'banner') => {
     const file = event.target.files?.[0];
@@ -243,6 +267,14 @@ export const ProfileEditor: React.FC = () => {
               </button>
             </div>
           </div>
+
+          <section className="rounded-xl border border-rose-500/30 bg-rose-950/10 p-4">
+            <h4 className="text-sm font-bold text-rose-300">Zona de Perigo</h4>
+            <p className="mt-1 text-xs text-slate-400">A exclusão da conta é permanente e não pode ser desfeita.</p>
+            <button type="button" onClick={() => { setDeleteConfirmation(''); setIsDeleteAccountOpen(true); }} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-500">
+              <Trash2 className="h-4 w-4" />Excluir minha conta
+            </button>
+          </section>
         </div>
 
         {/* Footer */}
@@ -279,6 +311,7 @@ export const ProfileEditor: React.FC = () => {
         </div>
       </div>
     </div>
+  {isDeleteAccountOpen && <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-account-title"><div className="w-full max-w-md rounded-2xl border border-rose-500/40 bg-slate-950 p-6 text-white shadow-2xl"><h2 id="delete-account-title" className="text-lg font-bold text-rose-300">Excluir minha conta?</h2><p className="mt-3 rounded-lg border border-rose-500/30 bg-rose-950/40 p-3 text-sm font-semibold text-rose-100">Esta ação é permanente. Todas as suas mensagens, amizades e comunidades serão apagadas.</p><label htmlFor="delete-account-confirmation" className="mt-4 block text-xs text-slate-300">Digite <strong>EXCLUIR</strong> para confirmar</label><input id="delete-account-confirmation" autoFocus value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-rose-500"/><div className="mt-5 flex justify-end gap-2"><button type="button" disabled={isDeletingAccount} onClick={() => setIsDeleteAccountOpen(false)} className="rounded-lg border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">Cancelar</button><button type="button" disabled={deleteConfirmation !== 'EXCLUIR' || isDeletingAccount} onClick={() => void deleteOwnAccount()} className="rounded-lg bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50">{isDeletingAccount ? 'Excluindo…' : 'Excluir permanentemente'}</button></div></div></div>}
   <ImageCropperModal open={!!cropTarget && !!cropImage} imageSrc={cropImage} aspectRatio={cropTarget === 'banner' ? 16 / 6 : 1} cropShape={cropTarget === 'banner' ? 'rect' : 'round'} targetWidth={cropTarget === 'banner' ? 1600 : 512} targetHeight={cropTarget === 'banner' ? 600 : 512} onCancel={() => { setCropTarget(null); setCropImage(''); }} onConfirm={(cropped) => { if (cropTarget === 'banner') { setBanner(cropped); updateCurrentUser({ banner: cropped }); } else { setAvatar(cropped); updateCurrentUser({ avatar: cropped }); } setCropTarget(null); setCropImage(''); }} />
   </>;
 };
