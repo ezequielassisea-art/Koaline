@@ -54,6 +54,7 @@ type VoicePresenceMeta = {
   avatar_url?: string;
   status?: User['status'];
   muted?: boolean;
+  joined_at?: number;
 };
 
 type VoicePresenceParticipant = VoicePresenceMeta & { user_id: string };
@@ -298,6 +299,7 @@ const VoiceRoomConnected: React.FC = () => {
     return () => window.clearInterval(timer);
   }, []);
   const presenceChannelRef = useRef<RealtimeChannel | null>(null);
+  const presenceJoinedAtRef = useRef<number | null>(null);
   const profileRequestsRef = useRef(new Set<string>());
   const profileCacheRef = useRef<Record<string, VoiceProfile>>({});
 
@@ -329,6 +331,7 @@ const VoiceRoomConnected: React.FC = () => {
   useEffect(() => {
     if (!activeCall || !currentUser.id || room.name !== activeCall.channelId || !supabase) return;
     let active = true;
+    presenceJoinedAtRef.current = Date.now();
     const client = supabase;
     const channel = client.channel(`koaline:voice-room:${activeCall.channelId}`, {
       config: { presence: { key: currentUser.id } },
@@ -411,6 +414,7 @@ const VoiceRoomConnected: React.FC = () => {
           avatar_url: resolvedAvatar || undefined,
           status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
           muted: !localParticipant.isMicrophoneEnabled,
+          joined_at: presenceJoinedAtRef.current || Date.now(),
         } satisfies VoicePresenceMeta);
 
         syncPresence();
@@ -439,6 +443,7 @@ const VoiceRoomConnected: React.FC = () => {
       avatar_url: avatar || undefined,
       status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
       muted,
+      joined_at: presenceJoinedAtRef.current || Date.now(),
     } satisfies VoicePresenceMeta);
 
     void channel.send({ type: 'broadcast', event: 'microphone_state', payload: { userId: currentUser.id, muted } });
@@ -502,7 +507,8 @@ const VoiceRoomConnected: React.FC = () => {
 
   useEffect(() => {
     if (!activeCall || room.name !== activeCall.channelId) return;
-    syncVoiceParticipants(activeCall.channelId, participants.map((row) => ({ ...row.user, voiceMuted: row.isMuted })));
+    const joinTimes = presenceParticipants.map((participant) => participant.joined_at).filter((value): value is number => Number.isFinite(value));
+    syncVoiceParticipants(activeCall.channelId, participants.map((row) => ({ ...row.user, voiceMuted: row.isMuted })), joinTimes.length ? Math.min(...joinTimes) : undefined);
   }, [activeCall?.channelId, participantSignature, presenceParticipants, profilesById, broadcastMuteStates, room.name]);
 
   const [controlsVisible, setControlsVisible] = useState(true);

@@ -46,11 +46,14 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     isDirectMessages,
     activeDmId,
     dms,
+    setTypingStatus,
     addToast,
     theme,
   } = useApp();
 
   const [text, setText] = useState('');
+  const lastTypingSentAtRef = useRef(0);
+  const typingStopTimerRef = useRef<number | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showMentionAutocomplete, setShowMentionAutocomplete] = useState(false);
   const [attachment, setAttachment] = useState<{ name: string; size: string; type: 'image' | 'video' | 'file'; url: string } | null>(null);
@@ -119,11 +122,36 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
   const activeCommunity = communities.find((c) => c && c.id === currentCommunityId) || communities[0] || null;
   const activeChannel = activeCommunity?.channels?.find((c) => c && c.id === currentChannelId) || null;
   const activeDm = dms.find((d) => d && d.id === activeDmId) || null;
+  const typingTargetId = isDirectMessages ? activeDmId : currentChannelId;
   const memberSuggestions: User[] = [];
 
   const placeholderText = isDirectMessages
     ? (activeDm && activeDm.user ? `Conversar com @${activeDm.user.name}...` : 'Conversa privada...')
     : `Mensagem em #${activeChannel?.name || 'geral'}...`;
+
+  const stopTyping = () => {
+    if (typingStopTimerRef.current !== null) window.clearTimeout(typingStopTimerRef.current);
+    typingStopTimerRef.current = null;
+    if (typingTargetId) setTypingStatus(typingTargetId, false);
+    lastTypingSentAtRef.current = 0;
+  };
+
+  const signalTyping = (value: string) => {
+    if (!value.trim() || !typingTargetId) { stopTyping(); return; }
+    const now = Date.now();
+    if (now - lastTypingSentAtRef.current >= 2000) {
+      setTypingStatus(typingTargetId, true);
+      lastTypingSentAtRef.current = now;
+    }
+    if (typingStopTimerRef.current !== null) window.clearTimeout(typingStopTimerRef.current);
+    typingStopTimerRef.current = window.setTimeout(stopTyping, 3000);
+  };
+
+  useEffect(() => () => {
+    if (typingStopTimerRef.current !== null) window.clearTimeout(typingStopTimerRef.current);
+    typingStopTimerRef.current = null;
+    if (typingTargetId) setTypingStatus(typingTargetId, false);
+  }, [typingTargetId]);
 
   const handleSend = async () => {
     if (isReadingAttachment || (!text.trim() && !attachment)) return;
@@ -152,6 +180,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     const sent = await sendMessage(text, replyData, attachmentsList);
     if (!sent) return;
 
+    stopTyping();
     setText('');
     setAttachment(null);
     onClearReply();
@@ -188,6 +217,7 @@ const insertEmoji = (emoji: string) => {
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setText(val);
+    signalTyping(val);
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';

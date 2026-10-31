@@ -45,6 +45,16 @@ type SupabaseChannelRow = {
   created_at?: string;
 };
 
+type AppNotification = {
+  id: string;
+  user_id: string;
+  sender_id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+};
+
 const toCommunityChannel = (row: SupabaseChannelRow, categoryId: string, ownerId?: string): Channel => ({
   id: row.id,
   communityId: row.community_id,
@@ -124,6 +134,7 @@ interface AppContextType {
   toggleArchiveDm: (id: string) => void;
   isDmLoading: boolean;
   openDirectMessage: (user: User) => Promise<boolean>;
+  openSystemConversation: (conversationId: string, user: User) => void;
   acceptCommunityInvite: (communityId: string, notificationId?: string) => Promise<boolean>;
   createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => Promise<boolean>;
   updateCommunity: (id: string, updates: Partial<Community>) => void;
@@ -140,7 +151,7 @@ interface AppContextType {
   togglePinMessage: (messageId: string) => void;
   isTyping: boolean;
   typingUser: string | null;
-  simulateTyping: (userName: string) => void;
+  setTypingStatus: (channelId: string, isTyping: boolean) => void;
 
   // UI Panels
   isColumn1Collapsed: boolean;
@@ -178,7 +189,7 @@ interface AppContextType {
   setCallLayout: (layout: 'grid' | 'spotlight' | 'audio-only') => void;
   switchCallChannel: (channel: Channel) => void;
   moveVoiceUser: (userId: string, channelId: string) => boolean;
-  syncVoiceParticipants: (channelId: string, users: User[]) => void;
+  syncVoiceParticipants: (channelId: string, users: User[], startedAt?: number) => void;
 
   // Themes
   theme: ThemeSettings;
@@ -193,6 +204,8 @@ interface AppContextType {
   resumeToast: () => void;
   notify: { success: (message: string, duration?: number) => void; error: (message: string, duration?: number) => void; warning: (message: string, duration?: number) => void; info: (message: string, duration?: number) => void };
   markNotificationsRead: () => void;
+  notifications: AppNotification[];
+  markNotificationRead: (notificationId: string) => Promise<void>;
   lastReadAtByChannel: Record<string, string>;
   markChannelRead: (channelId: string) => void;
 
@@ -357,10 +370,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeDmId, setActiveDmId] = useState<string | null>(null);
   const [isDmLoading, setIsDmLoading] = useState<boolean>(false);
   const [dms, setDms] = useState<DirectMessageConversation[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [members, setMembers] = useState<Array<{id:string;communityId:string;userId:string;role:'owner'|'admin'|'moderator'|'member';joinedAt:string}>>([]);
   const [invites, setInvites] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:invites') || '[]'); } catch { return []; } });
   const [logs, setLogs] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:logs') || '[]'); } catch { return []; } });
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
+
+  const activateDm = (conversationId: string | null) => {
+    if (conversationId) setMessages((previous) => ({ ...previous, [conversationId]: [] }));
+    setActiveDmId(conversationId);
+  };
 
   useEffect(() => {
     try {
@@ -469,6 +488,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!client || !isLoggedIn || !isDirectMessages || !activeDmId) return;
 
     let active = true;
+    setMessages((previous) => ({ ...previous, [activeDmId]: [] }));
 
     const loadDmMessages = async () => {
       try {
@@ -584,6 +604,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [activeDmId, isDirectMessages, isLoggedIn, currentUser]);
 
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || isAuthLoading || !currentUser.id) {
+      setNotifications([]);
+      return;
+    }
+    let active = true;
+    const loadNotifications = async () => {
+      const { data, error } = await client.from('notifications')
+        .select('id,user_id,sender_id,type,payload,read_at,created_at')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (active && !error) setNotifications((data || []) as AppNotification[]);
+    };
+    void loadNotifications();
+    const channel = client.channel(`notifications:${currentUser.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` }, (event) => {
+        if (!active) return;
+        if (event.eventType === 'DELETE') {
+          const deletedId = (event.old as Partial<AppNotification>).id;
+          if (deletedId) setNotifications((previous) => previous.filter((notification) => notification.id !== deletedId));
+          return;
+        }
+        const notification = event.new as AppNotification;
+        if (!notification?.id) return;
+        setNotifications((previous) => [notification, ...previous.filter((item) => item.id !== notification.id)].slice(0, 50));
+        if (event.eventType === 'INSERT') void audioManager.play('notification');
+      })
+      .subscribe();
+    return () => {
+      active = false;
+      void client.removeChannel(channel);
+    };
+  }, [isLoggedIn, isAuthLoading, currentUser.id]);
+
   // Carrega lista de conversas diretas do usuário do Supabase
   useEffect(() => {
     const client = supabase;
@@ -599,6 +655,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         if (memError || !myMembers?.length) return;
         const convIds = myMembers.map((m) => m.conversation_id).filter(Boolean);
+
+        const { data: conversationRows } = await client
+          .from('direct_conversations')
+          .select('id,is_system')
+          .in('id', convIds);
+        const systemConversationIds = new Set((conversationRows || []).filter((row) => row.is_system).map((row) => row.id));
 
         const { data: otherMembers, error: otherError } = await client
           .from('direct_conversation_members')
@@ -639,6 +701,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             lastMessageTime: '',
             unread: false,
             isArchived: false,
+            isSystem: systemConversationIds.has(m.conversation_id),
           };
         });
 
@@ -696,8 +759,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .subscribe();
     return () => { active = false; void client.removeChannel(channel); };
   }, [isLoggedIn, currentUser.id, currentCommunityId]);
-  const [isTyping, setIsTyping] = useState(false);
-  const [typingUser, setTypingUser] = useState<string | null>(null);
+  const [typingUsersByChannel, setTypingUsersByChannel] = useState<Record<string, Record<string, string>>>({});
 
   // UI Panels
   const [isColumn1Collapsed, setIsColumn1Collapsed] = useState(false);
@@ -1170,6 +1232,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try { localStorage.setItem('koaline:last-read', JSON.stringify(next)); } catch { /* Mantém o estado na sessão atual. */ }
   };
 
+  const markNotificationRead = async (notificationId: string) => {
+    const client = supabase;
+    if (!client || !currentUser.id) return;
+    const readAt = new Date().toISOString();
+    const { error } = await client.from('notifications').update({ read_at: readAt }).eq('id', notificationId).eq('user_id', currentUser.id);
+    if (!error) setNotifications((previous) => previous.map((notification) => notification.id === notificationId ? { ...notification, read_at: readAt } : notification));
+  };
+
   const moveVoiceUser = (userId: string, channelId: string) => {
     if (!userId.trim()) return false;
     const destinationCommunity = communities.find((community) => community.channels.some((channel) => channel.id === channelId));
@@ -1193,7 +1263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const syncVoiceParticipants = (channelId: string, users: User[]) => {
+  const syncVoiceParticipants = (channelId: string, users: User[], startedAt?: number) => {
     const validUsers = [...new Map(users.filter((user) => (user.id || '').trim() && ((user.avatar || '').trim() || (user.name || '').trim() || (user.handle || '').trim())).map((user) => [user.id, user])).values()];
     setCommunities((prev) => prev.map((community) => ({
       ...community,
@@ -1204,7 +1274,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return {
           ...channel,
           connectedUsers: validUsers,
-          voiceStartedAt: !isOccupied ? null : wasOccupied ? channel.voiceStartedAt || Date.now() : Date.now(),
+          voiceStartedAt: !isOccupied ? null : startedAt ?? (wasOccupied ? channel.voiceStartedAt || Date.now() : Date.now()),
         };
       }),
     })));
@@ -1260,12 +1330,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const openDirectMessage = async (user: User) => {
-    const existing = dms.find((dm) => dm.user.id === user.id || dm.user.handle.toLowerCase() === user.handle.toLowerCase());
+    const existing = dms.find((dm) => !dm.isSystem && (dm.user.id === user.id || dm.user.handle.toLowerCase() === user.handle.toLowerCase()));
     if (existing && !existing.id.startsWith('dm-')) {
       if (existing.isArchived) {
         setDms((prev) => prev.map((dm) => dm.id === existing.id ? { ...dm, isArchived: false } : dm));
       }
-      setActiveDmId(existing.id);
+      activateDm(existing.id);
       setIsDirectMessages(true);
       setIsColumn1Collapsed(false);
       return true;
@@ -1288,7 +1358,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isArchived: false,
         }];
       });
-      setActiveDmId(conversationId);
+      activateDm(conversationId);
       setIsDirectMessages(true);
       setIsColumn1Collapsed(false);
       return true;
@@ -1299,6 +1369,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsDmLoading(false);
     }
+  };
+
+  const openSystemConversation = (conversationId: string, user: User) => {
+    if (!conversationId) return;
+    setDms((previous) => {
+      const existing = previous.find((dm) => dm.id === conversationId);
+      if (existing) return previous.map((dm) => dm.id === conversationId ? { ...dm, user, isArchived: false, isSystem: true } : dm);
+      return [...previous, { id: conversationId, user, lastMessage: 'Convite personalizado', lastMessageTime: '', unread: false, isArchived: false, isSystem: true }];
+    });
+    activateDm(conversationId);
+    setIsDirectMessages(true);
+    setIsColumn1Collapsed(false);
   };
 
   const acceptCommunityInvite = async (communityId: string, notificationId?: string): Promise<boolean> => {
@@ -1464,16 +1546,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
-  const simulateTyping = (userName: string) => {
-    setIsTyping(true);
-    setTypingUser(userName);
-    setTimeout(() => {
-      setIsTyping(false);
-      setTypingUser(null);
-    }, 3000);
-  };
-
   const activeChannelKey = isDirectMessages && activeDmId ? activeDmId : currentChannelId;
+
+  const typingChannelRef = useRef<{ id: string; channel: ReturnType<NonNullable<typeof supabase>['channel']>; ready: boolean } | null>(null);
+  const typingExpiryTimersRef = useRef<Map<string, number>>(new Map());
+  const activeTypingUsers = Object.values(typingUsersByChannel[activeChannelKey] || {});
+  const isTyping = activeTypingUsers.length > 0;
+  const typingUser = activeTypingUsers[0] || null;
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !activeChannelKey || !currentUser.id) return;
+    let active = true;
+    const removeTypingUser = (userId: string) => {
+      const timerKey = `${activeChannelKey}:${userId}`;
+      const timer = typingExpiryTimersRef.current.get(timerKey);
+      if (timer !== undefined) window.clearTimeout(timer);
+      typingExpiryTimersRef.current.delete(timerKey);
+      setTypingUsersByChannel((previous) => {
+        if (!previous[activeChannelKey]?.[userId]) return previous;
+        const nextChannel = { ...previous[activeChannelKey] };
+        delete nextChannel[userId];
+        return { ...previous, [activeChannelKey]: nextChannel };
+      });
+    };
+    const channel = client.channel(`typing_${activeChannelKey}`)
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        const userId = typeof payload?.userId === 'string' ? payload.userId : '';
+        const username = typeof payload?.username === 'string' && payload.username.trim() ? payload.username : 'Alguém';
+        if (!active || !userId || userId === currentUser.id) return;
+        setTypingUsersByChannel((previous) => ({ ...previous, [activeChannelKey]: { ...(previous[activeChannelKey] || {}), [userId]: username } }));
+        const timerKey = `${activeChannelKey}:${userId}`;
+        const existingTimer = typingExpiryTimersRef.current.get(timerKey);
+        if (existingTimer !== undefined) window.clearTimeout(existingTimer);
+        typingExpiryTimersRef.current.set(timerKey, window.setTimeout(() => removeTypingUser(userId), 4000));
+      })
+      .on('broadcast', { event: 'typing_stop' }, ({ payload }) => {
+        const userId = typeof payload?.userId === 'string' ? payload.userId : '';
+        if (active && userId) removeTypingUser(userId);
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED' && typingChannelRef.current?.channel === channel) typingChannelRef.current.ready = true;
+      });
+    typingChannelRef.current = { id: activeChannelKey, channel, ready: false };
+    return () => {
+      active = false;
+      if (typingChannelRef.current?.channel === channel) typingChannelRef.current = null;
+      for (const [key, timer] of typingExpiryTimersRef.current) {
+        if (key.startsWith(`${activeChannelKey}:`)) {
+          window.clearTimeout(timer);
+          typingExpiryTimersRef.current.delete(key);
+        }
+      }
+      setTypingUsersByChannel((previous) => {
+        if (!previous[activeChannelKey]) return previous;
+        const next = { ...previous };
+        delete next[activeChannelKey];
+        return next;
+      });
+      void client.removeChannel(channel);
+    };
+  }, [activeChannelKey, currentUser.id, isLoggedIn]);
+
+  const setTypingStatus = (channelId: string, typing: boolean) => {
+    const channel = typingChannelRef.current;
+    if (!channel || !channel.ready || channel.id !== channelId || !currentUser.id) return;
+    const username = (currentUser.handle || currentUser.name || 'Membro').replace(/^@/, '').trim();
+    void channel.channel.send({
+      type: 'broadcast',
+      event: typing ? 'typing' : 'typing_stop',
+      payload: { userId: currentUser.id, username },
+    });
+  };
 
   const sendMessage = async (
     content: string,
@@ -1515,6 +1659,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Se for DM (Direct Messages)
     if (isDirectMessages) {
       const conversationId = activeDmId;
+      if (dms.find((dm) => dm.id === conversationId)?.isSystem) {
+        notify.warning('Você não pode responder a este chat de notificações.');
+        return false;
+      }
       if (!conversationId) {
         notify.error('Selecione uma conversa para enviar a mensagem.');
         return false;
@@ -1921,11 +2069,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isDirectMessages,
         setIsDirectMessages,
         activeDmId,
-        setActiveDmId,
+        setActiveDmId: activateDm,
         dms,
         toggleArchiveDm,
         isDmLoading,
         openDirectMessage,
+        openSystemConversation,
         acceptCommunityInvite,
         createChannel,
         updateCommunity,
@@ -1940,7 +2089,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         togglePinMessage,
         isTyping,
         typingUser,
-        simulateTyping,
+        setTypingStatus,
         isColumn1Collapsed,
         setIsColumn1Collapsed,
         isContextPanelOpen,
@@ -1983,6 +2132,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resumeToast,
         notify,
         markNotificationsRead,
+        notifications,
+        markNotificationRead,
         lastReadAtByChannel,
         markChannelRead,
         activeUserMenu,

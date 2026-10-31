@@ -20,7 +20,7 @@ import { DraggableUserCard, DropZoneCall } from '../call/VoiceDragDrop';
 import { formatRelativeTime } from '../../utils/time';
 import { supabase } from '../../services/supabaseClient';
 
-const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel: (channel: Channel) => void }> = ({ onOpenAdmin, onOpenVoiceChannel }) => {
+const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdmin }) => {
   const {
     communities,
     currentCommunityId,
@@ -41,6 +41,8 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChann
     currentUser,
     openDirectMessage,
     moveVoiceUser,
+    syncVoiceParticipants,
+    startCall,
   } = useApp();
 
   const [collapsedCategories, setCollapsedCategories] = React.useState<Record<string, boolean>>({});
@@ -80,6 +82,44 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChann
   }, [isAddFriendOpen, cleanUserQuery, currentUser.id]);
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
+  const voiceChannels = activeCommunity?.channels.filter((channel) => channel.type === 'voice') || [];
+  const voiceChannelKey = voiceChannels.map((channel) => channel.id).join('|');
+  React.useEffect(() => {
+    const client = supabase;
+    if (!client || !currentUser.id || isDirectMessages || !activeCommunity || !voiceChannelKey) return;
+    let active = true;
+    const channels = voiceChannelKey.split('|').map((channelId) => {
+      const presenceChannel = client.channel(`koaline:voice-room:${channelId}`);
+      const syncPresence = () => {
+        if (!active) return;
+        const entries = Object.entries(presenceChannel.presenceState<{ user_id?: string; username?: string; full_name?: string; avatar_url?: string; status?: User['status']; muted?: boolean; joined_at?: number }>())
+          .flatMap(([key, metas]) => metas.map((meta) => ({ ...meta, user_id: meta.user_id || key })))
+          .filter((entry) => !!entry.user_id);
+        const unique = [...new Map(entries.map((entry) => [entry.user_id!, entry])).values()];
+        const users: User[] = unique.map((entry) => ({
+          ...currentUser,
+          id: entry.user_id!,
+          name: entry.full_name || entry.username || 'Membro Koaline',
+          handle: entry.username || '',
+          avatar: entry.avatar_url || '',
+          status: entry.status === 'idle' || entry.status === 'dnd' ? entry.status : 'online',
+          voiceMuted: !!entry.muted,
+        }));
+        const joinTimes = unique.map((entry) => entry.joined_at).filter((value): value is number => Number.isFinite(value));
+        syncVoiceParticipants(channelId, users, joinTimes.length ? Math.min(...joinTimes) : undefined);
+      };
+      presenceChannel
+        .on('presence', { event: 'sync' }, syncPresence)
+        .on('presence', { event: 'join' }, syncPresence)
+        .on('presence', { event: 'leave' }, syncPresence)
+        .subscribe((status) => { if (status === 'SUBSCRIBED') syncPresence(); });
+      return presenceChannel;
+    });
+    return () => {
+      active = false;
+      channels.forEach((channel) => { if (channel) void client.removeChannel(channel); });
+    };
+  }, [activeCommunity?.id, currentUser.id, isDirectMessages, voiceChannelKey]);
   if (!activeCommunity) return null;
   let archivedChannelIds = new Set<string>();
   try { archivedChannelIds = new Set<string>(JSON.parse(localStorage.getItem(`koaline:admin:${currentCommunityId}`) || '{}').archived || []); }
@@ -93,7 +133,7 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChann
 
   const handleChannelClick = (channel: Channel) => {
     if (channel.type === 'voice') {
-      onOpenVoiceChannel(channel);
+      startCall(channel, 'voice');
     } else {
       setCurrentChannelId(channel.id);
       if (activeCall && !activeCall.isMinimized) toggleMinimizeCall();

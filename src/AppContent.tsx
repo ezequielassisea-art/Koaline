@@ -5,7 +5,6 @@ import { ChannelList } from './components/layout/ChannelList';
 import { ChatView } from './components/chat/ChatView';
 import { DirectMessageView } from './components/chat/DirectMessageView';
 import { ContextPanel } from './components/layout/ContextPanel';
-import { VoiceJoinModal } from './components/call/VoiceJoinModal';
 import { ScreenSharePiP } from './components/call/ScreenSharePiP';
 import { Toast } from './components/common/Toast';
 import { UserContextMenu } from './components/chat/UserContextMenu';
@@ -17,7 +16,6 @@ import { AuthOnboardingModal } from './components/auth/AuthOnboardingModal';
 import { AdminPanel } from './components/admin/AdminPanel';
 import { ConfirmModal } from './components/common/ConfirmModal';
 import { UpdatePasswordPage } from './components/auth/UpdatePasswordPage';
-import { Channel } from './types';
 
 const VoiceRoom = React.lazy(() => import('./components/call/VoiceRoom').then((module) => ({ default: module.VoiceRoom })));
 const isHomePath = (pathname: string) => pathname === '/' || pathname === '/chat' || pathname === '/home' || pathname === '/profile';
@@ -44,11 +42,9 @@ export const AppContent: React.FC = () => {
     isThemeCustomizerOpen,
     isCreateChannelModalOpen,
     activeUserMenu,
-    startCall,
   } = useApp();
 
   const [isAdminPanelOpen, setIsAdminPanelOpen] = React.useState(false);
-  const [selectedVoiceChannel, setSelectedVoiceChannel] = React.useState<Channel | null>(null);
   const [isNotFound, setIsNotFound] = React.useState(() => !isHomePath(window.location.pathname) && !isPasswordUpdatePath(window.location.pathname));
   const wasReadyLoggedIn = React.useRef(false);
   const isCallFullscreen = activeCall && !activeCall.isMinimized;
@@ -128,7 +124,7 @@ export const AppContent: React.FC = () => {
       <TopBar />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 flex-1 overflow-hidden" style={{ display: isNotFound ? 'none' : 'flex' }}>
-          {(communities.length > 0 || isDirectMessages) && <ChannelList onOpenAdmin={openAdminPanel} onOpenVoiceChannel={setSelectedVoiceChannel} />}
+          {(communities.length > 0 || isDirectMessages) && <ChannelList onOpenAdmin={openAdminPanel} />}
           <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative">
             {isDirectMessages ? (
               <DirectMessageView />
@@ -201,16 +197,6 @@ export const AppContent: React.FC = () => {
       {!isLoggedIn && <AuthOnboardingModal />}
       {isLoggedIn && !currentUser.onboarding_completed && <ProfileOnboarding />}
       {isAdminPanelOpen && <AdminPanel onClose={() => setIsAdminPanelOpen(false)} />}
-      {selectedVoiceChannel && (
-        <VoiceJoinModal
-          channel={selectedVoiceChannel}
-          onClose={() => setSelectedVoiceChannel(null)}
-          onJoin={(isDeafened) => {
-            startCall(selectedVoiceChannel, 'voice', isDeafened);
-            setSelectedVoiceChannel(null);
-          }}
-        />
-      )}
       <ConfirmModal
         isOpen={pendingCallSwitch}
         title="Trocar de chamada?"

@@ -115,6 +115,7 @@ export interface DirectMessageConversation {
   unread: boolean;
   lastReadAt?: string;
   isArchived: boolean;
+  isSystem?: boolean;
 }
 
 export interface ActiveCall {

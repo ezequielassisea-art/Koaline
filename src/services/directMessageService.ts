@@ -19,12 +19,21 @@ export async function getOrCreateConversation(targetUserId: string): Promise<str
   if (ownMembershipsError) throw ownMembershipsError;
 
   const conversationIds = (ownMemberships || []).map((membership) => membership.conversation_id).filter(Boolean);
+  let normalConversationIds = conversationIds;
   if (conversationIds.length > 0) {
+    const { data: conversations, error: conversationsError } = await client
+      .from('direct_conversations')
+      .select('id,is_system')
+      .in('id', conversationIds);
+    if (conversationsError) throw conversationsError;
+    normalConversationIds = (conversations || []).filter((conversation) => !conversation.is_system).map((conversation) => conversation.id);
+  }
+  if (normalConversationIds.length > 0) {
     const { data: sharedMemberships, error: sharedMembershipsError } = await client
       .from('direct_conversation_members')
       .select('conversation_id')
       .eq('user_id', targetUserId)
-      .in('conversation_id', conversationIds)
+      .in('conversation_id', normalConversationIds)
       .limit(1);
     if (sharedMembershipsError) throw sharedMembershipsError;
 
@@ -51,6 +60,30 @@ export async function getOrCreateConversation(targetUserId: string): Promise<str
   return conversation.id;
 }
 
+export async function createSystemConversation(targetUserId: string): Promise<string> {
+  if (!targetUserId) throw new Error('Identificador do destinatário inválido.');
+  const client = requireSupabase();
+  const { data: { user }, error: authError } = await client.auth.getUser();
+  if (authError) throw authError;
+  if (!user) throw new Error('Faça login para criar um chat de convite.');
+  if (user.id === targetUserId) throw new Error('Não é possível convidar a própria conta.');
+
+  const { data: conversation, error: conversationError } = await client
+    .from('direct_conversations')
+    .insert({ is_system: true })
+    .select('id')
+    .single();
+  if (conversationError) throw conversationError;
+  if (!conversation?.id) throw new Error('O Supabase não retornou o ID da conversa de sistema.');
+
+  const { error: membersError } = await client.from('direct_conversation_members').insert([
+    { conversation_id: conversation.id, user_id: user.id },
+    { conversation_id: conversation.id, user_id: targetUserId },
+  ]);
+  if (membersError) throw membersError;
+  return conversation.id;
+}
+
 export async function sendCommunityInviteMessage(input: {
   conversationId: string;
   communityId: string;
@@ -69,6 +102,7 @@ export async function sendCommunityInviteMessage(input: {
     communityName: input.communityName,
     message: input.customMessage,
     notificationId: input.notificationId,
+    system_log: true,
   });
   const { error } = await client.from('direct_messages').insert({
     conversation_id: input.conversationId,

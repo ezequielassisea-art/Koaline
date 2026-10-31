@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { MessageItem } from './MessageItem';
 import { MessageInput } from './MessageInput';
@@ -34,6 +34,11 @@ export const DirectMessageView: React.FC = () => {
   const conversation = dms.find((d) => d && d.id === activeDmId) || null;
   const conversationId = conversation ? conversation.id : (activeDmId || null);
 
+  useLayoutEffect(() => {
+    setLocalDmMessages([]);
+    setLoadingMessages(true);
+  }, [activeDmId]);
+
   // 1. CARREGAMENTO DE DMs (SUPABASE):
   // Ao abrir a tela de DM, busca as mensagens diretamente da tabela direct_messages
   useEffect(() => {
@@ -42,6 +47,8 @@ export const DirectMessageView: React.FC = () => {
       setLoadingMessages(false);
       return;
     }
+    setLocalDmMessages([]);
+    setLoadingMessages(true);
     const client = supabase;
 
     let active = true;
@@ -207,7 +214,7 @@ export const DirectMessageView: React.FC = () => {
       active = false;
       void client.removeChannel(dmChannel);
     };
-  }, [conversationId, currentUser.id]);
+  }, [conversationId, activeDmId, currentUser.id]);
 
   useEffect(() => {
     if (conversationId) {
@@ -218,7 +225,7 @@ export const DirectMessageView: React.FC = () => {
   // Certifique-se de que a lista de mensagens está sendo inicializada como um array vazio []
   const contextMsgs = (conversationId && Array.isArray(messages[conversationId])) ? messages[conversationId] : [];
   const mergedMap = new Map<string, Message>();
-  localDmMessages.forEach((m) => mergedMap.set(m.id, m));
+  localDmMessages.filter((message) => message.channelId === conversationId).forEach((m) => mergedMap.set(m.id, m));
   contextMsgs.forEach((m) => mergedMap.set(m.id, m));
   const messagesList: Message[] = Array.from(mergedMap.values()).sort(
     (a, b) => parseAppDate(a.timestamp).getTime() - parseAppDate(b.timestamp).getTime()
@@ -277,8 +284,8 @@ export const DirectMessageView: React.FC = () => {
               type="dms"
               title={conversation?.user?.name ? `Conversa com @${conversation.user.name}` : 'Início da conversa'}
               description="Envie uma mensagem para começar este bate-papo privado."
-              onAction={() => sendMessage('Olá! 👋')}
-              actionText="Dizer Olá"
+              onAction={conversation?.isSystem ? undefined : () => sendMessage('Olá! 👋')}
+              actionText={conversation?.isSystem ? undefined : 'Dizer Olá'}
             />
           </div>
         ) : (
@@ -359,11 +366,7 @@ export const DirectMessageView: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <MessageInput
-        replyTarget={replyTarget}
-        onClearReply={() => setReplyTarget(null)}
-      />
+      {conversation?.isSystem ? <div className="border-t border-slate-800 px-4 py-3 text-center text-xs text-slate-400" role="note">Você não pode responder a este chat de notificações.</div> : <MessageInput replyTarget={replyTarget} onClearReply={() => setReplyTarget(null)} />}
     </div>
   );
 };

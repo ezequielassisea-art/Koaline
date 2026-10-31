@@ -43,12 +43,14 @@ export const TopBar: React.FC = () => {
     setIsLoggedIn,
     addToast,
     openDirectMessage,
+    openSystemConversation,
+    notifications,
+    markNotificationRead,
   } = useApp();
 
 const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [inviteNotifications, setInviteNotifications] = useState<CommunityInviteNotification[]>([]);
   const [openingNotificationId, setOpeningNotificationId] = useState<string | null>(null);
   const [audioPreferences, setAudioPreferences] = useState(() => {
     try {
@@ -66,6 +68,7 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
   const unreadDirectMessages = dms.filter((dm) => dm.unread && !dm.isArchived).length;
+  const inviteNotifications = notifications.filter((notification) => notification.type === 'community_invite');
   const unreadMentions = Object.entries(messages).reduce((count, [channelId, channelMessages]) => {
     const lastReadAt = lastReadAtByChannel[channelId];
     const normalizedHandle = currentUser.handle.replace(/^@/, '').split('#')[0].toLowerCase();
@@ -85,19 +88,6 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
   }, 0);
   const notificationCount = unreadDirectMessages + unreadMentions + inviteNotifications.filter((item) => !item.read_at).length;
 
-  useEffect(() => {
-    const client = supabase;
-    if (!client || !currentUser.id) { setInviteNotifications([]); return; }
-    let active = true;
-    const load = async () => {
-      const { data } = await client.from('notifications').select('id,user_id,sender_id,type,payload,read_at,created_at').eq('user_id', currentUser.id).eq('type', 'community_invite').order('created_at', { ascending: false }).limit(20);
-      if (active) setInviteNotifications((data || []) as CommunityInviteNotification[]);
-    };
-    void load();
-    const channel = client.channel(`notifications:${currentUser.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` }, () => { void load(); }).subscribe();
-    return () => { active = false; void client.removeChannel(channel); };
-  }, [currentUser.id]);
-
   const openInviteNotification = async (notification: CommunityInviteNotification) => {
     const client = supabase;
     if (!client || openingNotificationId) return;
@@ -107,8 +97,10 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
       if (error) throw error;
       const username = profile?.username || 'Membro Koaline';
       const inviter = { ...currentUser, id: notification.sender_id, name: profile?.full_name || username, handle: username, avatar: profile?.avatar_url || '', status: 'offline' as const };
-      const opened = await openDirectMessage(inviter);
-      if (!opened) return;
+      const conversationId = String(notification.payload.conversation_id || '');
+      if (conversationId) openSystemConversation(conversationId, inviter);
+      else if (!await openDirectMessage(inviter)) return;
+      await markNotificationRead(notification.id);
       setIsNotificationsOpen(false);
     } catch (error) {
       addToast('Convite não aberto', error instanceof Error ? error.message : 'Tente novamente.', 'error');
@@ -235,10 +227,10 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           onClick={() => { setIsNotificationsOpen((value) => !value); markNotificationsRead(); }}
           title={notificationCount ? `${notificationCount} notificações não lidas. Marcar como lidas` : 'Nenhuma notificação não lida'}
           aria-label={notificationCount ? `${notificationCount} notificações não lidas. Marcar como lidas` : 'Nenhuma notificação não lida'}
-          className={`relative p-2 rounded-full hover:bg-slate-800 transition-colors ${notificationCount ? 'text-primary' : 'text-slate-400 hover:text-slate-200'}`}
+          className={`relative p-2 rounded-full hover:bg-slate-800 transition-colors ${notificationCount ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
         >
           <Bell className="w-4 h-4" />
-          {notificationCount > 0 && <span className="notification-badge" aria-hidden="true">{notificationCount}</span>}
+          {notificationCount > 0 && <span className="notification-badge !bg-red-500 !text-white" aria-hidden="true">{notificationCount}</span>}
         </button>
         {isNotificationsOpen && <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl"><div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><strong className="text-sm text-white">Notificações</strong><button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button></div><div className="max-h-80 overflow-y-auto">{inviteNotifications.length === 0 ? <p className="p-4 text-sm text-slate-400">Nenhum convite por enquanto.</p> : inviteNotifications.map((notification) => <button key={notification.id} disabled={openingNotificationId === notification.id} onClick={() => void openInviteNotification(notification)} className={`w-full border-b border-slate-800 px-4 py-3 text-left transition-colors hover:bg-slate-900 ${notification.read_at ? 'opacity-70' : 'bg-indigo-500/5'}`}><span className="block text-sm text-slate-200">{String(notification.payload.inviter_name || '@membro')} te convidou para {String(notification.payload.community_name || 'uma comunidade')}</span><span className="mt-1 block text-xs text-slate-400">Clique para abrir o convite na DM.</span><span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span></button>)}</div></div>}
         </div>
