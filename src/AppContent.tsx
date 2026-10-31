@@ -16,10 +16,12 @@ import { CreateChannelModal } from './components/channels/CreateChannelModal';
 import { AuthOnboardingModal } from './components/auth/AuthOnboardingModal';
 import { AdminPanel } from './components/admin/AdminPanel';
 import { ConfirmModal } from './components/common/ConfirmModal';
+import { UpdatePasswordPage } from './components/auth/UpdatePasswordPage';
 import { Channel } from './types';
 
 const VoiceRoom = React.lazy(() => import('./components/call/VoiceRoom').then((module) => ({ default: module.VoiceRoom })));
 const isHomePath = (pathname: string) => pathname === '/' || pathname === '/chat' || pathname === '/home' || pathname === '/profile';
+const isPasswordUpdatePath = (pathname: string) => pathname === '/update-password';
 
 export const AppContent: React.FC = () => {
   const {
@@ -47,7 +49,7 @@ export const AppContent: React.FC = () => {
 
   const [isAdminPanelOpen, setIsAdminPanelOpen] = React.useState(false);
   const [selectedVoiceChannel, setSelectedVoiceChannel] = React.useState<Channel | null>(null);
-  const [isNotFound, setIsNotFound] = React.useState(() => !isHomePath(window.location.pathname));
+  const [isNotFound, setIsNotFound] = React.useState(() => !isHomePath(window.location.pathname) && !isPasswordUpdatePath(window.location.pathname));
   const wasReadyLoggedIn = React.useRef(false);
   const isCallFullscreen = activeCall && !activeCall.isMinimized;
   const openAdminPanel = React.useCallback(() => setIsAdminPanelOpen(true), []);
@@ -55,11 +57,11 @@ export const AppContent: React.FC = () => {
   React.useEffect(() => {
     const syncRoute = () => {
       let pathname = window.location.pathname;
-      if (isHomePath(pathname) && pathname !== '/') {
+      if (isHomePath(pathname) && pathname !== '/' && !isPasswordUpdatePath(pathname)) {
         window.history.replaceState({}, '', '/');
         pathname = '/';
       }
-      setIsNotFound(pathname !== '/');
+      setIsNotFound(pathname !== '/' && !isPasswordUpdatePath(pathname));
     };
     window.addEventListener('popstate', syncRoute);
     return () => window.removeEventListener('popstate', syncRoute);
@@ -68,8 +70,10 @@ export const AppContent: React.FC = () => {
   React.useEffect(() => {
     if (isAuthLoading) return;
     if (isLoggedIn && !wasReadyLoggedIn.current) {
-      if (window.location.pathname !== '/') window.history.replaceState({}, '', '/');
-      setIsNotFound(false);
+      if (!isPasswordUpdatePath(window.location.pathname)) {
+        if (window.location.pathname !== '/') window.history.replaceState({}, '', '/');
+        setIsNotFound(false);
+      }
     }
     wasReadyLoggedIn.current = isLoggedIn;
   }, [isLoggedIn, isAuthLoading]);
@@ -92,6 +96,8 @@ export const AppContent: React.FC = () => {
       </div>
     );
   }
+
+  if (isPasswordUpdatePath(window.location.pathname)) return <UpdatePasswordPage />;
 
   if (authLoadError) {
     return (

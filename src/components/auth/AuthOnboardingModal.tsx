@@ -42,6 +42,10 @@ export const AuthOnboardingModal: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingHandle, setIsCheckingHandle] = useState(false);
   const [isHandleAvailable, setIsHandleAvailable] = useState<boolean | null>(null);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [isSendingReset, setIsSendingReset] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   useEffect(() => {
     if (mode === 'home') return;
@@ -104,6 +108,21 @@ export const AuthOnboardingModal: React.FC = () => {
     finally { setIsLoading(false); }
   };
 
+  const sendPasswordReset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!resetEmail.trim()) return;
+    setIsSendingReset(true);
+    try {
+      const { error } = await requireSupabase().auth.resetPasswordForEmail(resetEmail.trim(), {
+        redirectTo: `${window.location.origin}/update-password`,
+      });
+      if (error) throw error;
+      setResetSent(true);
+    } catch (error) {
+      addToast('Falha ao enviar recuperação', error instanceof Error ? error.message : 'Confira o e-mail e tente novamente.', 'error');
+    } finally { setIsSendingReset(false); }
+  };
+
   const finishRegister = (event: React.FormEvent) => {
     event.preventDefault();
     if (!handleValid || isHandleAvailable !== true || !email.trim() || !passwordsMatch || strength < 2) return;
@@ -152,7 +171,7 @@ export const AuthOnboardingModal: React.FC = () => {
 
       {mode === 'login' && <form className="auth-form" onSubmit={finishLogin}>
         <Input id="auth-login-identifier" label="E-mail" startAdornment={<AtSign />} type="email" autoComplete="username" required value={loginIdentifier} onChange={(event) => setLoginIdentifier(event.target.value)} />
-        <div className="auth-label-row"><span className="auth-label">Senha</span><button type="button" className="auth-inline-link" onClick={() => addToast('Recuperação de senha', 'Conecte o fluxo de recuperação ao backend de autenticação.', 'warning')}>Esqueceu a senha?</button></div>
+        <div className="auth-label-row"><span className="auth-label">Senha</span><button type="button" className="auth-inline-link" onClick={() => { setResetEmail(loginIdentifier); setResetSent(false); setIsResetModalOpen(true); }}>Esqueceu a senha?</button></div>
         <Input id="auth-login-password" label="Senha" startAdornment={<LockKeyhole />} type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onCopy={(event) => event.preventDefault()} onCut={(event) => event.preventDefault()} onChange={(event) => setPassword(event.target.value)} endAdornment={<button type="button" className="auth-icon-button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>} />
         <Button type="submit" variant="primary" className="auth-submit-button" disabled={isLoading}>{isLoading ? 'Entrando…' : 'Entrar'}<ArrowRight aria-hidden="true" /></Button>
         <p className="auth-switch-copy">Ainda não tem conta? <button type="button" className="auth-inline-link" onClick={enterRegister}>Criar conta</button></p>
@@ -182,6 +201,7 @@ export const AuthOnboardingModal: React.FC = () => {
         </>}
       </form>}
     </SolidCard>
+    {isResetModalOpen && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="password-reset-title"><form onSubmit={sendPasswordReset} className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-950 p-6 text-white shadow-2xl"><h2 id="password-reset-title" className="text-lg font-bold">Recuperar senha</h2>{resetSent ? <p className="mt-3 text-sm text-emerald-300">Se este e-mail estiver cadastrado, enviaremos um link para redefinir sua senha.</p> : <><p className="mt-2 text-sm text-slate-400">Informe o e-mail associado à sua conta.</p><Input id="password-reset-email" label="E-mail" startAdornment={<Mail />} type="email" autoComplete="email" required value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} /></>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setIsResetModalOpen(false)} disabled={isSendingReset} className="rounded-lg border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">Fechar</button>{!resetSent && <Button type="submit" variant="primary" disabled={isSendingReset || !resetEmail.trim()}>{isSendingReset ? 'Enviando…' : 'Enviar link'}</Button>}</div></form></div>}
   </AuthLayout>;
 };
 
