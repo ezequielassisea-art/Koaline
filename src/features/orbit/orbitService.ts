@@ -2,7 +2,9 @@ import type { User } from '../../types';
 import { requireSupabase, supabase } from '../../services/supabaseClient';
 
 export interface OrbitCommunity { id: string; name: string; slug: string; description: string; banner_url: string | null; created_by: string; created_at: string; role?: 'admin' | 'member'; }
-export interface OrbitPost { id: string; community_id: string; author_id: string; content: string; media_url: string | null; media_type: 'image' | 'video' | null; created_at: string; community: OrbitCommunity; author: { display_name: string; handle: string; avatar_url: string | null }; like_count: number; liked_by_me: boolean; }
+export interface OrbitComment { id: string; post_id: string; author_id: string; content: string; created_at: string; author: { display_name: string; handle: string; avatar_url: string | null }; }
+export interface OrbitPollOption { id: string; post_id: string; label: string; position: number; vote_count: number; }
+export interface OrbitPost { id: string; community_id: string; author_id: string; content: string; media_url: string | null; media_type: 'image' | 'video' | null; created_at: string; community: OrbitCommunity; author: { display_name: string; handle: string; avatar_url: string | null }; like_count: number; liked_by_me: boolean; comments: OrbitComment[]; poll_options: OrbitPollOption[]; user_vote_option_id: string | null; }
 const env = import.meta.env;
 const cloudName = env.VITE_CLOUDINARY_CLOUD_NAME?.trim();
 const uploadPreset = env.VITE_CLOUDINARY_UPLOAD_PRESET?.trim();
@@ -65,31 +67,151 @@ export async function fetchOrbitPosts(communityIds: string[], userId: string, of
   const communityIdsInPage = [...new Set(rows.map((row) => row.community_id as string))];
   const authorIds = [...new Set(rows.map((row) => row.author_id as string))];
   const postIds = rows.map((row) => row.id as string);
-  const [communityResult, profilesResult, likesResult] = await Promise.all([
+  const [communityResult, likesResult, commentsResult, optionsResult, votesResult] = await Promise.all([
     supabase.from('communities').select('id,name,slug,description,banner_url,created_by,created_at').in('id', communityIdsInPage),
-    supabase.from('orbit_profiles').select('user_id,display_name,handle,avatar_url').in('user_id', authorIds),
     supabase.from('post_likes').select('post_id,user_id').in('post_id', postIds),
+    supabase.from('post_comments').select('id,post_id,author_id,content,created_at').in('post_id', postIds).order('created_at', { ascending: true }),
+    supabase.from('post_poll_options').select('id,post_id,label,position').in('post_id', postIds).order('position', { ascending: true }),
+    supabase.from('post_poll_votes').select('post_id,option_id,user_id').in('post_id', postIds),
   ]);
   if (communityResult.error) throw communityResult.error;
-  if (profilesResult.error) throw profilesResult.error;
   if (likesResult.error) throw likesResult.error;
+  if (commentsResult.error) throw commentsResult.error;
+  if (optionsResult.error) throw optionsResult.error;
+  if (votesResult.error) throw votesResult.error;
+  const commentRows = commentsResult.data || [];
+  const authorIdsWithComments = [...new Set([...authorIds, ...commentRows.map((item) => item.author_id as string)])];
+  const profilesResult = await supabase.from('orbit_profiles').select('user_id,display_name,handle,avatar_url').in('user_id', authorIdsWithComments);
+  if (profilesResult.error) throw profilesResult.error;
   const communityById = new Map((communityResult.data || []).map((item) => [item.id as string, item as unknown as OrbitCommunity]));
   const authorById = new Map((profilesResult.data || []).map((item) => [item.user_id as string, item]));
   const likesByPost = new Map<string, Array<{ user_id: string }>>();
   for (const like of likesResult.data || []) { const id = like.post_id as string; likesByPost.set(id, [...(likesByPost.get(id) || []), { user_id: like.user_id as string }]); }
+  const votesByOption = new Map<string, Array<{ user_id: string }>>();
+  const userVoteByPost = new Map<string, string>();
+  for (const vote of votesResult.data || []) {
+    const optionId = vote.option_id as string;
+    const postId = vote.post_id as string;
+    votesByOption.set(optionId, [...(votesByOption.get(optionId) || []), { user_id: vote.user_id as string }]);
+    if (vote.user_id === userId) userVoteByPost.set(postId, optionId);
+  }
+  const commentsByPost = new Map<string, OrbitComment[]>();
+  for (const row of commentRows) {
+    const author = authorById.get(row.author_id as string);
+    const comment: OrbitComment = {
+      id: row.id as string,
+      post_id: row.post_id as string,
+      author_id: row.author_id as string,
+      content: row.content as string,
+      created_at: row.created_at as string,
+      author: { display_name: (author?.display_name as string) || 'Membro Koaline', handle: (author?.handle as string) || '', avatar_url: (author?.avatar_url as string | null) || null },
+    };
+    commentsByPost.set(comment.post_id, [...(commentsByPost.get(comment.post_id) || []), comment]);
+  }
+  const optionsByPost = new Map<string, OrbitPollOption[]>();
+  for (const row of optionsResult.data || []) {
+    const postId = row.post_id as string;
+    const option: OrbitPollOption = { id: row.id as string, post_id: postId, label: row.label as string, position: row.position as number, vote_count: votesByOption.get(row.id as string)?.length || 0 };
+    optionsByPost.set(postId, [...(optionsByPost.get(postId) || []), option]);
+  }
   return rows.flatMap((row) => {
     const community = communityById.get(row.community_id as string);
     if (!community) return [];
     const author = authorById.get(row.author_id as string);
     const likes = likesByPost.get(row.id as string) || [];
-    return [{ ...(row as unknown as Omit<OrbitPost, 'community' | 'author' | 'like_count' | 'liked_by_me'>), community, author: { display_name: (author?.display_name as string) || 'Membro Koaline', handle: (author?.handle as string) || '', avatar_url: (author?.avatar_url as string | null) || null }, like_count: likes.length, liked_by_me: likes.some((item) => item.user_id === userId) }];
+    return [{ ...(row as unknown as Omit<OrbitPost, 'community' | 'author' | 'like_count' | 'liked_by_me' | 'comments' | 'poll_options' | 'user_vote_option_id'>), community, author: { display_name: (author?.display_name as string) || 'Membro Koaline', handle: (author?.handle as string) || '', avatar_url: (author?.avatar_url as string | null) || null }, like_count: likes.length, liked_by_me: likes.some((item) => item.user_id === userId), comments: commentsByPost.get(row.id as string) || [], poll_options: optionsByPost.get(row.id as string) || [], user_vote_option_id: userVoteByPost.get(row.id as string) || null }];
   });
+}
+
+export async function fetchOrbitProfileByHandle(handle: string): Promise<{ user_id: string; display_name: string; handle: string; avatar_url: string | null } | null> {
+  const supabase = await getOrbitClient();
+  const { data, error } = await supabase.from('orbit_profiles').select('user_id,display_name,handle,avatar_url').ilike('handle', handle).limit(1).maybeSingle();
+  if (error) throw error;
+  return data as { user_id: string; display_name: string; handle: string; avatar_url: string | null } | null;
+}
+
+export async function fetchOrbitPostComments(postId: string): Promise<OrbitComment[]> {
+  const supabase = await getOrbitClient();
+  const { data, error } = await supabase.from('post_comments').select('id,post_id,author_id,content,created_at').eq('post_id', postId).order('created_at', { ascending: true });
+  if (error) throw error;
+  const rows = data || [];
+  const authorIds = [...new Set(rows.map((row) => row.author_id as string))];
+  if (!authorIds.length) return [];
+  const { data: profiles, error: profileError } = await supabase.from('orbit_profiles').select('user_id,display_name,handle,avatar_url').in('user_id', authorIds);
+  if (profileError) throw profileError;
+  const byId = new Map((profiles || []).map((profile) => [profile.user_id as string, profile]));
+  return rows.map((row) => {
+    const profile = byId.get(row.author_id as string);
+    return { ...row, author: { display_name: (profile?.display_name as string) || 'Membro Koaline', handle: (profile?.handle as string) || '', avatar_url: (profile?.avatar_url as string | null) || null } } as OrbitComment;
+  });
+}
+
+export async function fetchOrbitPollResults(postId: string, userId: string): Promise<{ options: OrbitPollOption[]; userVoteOptionId: string | null }> {
+  const supabase = await getOrbitClient();
+  const [optionsResult, votesResult] = await Promise.all([
+    supabase.from('post_poll_options').select('id,post_id,label,position').eq('post_id', postId).order('position', { ascending: true }),
+    supabase.from('post_poll_votes').select('option_id,user_id').eq('post_id', postId),
+  ]);
+  if (optionsResult.error) throw optionsResult.error;
+  if (votesResult.error) throw votesResult.error;
+  const votesByOption = new Map<string, number>();
+  let userVoteOptionId: string | null = null;
+  for (const vote of votesResult.data || []) {
+    const optionId = vote.option_id as string;
+    votesByOption.set(optionId, (votesByOption.get(optionId) || 0) + 1);
+    if (vote.user_id === userId) userVoteOptionId = optionId;
+  }
+  return {
+    options: (optionsResult.data || []).map((option) => ({ ...option, vote_count: votesByOption.get(option.id as string) || 0 }) as OrbitPollOption),
+    userVoteOptionId,
+  };
 }
 
 export async function createOrbitPost(input: { communityId: string; authorId: string; content: string; mediaUrl: string | null; mediaType: 'image' | 'video' | null }): Promise<void> {
   const supabase = await getOrbitClient();
   const { error } = await supabase.from('posts').insert({ community_id: input.communityId, author_id: input.authorId, content: input.content, media_url: input.mediaUrl, media_type: input.mediaType });
   if (error) throw error;
+}
+
+export async function createOrbitPoll(input: { communityId: string; authorId: string; question: string; options: string[] }): Promise<void> {
+  const supabase = await getOrbitClient();
+  const { data: post, error: postError } = await supabase.from('posts').insert({ community_id: input.communityId, author_id: input.authorId, content: input.question, media_url: null, media_type: null }).select('id').single();
+  if (postError) throw postError;
+  const { error: optionsError } = await supabase.from('post_poll_options').insert(input.options.map((label, position) => ({ post_id: post.id, label, position })));
+  if (optionsError) {
+    await supabase.from('posts').delete().eq('id', post.id);
+    throw optionsError;
+  }
+}
+
+export async function voteOrbitPoll(postId: string, optionId: string, userId: string): Promise<void> {
+  const supabase = await getOrbitClient();
+  const { error } = await supabase.from('post_poll_votes').upsert({ post_id: postId, option_id: optionId, user_id: userId }, { onConflict: 'post_id,user_id' });
+  if (error) throw error;
+}
+
+export async function createOrbitComment(postId: string, authorId: string, content: string): Promise<OrbitComment> {
+  const supabase = await getOrbitClient();
+  const { data, error } = await supabase.from('post_comments').insert({ post_id: postId, author_id: authorId, content }).select('id,post_id,author_id,content,created_at').single();
+  if (error) throw error;
+  const { data: profile, error: profileError } = await supabase.from('orbit_profiles').select('display_name,handle,avatar_url').eq('user_id', authorId).single();
+  if (profileError) throw profileError;
+  return { ...data, author: { display_name: profile.display_name, handle: profile.handle, avatar_url: profile.avatar_url } } as OrbitComment;
+}
+
+export function subscribeOrbitInteractions(onComment: (postId: string) => void, onPollVote: (postId: string) => void): () => void {
+  if (!supabase) return () => undefined;
+  const channel = supabase.channel(`orbit-interactions-${crypto.randomUUID()}`)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_comments' }, (payload) => {
+      const row = payload.new as { post_id?: string };
+      if (row.post_id) onComment(row.post_id);
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'post_poll_votes' }, (payload) => {
+      const row = (payload.new && Object.keys(payload.new).length ? payload.new : payload.old) as { post_id?: string };
+      if (row.post_id) onPollVote(row.post_id);
+    })
+    .subscribe();
+  return () => { void supabase?.removeChannel(channel); };
 }
 
 export async function toggleOrbitLike(postId: string, userId: string, currentlyLiked: boolean): Promise<void> {
@@ -99,9 +221,17 @@ export async function toggleOrbitLike(postId: string, userId: string, currentlyL
 }
 
 export async function uploadOrbitMedia(file: File): Promise<{ url: string; type: 'image' | 'video' }> {
-  if (!cloudName || !uploadPreset) throw new Error('Configure Cloudinary (nome da nuvem e preset unsigned) para enviar imagens e vídeos.');
   const type = file.type.startsWith('video/') ? 'video' : 'image';
   if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) throw new Error('Escolha uma imagem ou um vídeo.');
+  if (!cloudName || !uploadPreset) {
+    const url = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Não foi possível ler a mídia.'));
+      reader.onerror = () => reject(new Error('Não foi possível ler a mídia.'));
+      reader.readAsDataURL(file);
+    });
+    return { url, type };
+  }
   const body = new FormData();
   body.append('file', file); body.append('upload_preset', uploadPreset);
   const response = await fetch('https://api.cloudinary.com/v1_1/' + encodeURIComponent(cloudName) + '/' + type + '/upload', { method: 'POST', body });

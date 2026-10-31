@@ -9,7 +9,7 @@ import { Search, Calendar } from 'lucide-react';
 import { formatDateHeading, formatRelativeTime, isSameLocalDay, parseAppDate } from '../../utils/time';
 import { canModerateCommunity } from '../admin/adminAccess';
 
-export const ChatView: React.FC = () => {
+const ChatViewComponent: React.FC = () => {
   const {
     messages,
     currentChannelId,
@@ -176,5 +176,7 @@ export const ChatView: React.FC = () => {
     </div>
   );
 };
+
+export const ChatView = React.memo(ChatViewComponent);
 
 

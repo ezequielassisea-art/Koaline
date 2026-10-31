@@ -224,6 +224,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [profileLoadAttempt, setProfileLoadAttempt] = useState(0);
   const lastProfileUserIdRef = useRef('');
   const retryAuthProfileLoad = () => {
+    lastProfileUserIdRef.current = '';
     setAuthLoadError(null);
     setIsAuthLoading(true);
     setProfileLoadAttempt((attempt) => attempt + 1);
@@ -248,6 +249,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setLoggedIn(false);
         setCurrentUser(EMPTY_USER);
         setAuthLoadError(null);
+        setIsAuthLoading(false);
+        return;
+      }
+
+      if (lastProfileUserIdRef.current === authUser.id) {
+        setLoggedIn(true);
         setIsAuthLoading(false);
         return;
       }

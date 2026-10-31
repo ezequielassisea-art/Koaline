@@ -18,7 +18,7 @@ import { canModerateCommunity } from '../admin/adminAccess';
 import { DraggableUserCard, DropZoneCall } from '../call/VoiceDragDrop';
 import { formatRelativeTime } from '../../utils/time';
 
-export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel: (channel: Channel) => void }> = ({ onOpenAdmin, onOpenVoiceChannel }) => {
+const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel: (channel: Channel) => void }> = ({ onOpenAdmin, onOpenVoiceChannel }) => {
   const {
     communities,
     currentCommunityId,
@@ -336,6 +336,8 @@ export const ChannelList: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChannel
     </aside>
   );
 };
+
+export const ChannelList = React.memo(ChannelListComponent);
 
 
 
