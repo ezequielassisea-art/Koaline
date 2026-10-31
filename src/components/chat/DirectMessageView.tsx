@@ -1,12 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { MessageItem } from './MessageItem';
 import { MessageInput } from './MessageInput';
 import { ChatHeader } from './ChatHeader';
 import { EmptyState } from '../common/EmptyState';
-import { Message } from '../../types';
+import { Message, User } from '../../types';
 import { Calendar, Loader2 } from 'lucide-react';
 import { formatDateHeading, isSameLocalDay, parseAppDate } from '../../utils/time';
+import { supabase } from '../../services/supabaseClient';
+
+const isUuid = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 export const DirectMessageView: React.FC = () => {
   const {
@@ -23,22 +26,203 @@ export const DirectMessageView: React.FC = () => {
   } = useApp();
 
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
+  const [localDmMessages, setLocalDmMessages] = useState<Message[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState<boolean>(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Garante que o objeto da conversa (conversation) não seja null antes de acessar conversation.id
   const conversation = dms.find((d) => d && d.id === activeDmId) || null;
   const conversationId = conversation ? conversation.id : (activeDmId || null);
 
-  // Certifique-se de que a lista de mensagens está sendo inicializada como um array vazio []
-  const messagesList: Message[] = (conversationId && Array.isArray(messages[conversationId]))
-    ? messages[conversationId]
-    : [];
+  // 1. CARREGAMENTO DE DMs (SUPABASE):
+  // Ao abrir a tela de DM, busca as mensagens diretamente da tabela direct_messages
+  useEffect(() => {
+    if (!conversationId || !supabase) {
+      setLocalDmMessages([]);
+      setLoadingMessages(false);
+      return;
+    }
+    const client = supabase;
+
+    let active = true;
+    setLoadingMessages(true);
+
+    const fetchDirectMessages = async () => {
+      try {
+        let data: any = null;
+        let error: any = null;
+
+        // Tenta buscar com relação de profiles
+        try {
+          const joinRes = await client
+            .from('direct_messages')
+            .select('*, author:profiles!direct_messages_author_id_fkey(username, avatar_url)')
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: true });
+
+          if (!joinRes.error && joinRes.data) {
+            data = joinRes.data;
+          } else {
+            error = joinRes.error;
+          }
+        } catch {
+          // fallback
+        }
+
+        // Se a query com join falhar, faz busca direta e manual de profiles
+        if (!data) {
+          const simpleRes = await client
+            .from('direct_messages')
+            .select('*')
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: true });
+
+          data = simpleRes.data;
+          error = simpleRes.error;
+        }
+
+        if (!active) return;
+        if (error) {
+          return;
+        }
+
+        const rows = data || [];
+        const authorIds = [...new Set(rows.map((r: any) => r.author_id || r.sender_id).filter(Boolean))];
+
+        const profileMap = new Map<string, { username?: string | null; avatar_url?: string | null }>();
+        if (authorIds.length > 0) {
+          const { data: profs } = await client.from('profiles').select('id, username, avatar_url').in('id', authorIds);
+          (profs || []).forEach((p) => profileMap.set(p.id, p));
+        }
+
+        if (!active) return;
+        const loaded: Message[] = rows.map((r: any) => {
+          const authorId = r.author_id || r.sender_id || '';
+          const prof = r.author || profileMap.get(authorId);
+          const isMe = authorId === currentUser.id;
+          const authorName = (prof?.username && !isUuid(prof.username))
+            ? prof.username
+            : isMe
+            ? currentUser.name
+            : 'Membro Koaline';
+
+          const senderUser: User = isMe
+            ? currentUser
+            : {
+                ...currentUser,
+                id: authorId,
+                name: authorName,
+                handle: prof?.username || 'koaline',
+                avatar: prof?.avatar_url || '',
+                status: 'online',
+              };
+
+          return {
+            id: r.id,
+            channelId: conversationId,
+            senderId: authorId,
+            sender: senderUser,
+            content: r.content,
+            timestamp: r.created_at,
+            reactions: [],
+          };
+        });
+
+        setLocalDmMessages((previous) => {
+          const merged = new Map(loaded.map((message) => [message.id, message]));
+          previous.forEach((message) => merged.set(message.id, message));
+          return Array.from(merged.values()).sort(
+            (a, b) => parseAppDate(a.timestamp).getTime() - parseAppDate(b.timestamp).getTime()
+          );
+        });
+      } catch {
+        // Silencioso
+      } finally {
+        if (active) setLoadingMessages(false);
+      }
+    };
+
+    void fetchDirectMessages();
+
+    // 2. TEMPO REAL NAS DMs (SUPABASE REALTIME):
+    // Inscrição Realtime para a tabela direct_messages sem tocar no localStorage
+    const dmChannel = client
+      .channel(`direct_messages_view:${conversationId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'direct_messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      }, (payload) => {
+        const row = payload.new as any;
+        if (!active || !row?.id) return;
+
+        void (async () => {
+          const authorId = row.author_id || row.sender_id || '';
+          let prof: any = null;
+          if (authorId) {
+            const { data: p } = await client.from('profiles').select('username, avatar_url').eq('id', authorId).maybeSingle();
+            prof = p;
+          }
+
+          if (!active) return;
+          const isMe = authorId === currentUser.id;
+          const authorName = (prof?.username && !isUuid(prof.username))
+            ? prof.username
+            : isMe
+            ? currentUser.name
+            : 'Membro Koaline';
+
+          const senderUser: User = isMe
+            ? currentUser
+            : {
+                ...currentUser,
+                id: authorId,
+                name: authorName,
+                handle: prof?.username || 'koaline',
+                avatar: prof?.avatar_url || '',
+                status: 'online',
+              };
+
+          const newMsg: Message = {
+            id: row.id,
+            channelId: conversationId,
+            senderId: authorId,
+            sender: senderUser,
+            content: row.content,
+            timestamp: row.created_at,
+            reactions: [],
+          };
+
+          // Adiciona ao estado do React
+          setLocalDmMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+        })();
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      void client.removeChannel(dmChannel);
+    };
+  }, [conversationId, currentUser.id]);
 
   useEffect(() => {
     if (conversationId) {
       markChannelRead(conversationId);
     }
   }, [conversationId]);
+
+  // Certifique-se de que a lista de mensagens está sendo inicializada como um array vazio []
+  const contextMsgs = (conversationId && Array.isArray(messages[conversationId])) ? messages[conversationId] : [];
+  const mergedMap = new Map<string, Message>();
+  localDmMessages.forEach((m) => mergedMap.set(m.id, m));
+  contextMsgs.forEach((m) => mergedMap.set(m.id, m));
+  const messagesList: Message[] = Array.from(mergedMap.values()).sort(
+    (a, b) => parseAppDate(a.timestamp).getTime() - parseAppDate(b.timestamp).getTime()
+  );
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -53,7 +237,7 @@ export const DirectMessageView: React.FC = () => {
   )?.id;
 
   // Exibe um estado de "Carregando..." enquanto a conversa é criada/buscada no Supabase
-  if (isDmLoading && !conversation) {
+  if ((isDmLoading || loadingMessages) && messagesList.length === 0) {
     return (
       <div className="flex-1 flex flex-col h-full bg-surface-sunken relative min-w-0">
         <ChatHeader onToggleSearch={() => {}} isSearching={false} />
@@ -91,7 +275,7 @@ export const DirectMessageView: React.FC = () => {
           <div className="flex items-center justify-center h-full">
             <EmptyState
               type="dms"
-              title={conversation ? `Conversa com @${conversation.user.name}` : 'Início da conversa'}
+              title={conversation?.user?.name ? `Conversa com @${conversation.user.name}` : 'Início da conversa'}
               description="Envie uma mensagem para começar este bate-papo privado."
               onAction={() => sendMessage('Olá! 👋')}
               actionText="Dizer Olá"

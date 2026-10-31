@@ -355,17 +355,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isDirectMessages, setIsDirectMessages] = useState<boolean>(false);
   const [activeDmId, setActiveDmId] = useState<string | null>(null);
   const [isDmLoading, setIsDmLoading] = useState<boolean>(false);
-  const [dms, setDms] = useState<DirectMessageConversation[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:dms') || '[]'); } catch { return []; } });
+  const [dms, setDms] = useState<DirectMessageConversation[]>([]);
   const [members, setMembers] = useState<Array<{id:string;communityId:string;userId:string;role:'owner'|'admin'|'moderator'|'member';joinedAt:string}>>([]);
   const [invites, setInvites] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:invites') || '[]'); } catch { return []; } });
   const [logs, setLogs] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:logs') || '[]'); } catch { return []; } });
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
 
   useEffect(() => {
-    localStorage.setItem('koaline:dms', JSON.stringify(dms));
-    localStorage.setItem('koaline:invites', JSON.stringify(invites));
-    localStorage.setItem('koaline:logs', JSON.stringify(logs));
-  }, [dms, invites, logs]);
+    try {
+      localStorage.setItem('koaline:invites', JSON.stringify(invites));
+      localStorage.setItem('koaline:logs', JSON.stringify(logs));
+    } catch {}
+  }, [invites, logs]);
   // A persisted voice-channel selection is not a call session. Return to text on reload/deep link.
   useEffect(() => {
     if (activeCallRef.current) return;
@@ -524,12 +525,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     void loadDmMessages();
 
     const dmChannel = client
-      .channel("direct_messages:${activeDmId}")
+      .channel(`direct_messages:${activeDmId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'direct_messages',
-        filter: "conversation_id=eq.${activeDmId}",
+        filter: `conversation_id=eq.${activeDmId}`,
       }, (payload) => {
         const row = payload.new as { id: string; conversation_id: string; sender_id?: string; author_id?: string; content: string; created_at: string };
         if (!active || !row?.id) return;
@@ -577,6 +578,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       void client.removeChannel(dmChannel);
     };
   }, [activeDmId, isDirectMessages, isLoggedIn, currentUser]);
+
+  // Carrega lista de conversas diretas do usuário do Supabase
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || !currentUser.id) return;
+    let active = true;
+
+    const loadUserConversations = async () => {
+      try {
+        const { data: myMembers, error: memError } = await client
+          .from('direct_conversation_members')
+          .select('conversation_id')
+          .eq('user_id', currentUser.id);
+
+        if (memError || !myMembers?.length) return;
+        const convIds = myMembers.map((m) => m.conversation_id).filter(Boolean);
+
+        const { data: otherMembers, error: otherError } = await client
+          .from('direct_conversation_members')
+          .select('conversation_id, user_id')
+          .in('conversation_id', convIds)
+          .neq('user_id', currentUser.id);
+
+        if (otherError || !otherMembers?.length) return;
+        const otherUserIds = [...new Set(otherMembers.map((m) => m.user_id))];
+
+        const { data: profiles } = await client
+          .from('profiles')
+          .select('id, username, avatar_url')
+          .in('id', otherUserIds);
+
+        if (!active) return;
+        const profMap = new Map((profiles || []).map((p) => [p.id, p]));
+
+        const loadedDms: DirectMessageConversation[] = otherMembers.map((m) => {
+          const prof = profMap.get(m.user_id);
+          const name = prof?.username || 'Membro Koaline';
+          const user: User = {
+            id: m.user_id,
+            name,
+            handle: prof?.username || 'koaline',
+            avatar: prof?.avatar_url || '',
+            status: 'offline',
+            level: 1,
+            xp: 0,
+            xpMax: 100,
+            badges: [],
+            socials: [],
+          };
+          return {
+            id: m.conversation_id,
+            user,
+            lastMessage: '',
+            lastMessageTime: '',
+            unread: false,
+            isArchived: false,
+          };
+        });
+
+        setDms((prev) => {
+          const merged = [...prev];
+          loadedDms.forEach((dm) => {
+            const idx = merged.findIndex((item) => item.id === dm.id);
+            if (idx >= 0) {
+              merged[idx] = { ...dm, ...merged[idx], user: dm.user };
+            } else {
+              merged.push(dm);
+            }
+          });
+          return merged;
+        });
+      } catch {
+        // Silencioso
+      }
+    };
+
+    void loadUserConversations();
+    return () => { active = false; };
+  }, [isLoggedIn, currentUser.id]);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
 
@@ -1302,27 +1382,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .from('direct_messages')
           .insert({
             conversation_id: conversationId,
-            sender_id: authUser.id,
+            author_id: authUser.id,
             content: messageContent,
           })
           .select('*')
           .single();
-
+        if (res.error) throw res.error;
         data = res.data;
-        if (res.error && (res.error.message?.includes('sender_id') || res.error.code === '42703')) {
-          const fallback = await client
-            .from('direct_messages')
-            .insert({
-              conversation_id: conversationId,
-              author_id: authUser.id,
-              content: messageContent,
-            })
-            .select('*')
-            .single();
-          data = fallback.data;
-        }
       } catch (reason) {
-        // Fallback gracioso
+        notify.error('Não foi possível enviar a mensagem direta.');
+        return false;
       }
 
       const sender = { ...currentUser, id: authUser.id, email: authUser.email || currentUser.email };
