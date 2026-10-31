@@ -1132,28 +1132,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     const messageContent = content.trim();
     if (!messageContent) return false;
-    if (!supabase || isDirectMessages || !activeChannelKey || !currentUser.id) {
-      addToast('Não foi possível enviar', 'Entre em um canal de texto com a sessão do Supabase ativa.', 'error');
+    const client = supabase;
+    if (!client) {
+      notify.error('A conexão com o Supabase não está configurada.');
       return false;
     }
 
-    const { data, error } = await supabase
-      .from('messages')
-      .insert({ channel_id: activeChannelKey, author_id: currentUser.id, content: messageContent })
-      .select('*, author:profiles!messages_author_id_fkey(username, avatar_url)')
-      .single();
+    let authUser: Awaited<ReturnType<typeof client.auth.getUser>>['data']['user'] | null = null;
+    try {
+      const { data, error } = await client.auth.getUser();
+      if (!error && data.user) authUser = data.user;
+      else {
+        const refreshed = await client.auth.refreshSession();
+        if (!refreshed.error) authUser = refreshed.data.session?.user || null;
+      }
+    } catch {
+      authUser = null;
+    }
+
+    if (!authUser) {
+      notify.error('Sua sessão expirou. Faça login novamente.');
+      return false;
+    }
+
+    if (isDirectMessages) {
+      notify.error('Selecione um canal de texto da comunidade para enviar a mensagem.');
+      return false;
+    }
+
+    const channelId = activeChannelKey;
+    if (!channelId) {
+      notify.error('Selecione um canal de texto antes de enviar.');
+      return false;
+    }
+    const selectedChannel = communities.flatMap((community) => community.channels).find((channel) => channel.id === channelId);
+    if (selectedChannel && selectedChannel.type !== 'text') {
+      notify.error('Mensagens só podem ser enviadas em canais de texto.');
+      return false;
+    }
+
+    let data: SupabaseMessageRow | null = null;
+    let error: { message: string } | null = null;
+    try {
+      const result = await client
+        .from('messages')
+        .insert({ channel_id: channelId, author_id: authUser.id, content: messageContent })
+        .select('*, author:profiles!messages_author_id_fkey(username, avatar_url)')
+        .single();
+      data = result.data as SupabaseMessageRow | null;
+      error = result.error;
+    } catch (reason) {
+      notify.error(reason instanceof Error ? reason.message : 'Não foi possível conectar ao Supabase.');
+      return false;
+    }
 
     if (error) {
-      addToast('Mensagem não enviada', error.message, 'error');
+      notify.error(error.message || 'Não foi possível salvar a mensagem.');
       return false;
     }
 
     if (data) {
-      const newMessage = { ...toChatMessage(data as SupabaseMessageRow, currentUser), replyTo, attachments };
+      const sender = { ...currentUser, id: authUser.id, email: authUser.email || currentUser.email };
+      const newMessage = { ...toChatMessage(data, sender), replyTo, attachments };
       setMessages((previous) => {
-        const channelMessages = previous[activeChannelKey] || [];
+        const channelMessages = previous[channelId] || [];
         if (channelMessages.some((item) => item.id === newMessage.id)) return previous;
-        return { ...previous, [activeChannelKey]: [...channelMessages, newMessage] };
+        return { ...previous, [channelId]: [...channelMessages, newMessage] };
       });
     }
     return Boolean(data);
