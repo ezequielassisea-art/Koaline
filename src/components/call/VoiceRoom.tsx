@@ -38,6 +38,14 @@ const isInternalIdentity = (value: string) => isUuid(value) || /^user[_-]/i.test
 const firstVisibleLabel = (...values: Array<string | null | undefined>) => values
   .map((value) => value?.trim() || '')
   .find((value) => value && !isInternalIdentity(value)) || '';
+const formatVoiceElapsed = (start?: number | null, now = Date.now()) => {
+  if (!start) return '00:00';
+  const total = Math.max(0, Math.floor((now - start) / 1000));
+  const seconds = total % 60;
+  const minutes = Math.floor(total / 60) % 60;
+  const hours = Math.floor(total / 3600);
+  return hours ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}` : `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
 
 type VoicePresenceMeta = {
   user_id?: string;
@@ -284,6 +292,11 @@ const VoiceRoomConnected: React.FC = () => {
   const [presenceParticipants, setPresenceParticipants] = useState<VoicePresenceParticipant[]>([]);
   const [profilesById, setProfilesById] = useState<Record<string, VoiceProfile>>({});
   const [broadcastMuteStates, setBroadcastMuteStates] = useState<Record<string, boolean>>({});
+  const [callClockNow, setCallClockNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setCallClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   const presenceChannelRef = useRef<RealtimeChannel | null>(null);
   const profileRequestsRef = useRef(new Set<string>());
   const profileCacheRef = useRef<Record<string, VoiceProfile>>({});
@@ -489,7 +502,7 @@ const VoiceRoomConnected: React.FC = () => {
 
   useEffect(() => {
     if (!activeCall || room.name !== activeCall.channelId) return;
-    syncVoiceParticipants(activeCall.channelId, participants.map((row) => row.user));
+    syncVoiceParticipants(activeCall.channelId, participants.map((row) => ({ ...row.user, voiceMuted: row.isMuted })));
   }, [activeCall?.channelId, participantSignature, presenceParticipants, profilesById, broadcastMuteStates, room.name]);
 
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -680,6 +693,7 @@ const VoiceRoomConnected: React.FC = () => {
           >
             <Volume2 className="w-4 h-4 text-indigo-400 animate-pulse" />
             <span>{activeCall.channelName}</span>
+            <span className="rounded bg-slate-800 px-2 py-0.5 font-mono text-[10px] text-slate-300">{formatVoiceElapsed(activeCall.startedAt, callClockNow)}</span>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
           </button>
 

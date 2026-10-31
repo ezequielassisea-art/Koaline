@@ -1196,9 +1196,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const validUsers = [...new Map(users.filter((user) => (user.id || '').trim() && ((user.avatar || '').trim() || (user.name || '').trim() || (user.handle || '').trim())).map((user) => [user.id, user])).values()];
     setCommunities((prev) => prev.map((community) => ({
       ...community,
-      channels: community.channels.map((channel) => channel.id === channelId
-        ? { ...channel, connectedUsers: validUsers }
-        : channel),
+      channels: community.channels.map((channel) => {
+        if (channel.id !== channelId) return channel;
+        const wasOccupied = (channel.connectedUsers || []).length > 0;
+        const isOccupied = validUsers.length > 0;
+        return {
+          ...channel,
+          connectedUsers: validUsers,
+          voiceStartedAt: !isOccupied ? null : wasOccupied ? channel.voiceStartedAt || Date.now() : Date.now(),
+        };
+      }),
     })));
   };
 
@@ -1655,6 +1662,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     })));
     const nextCall: ActiveCall = {
       channelId: channel.id,
+      startedAt: channel.voiceStartedAt || Date.now(),
       channelName: channel.name,
       communityName: currentComm ? currentComm.name : 'Geral',
       type: mode,

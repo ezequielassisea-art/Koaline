@@ -10,7 +10,8 @@ import {
   Archive,
   ChevronLeft,
   UserPlus,
-  X
+  X,
+  MicOff,
 } from 'lucide-react';
 import { Channel, User } from '../../types';
 import { canAccessAdminPanel } from '../admin/adminAccess';
@@ -46,6 +47,11 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChann
   const [showArchivedDms, setShowArchivedDms] = React.useState(false);
   const [isAddFriendOpen, setIsAddFriendOpen] = React.useState(false);
   const [friendQuery, setFriendQuery] = React.useState('');
+  const [clockNow, setClockNow] = React.useState(Date.now());
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [userSearchResults, setUserSearchResults] = React.useState<User[]>([]);
   const [userSearchLoading, setUserSearchLoading] = React.useState(false);
   const cleanUserQuery = friendQuery.trim().replace(/^@/, '').trim();
@@ -302,6 +308,10 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChann
                         const isVoice = channel.type === 'voice';
                         const isSelected = currentChannelId === channel.id && !isVoice;
                         const connectedUsers = (channel.connectedUsers || []).filter((user) => (user.id || '').trim() && ((user.avatar || '').trim() || (user.name || '').trim() || (user.handle || '').trim()));
+                        const totalSeconds = channel.voiceStartedAt ? Math.max(0, Math.floor((clockNow - channel.voiceStartedAt) / 1000)) : 0;
+                        const channelElapsed = totalSeconds >= 3600
+                          ? `${String(Math.floor(totalSeconds / 3600)).padStart(2, '0')}:${String(Math.floor(totalSeconds / 60) % 60).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`
+                          : `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
                           return (
                           <DropZoneCall key={channel.id} callId={channel.id} permission={isVoice && canMoveUsers} onMove={(userId, callId) => {
                             if (!moveVoiceUser(userId, callId)) addToast('Movimentação negada', 'Apenas moderadores e administradores podem mover pessoas entre chamadas.', 'warning');
@@ -322,22 +332,23 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; onOpenVoiceChann
 
                             <div className="flex items-center gap-1 flex-shrink-0">
                               {isVoice && connectedUsers.length > 0 && (
-                                <div className="flex items-center -space-x-1.5">
-                                  {connectedUsers.map((u) => (
-                                    <DraggableUserCard
-                                      key={u.id}
-                                      user={u}
-                                      permission={canMoveUsers}
-                                      onOpen={() => openUserProfile(u)}
-                                    />
-                                  ))}
-                                </div>
+                                <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">{channelElapsed}</span>
                               )}
                               {!isVoice && channel.unreadCount && channel.unreadCount > 0 ? (
                                 <span className="w-2 h-2 rounded-full bg-indigo-500" />
                               ) : null}
                             </div>
                           </div>
+                          {isVoice && connectedUsers.length > 0 && <div className="space-y-0.5 pb-1 pl-9 pr-2" onClick={(event) => event.stopPropagation()}>
+                            {connectedUsers.map((u) => <div key={u.id} className="group/member flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-[var(--text-muted)] transition-colors hover:bg-slate-800/70" title={u.name}>
+                              <button type="button" onClick={() => openUserProfile(u)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                                {u.avatar ? <img src={u.avatar} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" /> : <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-200">{u.name?.trim().charAt(0).toUpperCase() || '◇'}</span>}
+                                <span className="truncate text-[11px]">{u.name || u.handle || 'Membro Koaline'}</span>
+                              </button>
+                              {u.voiceMuted && <MicOff className="h-3.5 w-3.5 shrink-0 text-rose-400" aria-label="Microfone mutado" />}
+                              <DraggableUserCard user={u} permission={canMoveUsers} onOpen={() => openUserProfile(u)} />
+                            </div>)}
+                          </div>}
                           </DropZoneCall>
                         );
                       })}

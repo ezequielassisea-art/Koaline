@@ -35,6 +35,7 @@ export interface User {
     visible: boolean;
   }>;
   isSelf?: boolean;
+  voiceMuted?: boolean;
 }
 
 export interface Reaction {
@@ -77,6 +78,7 @@ export interface Channel {
   ownerId?: string;
   unreadCount?: number;
   connectedUsers?: User[];
+  voiceStartedAt?: number | null;
   isPrivate?: boolean;
   isArchived?: boolean;
   isDefault?: boolean;
@@ -117,6 +119,7 @@ export interface DirectMessageConversation {
 
 export interface ActiveCall {
   channelId: string;
+  startedAt?: number;
   channelName: string;
   communityName: string;
   type: 'voice' | 'video';
