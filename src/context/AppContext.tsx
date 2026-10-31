@@ -22,6 +22,7 @@ type SupabaseMessageRow = {
   author_id: string;
   content: string;
   created_at: string;
+  author?: { username?: string | null; avatar_url?: string | null } | Array<{ username?: string | null; avatar_url?: string | null }> | null;
   profiles?: { username?: string | null; avatar_url?: string | null } | Array<{ username?: string | null; avatar_url?: string | null }> | null;
   community_role?: 'admin' | 'moderator' | 'member';
 };
@@ -54,7 +55,8 @@ const toCommunityChannel = (row: SupabaseChannelRow, categoryId: string, ownerId
 });
 
 const toChatMessage = (row: SupabaseMessageRow, currentUser: User, communityRole?: 'admin' | 'moderator' | 'member'): Message => {
-  const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+  const relation = row.author ?? row.profiles;
+  const profile = Array.isArray(relation) ? relation[0] : relation;
   const isCurrentUser = row.author_id === currentUser.id;
   const authorName = profile?.username || (isCurrentUser ? currentUser.name : 'Usuário');
   const author: User = isCurrentUser ? currentUser : {
@@ -382,7 +384,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const loadMessages = async () => {
       const { data, error } = await client
         .from('messages')
-        .select('*, profiles(username, avatar_url)')
+        .select('*, author:profiles!messages_author_id_fkey(username, avatar_url)')
         .eq('channel_id', currentChannelId)
         .order('created_at', { ascending: true });
 
@@ -1063,7 +1065,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const { data, error } = await supabase
       .from('messages')
       .insert({ channel_id: activeChannelKey, author_id: currentUser.id, content: messageContent })
-      .select('*, profiles(username, avatar_url)')
+      .select('*, author:profiles!messages_author_id_fkey(username, avatar_url)')
       .single();
 
     if (error) {

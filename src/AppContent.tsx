@@ -20,6 +20,7 @@ import { Channel } from './types';
 
 const VoiceRoom = React.lazy(() => import('./components/call/VoiceRoom').then((module) => ({ default: module.VoiceRoom })));
 const OrbitPage = React.lazy(() => import('./features/orbit/OrbitPage').then((module) => ({ default: module.OrbitPage })));
+const isHomePath = (pathname: string) => pathname === '/' || pathname === '/chat' || pathname === '/home' || pathname === '/profile';
 
 export const AppContent: React.FC = () => {
   const { activeCall, pendingCallSwitch, confirmCallSwitch, cancelCallSwitch, communities, joinCommunityByInvite, addToast, isLoggedIn, isAuthLoading, authLoadError, retryAuthProfileLoad, currentUser, isContextPanelOpen, isProfileEditorOpen, isThemeCustomizerOpen, isCreateChannelModalOpen, activeUserMenu, startCall } = useApp();
@@ -27,7 +28,8 @@ export const AppContent: React.FC = () => {
   const [selectedVoiceChannel, setSelectedVoiceChannel] = React.useState<Channel | null>(null);
   const [isOrbitPage, setIsOrbitPage] = React.useState(() => window.location.pathname === '/orbit');
   const [hasVisitedOrbit, setHasVisitedOrbit] = React.useState(() => window.location.pathname === '/orbit');
-  const [isNotFound, setIsNotFound] = React.useState(() => window.location.pathname !== '/' && window.location.pathname !== '/orbit');
+  const [isNotFound, setIsNotFound] = React.useState(() => !isHomePath(window.location.pathname) && window.location.pathname !== '/orbit');
+  const wasReadyLoggedIn = React.useRef(false);
   const isCallFullscreen = activeCall && !activeCall.isMinimized;
   const openAdminPanel = React.useCallback(() => setIsAdminPanelOpen(true), []);
   const closeOrbit = React.useCallback(() => {
@@ -44,14 +46,29 @@ export const AppContent: React.FC = () => {
 
   React.useEffect(() => {
     const syncRoute = () => {
-      const nextIsOrbit = window.location.pathname === '/orbit';
+      let pathname = window.location.pathname;
+      if (isHomePath(pathname) && pathname !== '/') {
+        window.history.replaceState({}, '', '/');
+        pathname = '/';
+      }
+      const nextIsOrbit = pathname === '/orbit';
       setIsOrbitPage(nextIsOrbit);
       if (nextIsOrbit) setHasVisitedOrbit(true);
-      setIsNotFound(window.location.pathname !== '/' && !nextIsOrbit);
+      setIsNotFound(pathname !== '/' && !nextIsOrbit);
     };
     window.addEventListener('popstate', syncRoute);
     return () => window.removeEventListener('popstate', syncRoute);
   }, []);
+
+  React.useEffect(() => {
+    if (isAuthLoading) return;
+    if (isLoggedIn && !wasReadyLoggedIn.current) {
+      if (window.location.pathname !== '/') window.history.replaceState({}, '', '/');
+      setIsOrbitPage(false);
+      setIsNotFound(false);
+    }
+    wasReadyLoggedIn.current = isLoggedIn;
+  }, [isLoggedIn, isAuthLoading]);
 
   if (isAuthLoading) return <div className="app-shell flex h-screen w-screen items-center justify-center overflow-hidden"><div className="flex flex-col items-center gap-3 text-sm text-slate-400" role="status" aria-live="polite"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-700 border-t-indigo-400" /><span>Carregando seu perfil…</span></div><Toast /></div>;
 
