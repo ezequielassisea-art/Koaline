@@ -92,7 +92,6 @@ const AudioMessagePlayer: React.FC<{ src: string }> = ({ src }) => {
 export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = false, isUnread = false, timeLabel, onReply }) => {
   const {
     currentUser,
-    openUserProfile,
     openUserMenu,
     editMessage,
     deleteMessage,
@@ -171,9 +170,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
       {/* Sender Avatar */}
       <div className="koaline-message-avatar flex-shrink-0 mt-0.5" data-grouped={isGrouped} data-self={isSelf}>
         {!isGrouped && (
-          sender.avatar
-            ? <img src={sender.avatar} alt={sender.name} onClick={() => openUserProfile(sender)} className="w-10 h-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all ring-1 ring-border shadow-sm" />
-            : <button type="button" aria-label={'Perfil de ' + sender.name} onClick={() => openUserProfile(sender)} className="w-10 h-10 rounded-full bg-slate-700 text-white font-semibold">{senderInitials}</button>
+          <button type="button" aria-label={`Abrir opções de ${sender.name}`} onClick={(event) => openUserMenu(sender, event)} className="block rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
+            {sender.avatar
+              ? <img src={sender.avatar} alt="" className="w-10 h-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all ring-1 ring-border shadow-sm" />
+              : <span className="grid w-10 h-10 place-items-center rounded-full bg-slate-700 text-white font-semibold">{senderInitials}</span>}
+          </button>
         )}
       </div>
 
@@ -182,12 +183,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
         {/* Sender Name, Time, Badges */}
         <div className="flex items-center gap-2">
           {isSelf && !isGrouped && sender.avatar && <img src={sender.avatar} alt="" className="h-6 w-6 rounded-full object-cover" />}
-          {!isGrouped && <span
-            onClick={(e) => openUserMenu(sender, e)}
-          className={`koaline-message-author font-title hover:text-indigo-400 hover:underline cursor-pointer transition-colors ${isSelf ? 'self-message-author' : ''}`}
-          >
+          {!isGrouped && <button type="button" onClick={(e) => openUserMenu(sender, e)} className={`koaline-message-author font-title hover:text-indigo-400 hover:underline cursor-pointer transition-colors ${isSelf ? 'self-message-author' : ''}`}>
             {sender.name}
-          </span>}
+          </button>}
 
           {isUnread && <span className="message-unread-dot" title="Mensagem não lida" aria-label="Mensagem não lida" />}
 

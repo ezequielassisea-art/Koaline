@@ -7,7 +7,7 @@ import { ContextPanel } from './components/layout/ContextPanel';
 import { VoiceJoinModal } from './components/call/VoiceJoinModal';
 import { ScreenSharePiP } from './components/call/ScreenSharePiP';
 import { Toast } from './components/common/Toast';
-import { UserOptionsMenu } from './components/chat/UserOptionsMenu';
+import { UserContextMenu } from './components/chat/UserContextMenu';
 import { ProfileEditor } from './components/profile/ProfileEditor';
 import { ProfileOnboarding } from './components/profile/ProfileOnboarding';
 import { ThemeCustomizer } from './components/theme/ThemeCustomizer';
@@ -80,7 +80,7 @@ export const AppContent: React.FC = () => {
         {isNotFound && <main className="koaline-not-found"><div><span>404</span><h1>Esta página não foi encontrada</h1><p>Confira o endereço ou volte para suas conversas.</p><button type="button" onClick={() => { window.history.pushState({}, '', '/'); window.dispatchEvent(new PopStateEvent('popstate')); }}>Voltar ao Koaline</button></div></main>}
         {communities.length > 0 && isContextPanelOpen && <ContextPanel />}
       </div>
-      {activeUserMenu && <UserOptionsMenu />}
+      {activeUserMenu && <UserContextMenu />}
       {isProfileEditorOpen && <ProfileEditor />}
       {isThemeCustomizerOpen && <ThemeCustomizer />}
       {isCreateChannelModalOpen && <CreateChannelModal />}

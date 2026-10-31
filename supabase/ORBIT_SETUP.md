@@ -1,6 +1,6 @@
 # Ativar o Orbit
 
-1. No Supabase, abra o SQL Editor e execute as migrations `20261030120000_orbit.sql`, `20261031100000_orbit_interactions.sql` e `20261031120000_auth_profile_trigger.sql`.
+1. No Supabase, abra o SQL Editor e execute as migrations `20261030120000_orbit.sql`, `20261031100000_orbit_interactions.sql`, `20261031120000_auth_profile_trigger.sql` e `20261031130000_user_context_actions.sql`.
 2. Em Authentication > Providers, habilite Anonymous Sign-Ins. O Orbit usa uma sessão anônima persistente para identificar o navegador enquanto o Koaline ainda não autentica pelo Supabase.
 3. Opcional: em Cloudinary, crie um upload preset `unsigned` e limite-o a imagens/vídeos e às transformações/tamanhos desejados.
 4. Copie `.env.example` para `.env.local` e preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`. Para usar Cloudinary, preencha também `VITE_CLOUDINARY_CLOUD_NAME` e `VITE_CLOUDINARY_UPLOAD_PRESET`.

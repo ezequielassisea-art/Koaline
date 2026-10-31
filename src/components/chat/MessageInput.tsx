@@ -94,6 +94,27 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [showGifPicker, gifSearch]);
 
+  useEffect(() => {
+    const insertMention = (event: Event) => {
+      const handle = (event as CustomEvent<{ handle?: string }>).detail?.handle?.replace(/^@/, '').trim();
+      if (!handle) return;
+      const textarea = textareaRef.current;
+      const start = textarea?.selectionStart ?? text.length;
+      const end = textarea?.selectionEnd ?? text.length;
+      const mention = `@${handle} `;
+      const nextText = `${text.slice(0, start)}${mention}${text.slice(end)}`;
+      setText(nextText);
+      window.requestAnimationFrame(() => {
+        textarea?.focus();
+        const cursor = start + mention.length;
+        textarea?.setSelectionRange(cursor, cursor);
+        cursorPositionRef.current = { start: cursor, end: cursor };
+      });
+    };
+    window.addEventListener('koaline:mention-user', insertMention);
+    return () => window.removeEventListener('koaline:mention-user', insertMention);
+  }, [text]);
+
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
   const activeChannel = activeCommunity.channels.find((c) => c.id === currentChannelId);
   const activeDm = dms.find((d) => d.id === activeDmId);

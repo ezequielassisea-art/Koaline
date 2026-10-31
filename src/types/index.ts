@@ -7,6 +7,8 @@ export interface User {
   handle: string;
   email?: string;
   onboarding_completed?: boolean;
+  communityRole?: 'owner' | 'admin' | 'moderator' | 'member';
+  statusKnown?: boolean;
   avatar: string;
   banner?: string;
   status: UserStatus;

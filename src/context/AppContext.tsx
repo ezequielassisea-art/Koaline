@@ -14,7 +14,7 @@ import { audioManager } from '../services/AudioManager';
 import { supabase } from '../services/supabaseClient';
 import { listOrbitCommunities } from '../features/orbit/orbitService';
 
-const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'online', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
+const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'offline', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
 
 type SupabaseMessageRow = {
   id: string;
@@ -23,6 +23,7 @@ type SupabaseMessageRow = {
   content: string;
   created_at: string;
   profiles?: { username?: string | null; avatar_url?: string | null } | Array<{ username?: string | null; avatar_url?: string | null }> | null;
+  community_role?: 'admin' | 'moderator' | 'member';
 };
 
 type SupabaseCommunityRow = {
@@ -52,7 +53,7 @@ const toCommunityChannel = (row: SupabaseChannelRow, categoryId: string, ownerId
   connectedUsers: row.type === 'voice' ? [] : undefined,
 });
 
-const toChatMessage = (row: SupabaseMessageRow, currentUser: User): Message => {
+const toChatMessage = (row: SupabaseMessageRow, currentUser: User, communityRole?: 'admin' | 'moderator' | 'member'): Message => {
   const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
   const isCurrentUser = row.author_id === currentUser.id;
   const authorName = profile?.username || (isCurrentUser ? currentUser.name : 'Usuário');
@@ -62,6 +63,8 @@ const toChatMessage = (row: SupabaseMessageRow, currentUser: User): Message => {
     name: authorName,
     handle: profile?.username || '',
     avatar: profile?.avatar_url || '',
+    communityRole,
+    statusKnown: false,
   };
 
   return {
@@ -366,6 +369,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveDmId(null);
   }, [communities, currentCommunityId, currentChannelId]);
 
+  const currentChannelCommunityId = communities.find((community) => community.channels.some((channel) => channel.id === currentChannelId))?.id || '';
+
   // Text channel messages are loaded from Supabase and kept current through Realtime.
   useEffect(() => {
     const client = supabase;
@@ -387,7 +392,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
-      const loadedMessages = ((data || []) as SupabaseMessageRow[]).map((row) => toChatMessage(row, currentUser));
+      const rows = (data || []) as SupabaseMessageRow[];
+      const authorIds = [...new Set(rows.map((row) => row.author_id).filter(Boolean))];
+      let roleByUserId = new Map<string, 'admin' | 'moderator' | 'member'>();
+      if (currentChannelCommunityId && authorIds.length) {
+        const rolesResult = await client.from('community_members').select('user_id,role').eq('community_id', currentChannelCommunityId).in('user_id', authorIds);
+        if (!rolesResult.error) roleByUserId = new Map((rolesResult.data || []).map((row) => [row.user_id as string, row.role as 'admin' | 'moderator' | 'member']));
+      }
+      if (!active) return;
+      const loadedMessages = rows.map((row) => toChatMessage(row, currentUser, roleByUserId.get(row.author_id)));
       setMessages((previous) => ({ ...previous, [currentChannelId]: loadedMessages }));
     };
 
@@ -403,11 +416,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }, (payload) => {
         const row = payload.new as SupabaseMessageRow;
         if (!active || !row?.id) return;
-        const message = toChatMessage(row, currentUser);
-        setMessages((previous) => {
-          const channelMessages = previous[currentChannelId] || [];
-          if (channelMessages.some((item) => item.id === message.id)) return previous;
-          return { ...previous, [currentChannelId]: [...channelMessages, message] };
+        void (async () => {
+          const [profileResult, roleResult] = await Promise.all([
+            client.from('profiles').select('username,avatar_url').eq('id', row.author_id).maybeSingle(),
+            currentChannelCommunityId
+              ? client.from('community_members').select('role').eq('community_id', currentChannelCommunityId).eq('user_id', row.author_id).maybeSingle()
+              : Promise.resolve({ data: null, error: null }),
+          ]);
+          if (!active) return;
+          const enrichedRow: SupabaseMessageRow = {
+            ...row,
+            profiles: profileResult.data,
+            community_role: roleResult.data?.role as 'admin' | 'moderator' | 'member' | undefined,
+          };
+          const message = toChatMessage(enrichedRow, currentUser, enrichedRow.community_role);
+          setMessages((previous) => {
+            const channelMessages = previous[currentChannelId] || [];
+            if (channelMessages.some((item) => item.id === message.id)) return previous;
+            return { ...previous, [currentChannelId]: [...channelMessages, message] };
+          });
+        })().catch(() => {
+          if (!active) return;
+          const message = toChatMessage(row, currentUser);
+          setMessages((previous) => ({ ...previous, [currentChannelId]: previous[currentChannelId]?.some((item) => item.id === message.id) ? previous[currentChannelId] : [...(previous[currentChannelId] || []), message] }));
         });
       })
       .subscribe();
@@ -416,7 +447,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       active = false;
       void client.removeChannel(channel);
     };
-  }, [currentChannelId, currentUser, isDirectMessages, isLoggedIn]);
+  }, [currentChannelId, currentChannelCommunityId, currentUser, isDirectMessages, isLoggedIn]);
   const [isTyping, setIsTyping] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
 
@@ -713,7 +744,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           id: `${row.community_id}:${row.user_id}`,
           communityId: row.community_id,
           userId: row.user_id,
-          role: row.role === 'admin' ? 'admin' : 'member',
+          role: row.role === 'admin' ? 'admin' : row.role === 'moderator' ? 'moderator' : 'member',
           joinedAt: row.joined_at,
         })));
         setCommunities(mappedCommunities);
@@ -867,8 +898,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const openUserMenu = (user: User, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const x = Math.min(e.clientX, window.innerWidth - 240);
-    const y = Math.min(e.clientY, window.innerHeight - 340);
+    const anchor = e.currentTarget.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 24);
+    const height = Math.min(560, window.innerHeight - 24);
+    const x = Math.max(12, Math.min(anchor.left, window.innerWidth - width - 12));
+    const below = anchor.bottom + 8;
+    const y = below + height <= window.innerHeight - 12
+      ? below
+      : Math.max(12, anchor.top - height - 8);
     setActiveUserMenu({ user, position: { x, y } });
   };
 

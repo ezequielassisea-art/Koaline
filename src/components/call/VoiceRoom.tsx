@@ -212,6 +212,15 @@ const VoiceRoomConnected: React.FC = () => {
   }, [room, activeCall?.channelId]);
 
   useEffect(() => {
+    const muteRemoteForMe = (event: Event) => {
+      const userId = (event as CustomEvent<{ userId?: string }>).detail?.userId;
+      if (userId) setLocallyMuted((previous) => ({ ...previous, [userId]: true }));
+    };
+    window.addEventListener('koaline:mute-user-local', muteRemoteForMe);
+    return () => window.removeEventListener('koaline:mute-user-local', muteRemoteForMe);
+  }, []);
+
+  useEffect(() => {
     if (!contextUser) return;
     try { const saved = localStorage.getItem(`koaline:volume_${contextUser.id}`); if (saved !== null) setRemoteVolumes((prev) => ({ ...prev, [contextUser.id]: Number(saved) })); } catch { /* Volume padrão. */ }
   }, [contextUser?.id]);
