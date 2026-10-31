@@ -299,6 +299,7 @@ const VoiceRoomConnected: React.FC = () => {
     return () => window.clearInterval(timer);
   }, []);
   const presenceChannelRef = useRef<RealtimeChannel | null>(null);
+  const presenceCleanupPromiseRef = useRef<Promise<unknown> | null>(null);
   const presenceJoinedAtRef = useRef<number | null>(null);
   const profileRequestsRef = useRef(new Set<string>());
   const profileCacheRef = useRef<Record<string, VoiceProfile>>({});
@@ -331,99 +332,100 @@ const VoiceRoomConnected: React.FC = () => {
   useEffect(() => {
     if (!activeCall || !currentUser.id || room.name !== activeCall.channelId || !supabase) return;
     let active = true;
-    presenceJoinedAtRef.current = Date.now();
     const client = supabase;
-    const channel = client.channel(`koaline:voice-room:${activeCall.channelId}`, {
-      config: { presence: { key: currentUser.id } },
-    });
-    presenceChannelRef.current = channel;
-    setPresenceParticipants([]);
-    setBroadcastMuteStates({});
-    profileRequestsRef.current.clear();
+    let channel: RealtimeChannel | null = null;
+    const previousCleanup = presenceCleanupPromiseRef.current;
 
-    const syncPresence = () => {
-      const state = channel.presenceState<VoicePresenceMeta>();
-      const entries = Object.entries(state).flatMap(([key, metas]) => {
-        const meta = metas[metas.length - 1];
-        const userId = meta?.user_id || key;
-        return userId ? [{ ...meta, user_id: userId }] : [];
+    void (async () => {
+      if (previousCleanup) await previousCleanup;
+      if (!active) return;
+
+      presenceJoinedAtRef.current = Date.now();
+      setPresenceParticipants([]);
+      setBroadcastMuteStates({});
+      profileRequestsRef.current.clear();
+
+      channel = client.channel(`koaline:voice-room:${activeCall.channelId}`, {
+        config: { presence: { key: currentUser.id } },
       });
-      const unique = [...new Map(entries.map((entry) => [entry.user_id, entry])).values()];
-      setPresenceParticipants(unique);
-      void fetchProfiles(unique.map((entry) => entry.user_id));
-    };
+      presenceChannelRef.current = channel;
 
-    channel
-      .on('presence', { event: 'sync' }, syncPresence)
-      .on('presence', { event: 'join' }, syncPresence)
-      .on('presence', { event: 'leave' }, syncPresence)
-      .on('broadcast', { event: 'play_sound' }, ({ payload }) => {
-        const audioUrl = typeof payload?.url === 'string' ? payload.url : (typeof payload?.audioUrl === 'string' ? payload.audioUrl : '');
-        if (!audioUrl) return;
-        try {
-          const audio = new Audio(audioUrl);
-          audio.play().catch(() => audioManager.playCustom(audioUrl));
-        } catch {
-          audioManager.playCustom(audioUrl);
-        }
-        const soundId = typeof payload?.soundId === 'string' ? payload.soundId : '';
-        if (soundId) {
-          soundAnimationNonce.current += 1;
-          setSoundAnimation({ id: soundId, nonce: soundAnimationNonce.current });
-        }
-      })
-      .on('broadcast', { event: 'microphone_state' }, ({ payload }) => {
-        const userId = typeof payload?.userId === 'string' ? payload.userId : '';
-        if (userId && typeof payload?.muted === 'boolean') {
-          setBroadcastMuteStates((previous) => ({ ...previous, [userId]: payload.muted }));
-        }
-      })
-      .subscribe(async (status) => {
-        if (status !== 'SUBSCRIBED' || !active) return;
-        
-        // Ao entrar na call, busca o perfil na tabela profiles (select username, avatar_url)
-        let resolvedUsername = (!currentUser.name || isInternalIdentity(currentUser.name)) ? 'Membro Koaline' : currentUser.name;
-        let resolvedAvatar = currentUser.avatar || '';
+      const syncPresence = () => {
+        if (!active || !channel) return;
+        const state = channel.presenceState<VoicePresenceMeta>();
+        const entries = Object.entries(state).flatMap(([key, metas]) => {
+          const meta = metas[metas.length - 1];
+          const userId = meta?.user_id || key;
+          return userId ? [{ ...meta, user_id: userId }] : [];
+        });
+        const unique = [...new Map(entries.map((entry) => [entry.user_id, entry])).values()];
+        setPresenceParticipants(unique);
+        void fetchProfiles(unique.map((entry) => entry.user_id));
+      };
 
-        try {
-          const { data: myProfile } = await client
-            .from('profiles')
-            .select('username, avatar_url')
-            .eq('id', currentUser.id)
-            .maybeSingle();
-
-          if (myProfile?.username && !isInternalIdentity(myProfile.username)) {
-            resolvedUsername = myProfile.username;
+      // Register every callback before subscribe; track only after SUBSCRIBED.
+      channel
+        .on('presence', { event: 'sync' }, syncPresence)
+        .on('presence', { event: 'join' }, syncPresence)
+        .on('presence', { event: 'leave' }, syncPresence)
+        .on('broadcast', { event: 'play_sound' }, ({ payload }) => {
+          const audioUrl = typeof payload?.url === 'string' ? payload.url : (typeof payload?.audioUrl === 'string' ? payload.audioUrl : '');
+          if (!audioUrl) return;
+          try {
+            const audio = new Audio(audioUrl);
+            audio.play().catch(() => audioManager.playCustom(audioUrl));
+          } catch {
+            audioManager.playCustom(audioUrl);
           }
-          if (myProfile?.avatar_url) {
-            resolvedAvatar = myProfile.avatar_url;
+          const soundId = typeof payload?.soundId === 'string' ? payload.soundId : '';
+          if (soundId) {
+            soundAnimationNonce.current += 1;
+            setSoundAnimation({ id: soundId, nonce: soundAnimationNonce.current });
           }
-          setProfilesById((prev) => ({
-            ...prev,
-            [currentUser.id]: { username: resolvedUsername, avatar_url: resolvedAvatar }
-          }));
-        } catch {
-          // Se falhar, usa "Membro Koaline"
-          resolvedUsername = 'Membro Koaline';
-        }
+        })
+        .on('broadcast', { event: 'microphone_state' }, ({ payload }) => {
+          const userId = typeof payload?.userId === 'string' ? payload.userId : '';
+          if (userId && typeof payload?.muted === 'boolean') {
+            setBroadcastMuteStates((previous) => ({ ...previous, [userId]: payload.muted }));
+          }
+        })
+        .subscribe(async (status) => {
+          if (status !== 'SUBSCRIBED' || !active || !channel) return;
 
-        await channel.track({
-          user_id: currentUser.id,
-          username: resolvedUsername,
-          full_name: resolvedUsername,
-          avatar_url: resolvedAvatar || undefined,
-          status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
-          muted: !localParticipant.isMicrophoneEnabled,
-          joined_at: presenceJoinedAtRef.current || Date.now(),
-        } satisfies VoicePresenceMeta);
+          let resolvedUsername = (!currentUser.name || isInternalIdentity(currentUser.name)) ? 'Membro Koaline' : currentUser.name;
+          let resolvedAvatar = currentUser.avatar || '';
+          try {
+            const { data: myProfile } = await client
+              .from('profiles')
+              .select('username, avatar_url')
+              .eq('id', currentUser.id)
+              .maybeSingle();
+            if (myProfile?.username && !isInternalIdentity(myProfile.username)) resolvedUsername = myProfile.username;
+            if (myProfile?.avatar_url) resolvedAvatar = myProfile.avatar_url;
+            setProfilesById((prev) => ({ ...prev, [currentUser.id]: { username: resolvedUsername, avatar_url: resolvedAvatar } }));
+          } catch {
+            resolvedUsername = 'Membro Koaline';
+          }
+          if (!active || !channel) return;
 
-        syncPresence();
-      });
+          await channel.track({
+            user_id: currentUser.id,
+            username: resolvedUsername,
+            full_name: resolvedUsername,
+            avatar_url: resolvedAvatar || undefined,
+            status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
+            muted: !localParticipant.isMicrophoneEnabled,
+            joined_at: presenceJoinedAtRef.current || Date.now(),
+          } satisfies VoicePresenceMeta);
+          syncPresence();
+        });
+    })();
 
     return () => {
       active = false;
+      if (!channel) return;
       if (presenceChannelRef.current === channel) presenceChannelRef.current = null;
-      void client.removeChannel(channel);
+      presenceCleanupPromiseRef.current = client.removeChannel(channel);
     };
   }, [activeCall?.channelId, currentUser.id, room.name]);
 
