@@ -58,6 +58,11 @@ const encodeCommunityBanner = async (file: File): Promise<string> => {
 };
 const fmt = (timestamp: number) => new Date(timestamp).toLocaleString('pt-BR');
 const nowMs = () => Date.now();
+const describeError = (error: unknown, fallback: string) => {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') return error.message;
+  return fallback;
+};
 const inviteCode = () => Math.random().toString(36).slice(2, 10);
 const joinedDate = (userId: string, communityId: string, members: Array<{ communityId: string; userId: string; joinedAt: string }>) => {
   const member = members.find((item) => item.communityId === communityId && item.userId === userId);
@@ -230,7 +235,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       setInviteModalOpen(false);
       setInviteQuery(''); setInviteTarget(null); setInviteMessage('');
     } catch (error) {
-      addToast('Convite não enviado', error instanceof Error ? error.message : 'Tente novamente.', 'error');
+      addToast('Convite não enviado', describeError(error, 'Tente novamente.'), 'error');
     } finally { setInviteSending(false); }
   };
   const changeMemberStatus = (user: User, action: 'kick' | 'ban') => {

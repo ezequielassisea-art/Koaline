@@ -1363,7 +1363,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsColumn1Collapsed(false);
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Não foi possível abrir a conversa direta.';
+      const message = error instanceof Error
+        ? error.message
+        : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+          ? error.message
+          : 'Não foi possível abrir a conversa direta.';
       addToast('Conversa não aberta', message, 'error');
       return false;
     } finally {
