@@ -216,17 +216,24 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     if (!supabase || !isAdmin || !inviteTarget || !community || inviteSending) return;
     setInviteSending(true);
     try {
+      // Obter o usuário autenticado atual diretamente do Supabase Auth
+      // Isso garante que o actor_id corresponda ao auth.uid() para a política RLS
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      if (authError || !authUser) {
+        throw new Error('Usuário não autenticado. Faça login novamente.');
+      }
+
       const notificationId = crypto.randomUUID();
       const { error } = await supabase.from('notifications').insert({
         id: notificationId,
         user_id: inviteTarget.id,
-        actor_id: currentUser.id,
+        actor_id: authUser.id,
         type: 'community_invite',
         payload: {
           community_id: community.id,
           community_name: community.name,
-          inviter_id: currentUser.id,
-          inviter_name: currentUser.name,
+          inviter_id: authUser.id,
+          inviter_name: currentUser.name, // nome do contexto para exibição
           custom_message: inviteMessage.trim(),
           community_icon: community.icon,
           community_banner: community.banner,
