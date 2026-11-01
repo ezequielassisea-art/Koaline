@@ -136,7 +136,6 @@ interface AppContextType {
   toggleArchiveDm: (id: string) => void;
   isDmLoading: boolean;
   openDirectMessage: (user: User) => Promise<boolean>;
-  openSystemConversation: (conversationId: string, user: User) => void;
   acceptCommunityInvite: (communityId: string, notificationId?: string) => Promise<boolean>;
   createChannel: (name: string, type: 'text' | 'voice', categoryId: string) => Promise<boolean>;
   updateCommunity: (id: string, updates: Partial<Community>) => void;
@@ -666,9 +665,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const { data: conversationRows } = await client
           .from('direct_conversations')
-          .select('id,is_system')
+          .select('id')
           .in('id', convIds);
-        const systemConversationIds = new Set((conversationRows || []).filter((row) => row.is_system).map((row) => row.id));
 
         const { data: otherMembers, error: otherError } = await client
           .from('direct_conversation_members')
@@ -709,7 +707,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             lastMessageTime: '',
             unread: false,
             isArchived: false,
-            isSystem: systemConversationIds.has(m.conversation_id),
           };
         });
 
@@ -1449,7 +1446,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const openDirectMessage = async (user: User) => {
-    const existing = dms.find((dm) => !dm.isSystem && (dm.user.id === user.id || dm.user.handle.toLowerCase() === user.handle.toLowerCase()));
+    const existing = dms.find((dm) => dm.user.id === user.id || dm.user.handle.toLowerCase() === user.handle.toLowerCase());
     if (existing && !existing.id.startsWith('dm-')) {
       if (existing.isArchived) {
         setDms((prev) => prev.map((dm) => dm.id === existing.id ? { ...dm, isArchived: false } : dm));
@@ -1492,18 +1489,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsDmLoading(false);
     }
-  };
-
-  const openSystemConversation = (conversationId: string, user: User) => {
-    if (!conversationId) return;
-    setDms((previous) => {
-      const existing = previous.find((dm) => dm.id === conversationId);
-      if (existing) return previous.map((dm) => dm.id === conversationId ? { ...dm, user, isArchived: false, isSystem: true } : dm);
-      return [...previous, { id: conversationId, user, lastMessage: 'Convite personalizado', lastMessageTime: '', unread: false, isArchived: false, isSystem: true }];
-    });
-    activateDm(conversationId);
-    setIsDirectMessages(true);
-    setIsColumn1Collapsed(false);
   };
 
   const acceptCommunityInvite = async (communityId: string, notificationId?: string): Promise<boolean> => {
@@ -1782,12 +1767,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Se for DM (Direct Messages)
     if (isDirectMessages) {
       const conversationId = activeDmId;
-      // Only block if conversation exists AND is explicitly marked as system
-      const conversation = dms.find((dm) => dm.id === conversationId);
-      if (conversation && conversation.isSystem === true) {
-        notify.warning('Você não pode responder a este chat de notificações.');
-        return false;
-      }
       if (!conversationId) {
         notify.error('Selecione uma conversa para enviar a mensagem.');
         return false;
@@ -2392,7 +2371,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleArchiveDm,
         isDmLoading,
         openDirectMessage,
-        openSystemConversation,
         acceptCommunityInvite,
         createChannel,
         updateCommunity,

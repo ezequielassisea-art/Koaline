@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowDown, ArrowUp, Ban, Check, Copy, Crown, GripVertical, Loader2,
   ImagePlus, LockKeyhole, Music, Plus, Search, Settings, Shield, Trash2, UserMinus, UserPlus, Users, X,
+  Mail, CheckCircle, XCircle
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Channel, User } from '../../types';
@@ -9,7 +10,6 @@ import { ConfirmModal } from '../common/ConfirmModal';
 import { GroupAudioSettings } from './GroupAudioSettings';
 import { canDeleteCommunityChannel } from './adminAccess';
 import { supabase } from '../../services/supabaseClient';
-import { createSystemConversation, sendCommunityInviteMessage } from '../../services/directMessageService';
 import './AdminPanel.css';
 
 type Tab = 'Geral' | 'Canais' | 'Áudios' | 'Membros' | 'Cargos' | 'Convites' | 'Logs / Auditoria' | 'Perigo';
@@ -214,24 +214,24 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     if (!supabase || !isAdmin || !inviteTarget || !community || inviteSending) return;
     setInviteSending(true);
     try {
-      const conversationId = await createSystemConversation(inviteTarget.id);
       const notificationId = crypto.randomUUID();
       const { data: notification, error } = await supabase.from('notifications').insert({
         id: notificationId,
         user_id: inviteTarget.id,
         sender_id: currentUser.id,
         type: 'community_invite',
-        payload: { community_id: community.id, community_name: community.name, inviter_id: currentUser.id, inviter_name: currentUser.name, custom_message: inviteMessage.trim(), conversation_id: conversationId, system_chat: true },
+        payload: {
+          community_id: community.id,
+          community_name: community.name,
+          inviter_id: currentUser.id,
+          inviter_name: currentUser.name,
+          custom_message: inviteMessage.trim(),
+          community_icon: community.icon,
+          community_banner: community.banner,
+        },
       }).select('id').maybeSingle();
       if (error) throw error;
-      const savedNotificationId = notification?.id || notificationId;
-      try {
-        await sendCommunityInviteMessage({ conversationId, communityId: community.id, communityName: community.name, customMessage: inviteMessage.trim(), notificationId: savedNotificationId });
-      } catch (messageError) {
-        await supabase.from('notifications').delete().eq('id', savedNotificationId).eq('sender_id', currentUser.id);
-        throw messageError;
-      }
-      addToast('Convite enviado', `@${inviteTarget.username} receberá sua mensagem e o convite para ${community.name}.`, 'success');
+      addToast('Convite enviado', `@${inviteTarget.username} receberá o convite para ${community.name}.`, 'success');
       setInviteModalOpen(false);
       setInviteQuery(''); setInviteTarget(null); setInviteMessage('');
     } catch (error) {
