@@ -32,6 +32,16 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, invit
   const { currentUser, addToast, communities } = useApp();
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Fechar ao pressionar ESC - Hook MUST be at top level before any early returns
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  // Early return AFTER all hooks
   if (!isOpen || !invite) return null;
 
   const payload = (invite.payload as Record<string, unknown> | undefined) ?? {};
@@ -89,15 +99,6 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, invit
       setIsProcessing(false);
     }
   };
-
-  // Fechar ao pressionar ESC
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="invite-modal-title">
