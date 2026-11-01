@@ -218,7 +218,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       const { data: notification, error } = await supabase.from('notifications').insert({
         id: notificationId,
         user_id: inviteTarget.id,
-        sender_id: currentUser.id,
+        actor_id: currentUser.id,
         type: 'community_invite',
         payload: {
           community_id: community.id,
