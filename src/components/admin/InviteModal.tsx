@@ -6,7 +6,7 @@ import { supabase } from '../../services/supabaseClient';
 // Same type as in TopBar.tsx
 type CommunityInviteNotification = {
   id: string;
-  actor_id: string;
+  sender_id: string;
   user_id: string;
   type: string;
   payload: {

@@ -25,7 +25,7 @@ import { InviteModal } from '../admin/InviteModal';
 type AppNotification = {
   id: string;
   user_id: string;
-  actor_id: string;
+  sender_id: string;
   type: string;
   payload: Record<string, unknown>;
   read_at: string | null;
@@ -34,7 +34,7 @@ type AppNotification = {
 
 type CommunityInviteNotification = {
   id: string;
-  actor_id: string;
+  sender_id: string;
   user_id: string;
   type: string;
   payload: {
@@ -124,18 +124,18 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
       // Log the payload to verify community data is present
       console.log("PAYLOAD DO CONVITE:", notification.payload);
 
-      // Fetch the inviter profile using actor_id (not sender_id - DB column is actor_id)
-      const { data: profile, error } = await client.from('profiles').select('id,username,full_name,avatar_url').eq('id', notification.actor_id).maybeSingle();
+      // Fetch the inviter profile using sender_id (DB column is sender_id)
+      const { data: profile, error } = await client.from('profiles').select('id,username,full_name,avatar_url').eq('id', notification.sender_id).maybeSingle();
       if (error) {
         console.error("ERRO AO BUSCAR PERFIL DO CONVIDADOR:", error);
         throw error;
       }
 
       // The payload already has all community data needed for the modal
-      // Cast to CommunityInviteNotification using the correct actor_id field
+      // Cast to CommunityInviteNotification using the correct sender_id field
       const inviteNotification: CommunityInviteNotification = {
         ...notification,
-        actor_id: notification.actor_id,
+        sender_id: notification.sender_id,
       } as CommunityInviteNotification;
 
       setInviteModal(inviteNotification);

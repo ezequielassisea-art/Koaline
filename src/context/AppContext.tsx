@@ -50,7 +50,7 @@ type SupabaseChannelRow = {
 type AppNotification = {
   id: string;
   user_id: string;
-  actor_id: string;
+  sender_id: string;
   type: string;
   payload: Record<string, unknown>;
   read_at: string | null;
@@ -621,7 +621,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let active = true;
     const loadNotifications = async () => {
       const { data, error } = await client.from('notifications')
-        .select('id,user_id,actor_id,type,payload,read_at,created_at')
+        .select('id,user_id,sender_id,type,payload,read_at,created_at')
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false })
         .limit(50);
