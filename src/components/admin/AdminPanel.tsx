@@ -217,7 +217,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     setInviteSending(true);
     try {
       const notificationId = crypto.randomUUID();
-      const { data: notification, error } = await supabase.from('notifications').insert({
+      const { error } = await supabase.from('notifications').insert({
         id: notificationId,
         user_id: inviteTarget.id,
         actor_id: currentUser.id,
@@ -231,7 +231,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           community_icon: community.icon,
           community_banner: community.banner,
         },
-      }).select('id').maybeSingle();
+      });
       if (error) throw error;
       addToast('Convite enviado', `@${inviteTarget.username} receberá o convite para ${community.name}.`, 'success');
       setInviteModalOpen(false);
