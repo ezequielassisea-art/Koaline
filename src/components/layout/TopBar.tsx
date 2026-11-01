@@ -25,7 +25,7 @@ import { InviteModal } from '../admin/InviteModal';
 type AppNotification = {
   id: string;
   user_id: string;
-  sender_id: string;
+  actor_id: string;
   type: string;
   payload: Record<string, unknown>;
   read_at: string | null;
@@ -34,7 +34,7 @@ type AppNotification = {
 
 type CommunityInviteNotification = {
   id: string;
-  sender_id: string;
+  actor_id: string;
   user_id: string;
   type: string;
   payload: {
@@ -124,27 +124,27 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
       // Log the payload to verify community data is present
       console.log("PAYLOAD DO CONVITE:", notification.payload);
 
-      // Validate required fields
-      if (!notification.sender_id) {
-        throw new Error('sender_id ausente na notificação');
-      }
+      // Validate required fields from payload
       const payload = notification.payload as Record<string, unknown> | undefined;
       if (!payload || typeof payload.community_id !== 'string') {
         throw new Error('Payload do convite inválido ou ausente');
       }
 
-      // Fetch the inviter profile using sender_id (DB column is sender_id)
-      const { data: profile, error } = await client.from('profiles').select('id,username,full_name,avatar_url').eq('id', notification.sender_id).maybeSingle();
-      if (error) {
-        console.error("ERRO AO BUSCAR PERFIL DO CONVIDADOR:", error);
-        throw error;
+      // Fetch the inviter profile using actor_id (DB column is actor_id)
+      const inviterId = notification.actor_id || (typeof payload.inviter_id === 'string' ? payload.inviter_id : '');
+      if (inviterId) {
+        const { data: profile, error } = await client.from('profiles').select('id,username,full_name,avatar_url').eq('id', inviterId).maybeSingle();
+        if (error) {
+          console.error("ERRO AO BUSCAR PERFIL DO CONVIDADOR:", error);
+          // Don't throw - continue with payload data
+        }
       }
 
       // The payload already has all community data needed for the modal
-      // Cast to CommunityInviteNotification using the correct sender_id field
+      // Cast to CommunityInviteNotification using actor_id
       const inviteNotification: CommunityInviteNotification = {
         ...notification,
-        sender_id: notification.sender_id,
+        actor_id: inviterId,
       } as CommunityInviteNotification;
 
       setInviteModal(inviteNotification);
