@@ -12,6 +12,7 @@ import {
   Users,
   Plus,
   Loader2,
+  LogOut,
 } from 'lucide-react';
 
 export const ContextPanel: React.FC = () => {
@@ -29,6 +30,7 @@ export const ContextPanel: React.FC = () => {
     setIsProfileEditorOpen,
     setIsThemeCustomizerOpen,
     startDirectCall,
+    leaveCommunity,
   } = useApp();
 
   const user = contextPanelUser || currentUser;
@@ -84,6 +86,20 @@ export const ContextPanel: React.FC = () => {
         <header className="member-roster-header">
           <div><h2><Users /> Membros</h2><p>{panelMembers.length} {panelMembers.length === 1 ? 'membro ou amigo' : 'membros e amigos'}</p></div>
           <button className="member-roster-invite" onClick={handleInviteClick} title="Copiar um convite ativo" aria-label="Copiar convite ativo"><Plus /></button>
+          <button
+            className="member-roster-invite text-rose-400 hover:text-rose-300"
+            onClick={async () => {
+              const confirmed = window.confirm('Tem certeza que deseja sair desta comunidade?');
+              if (confirmed) {
+                await leaveCommunity(currentCommunityId);
+                closeContextPanel();
+              }
+            }}
+            title="Sair da Comunidade"
+            aria-label="Sair da Comunidade"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
           <button className="member-roster-close" onClick={closeContextPanel} title="Fechar painel" aria-label="Fechar painel"><X /></button>
         </header>
         <div className="member-roster-groups">

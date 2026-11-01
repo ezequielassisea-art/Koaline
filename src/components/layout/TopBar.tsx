@@ -72,6 +72,7 @@ export const TopBar: React.FC = () => {
     openDirectMessage,
     notifications,
     markNotificationRead,
+    leaveCommunity,
   } = useApp();
 
 const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
@@ -201,6 +202,25 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
                   </div>
                 </button>
               ))}
+
+              {currentCommunityId && !isDirectMessages && (
+                <>
+                  <div className="my-1.5 border-t border-slate-800" />
+                  <button
+                    onClick={async () => {
+                      setIsCommunityDropdownOpen(false);
+                      const confirmed = window.confirm('Tem certeza que deseja sair desta comunidade?');
+                      if (confirmed) {
+                        await leaveCommunity(currentCommunityId);
+                      }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-nest-sm text-left text-xs font-medium transition-colors hover:bg-rose-500/10 text-rose-400"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Sair da Comunidade</span>
+                  </button>
+                </>
+              )}
 
               <div className="my-1.5 border-t border-slate-800" />
 
