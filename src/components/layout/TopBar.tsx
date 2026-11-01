@@ -124,6 +124,15 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
       // Log the payload to verify community data is present
       console.log("PAYLOAD DO CONVITE:", notification.payload);
 
+      // Validate required fields
+      if (!notification.sender_id) {
+        throw new Error('sender_id ausente na notificação');
+      }
+      const payload = notification.payload as Record<string, unknown> | undefined;
+      if (!payload || typeof payload.community_id !== 'string') {
+        throw new Error('Payload do convite inválido ou ausente');
+      }
+
       // Fetch the inviter profile using sender_id (DB column is sender_id)
       const { data: profile, error } = await client.from('profiles').select('id,username,full_name,avatar_url').eq('id', notification.sender_id).maybeSingle();
       if (error) {
@@ -290,7 +299,7 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           <Bell className="w-4 h-4" />
           {notificationCount > 0 && <span className="notification-badge !bg-red-500 !text-white" aria-hidden="true">{notificationCount}</span>}
         </button>
-        {isNotificationsOpen && <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl"><div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><strong className="text-sm text-white">Notificações</strong><button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button></div><div className="max-h-80 overflow-y-auto">{inviteNotifications.length === 0 ? <p className="p-4 text-sm text-slate-400">Nenhum convite por enquanto.</p> : inviteNotifications.map((notification) => <button key={notification.id} disabled={openingNotificationId === notification.id} onClick={() => void openInviteNotification(notification)} className={`w-full border-b border-slate-800 px-4 py-3 text-left transition-colors hover:bg-slate-900 ${notification.read_at ? 'opacity-70' : 'bg-indigo-500/5'}`}><span className="block text-sm text-slate-200">{String(notification.payload.inviter_name || '@membro')} te convidou para {String(notification.payload.community_name || 'uma comunidade')}</span><span className="mt-1 block text-xs text-slate-400">Clique para ver o convite.</span><span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span></button>)}</div></div>}
+        {isNotificationsOpen && <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl"><div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><strong className="text-sm text-white">Notificações</strong><button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button></div><div className="max-h-80 overflow-y-auto">{inviteNotifications.length === 0 ? <p className="p-4 text-sm text-slate-400">Nenhum convite por enquanto.</p> : inviteNotifications.map((notification) => { const payload = notification.payload as Record<string, unknown> | undefined; const inviterName = typeof payload?.inviter_name === 'string' ? payload.inviter_name : '@membro'; const communityName = typeof payload?.community_name === 'string' ? payload.community_name : 'uma comunidade'; return <button key={notification.id} disabled={openingNotificationId === notification.id} onClick={() => void openInviteNotification(notification)} className={`w-full border-b border-slate-800 px-4 py-3 text-left transition-colors hover:bg-slate-900 ${notification.read_at ? 'opacity-70' : 'bg-indigo-500/5'}`}><span className="block text-sm text-slate-200">{inviterName} te convidou para {communityName}</span><span className="mt-1 block text-xs text-slate-400">Clique para ver o convite.</span><span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span></button>; })}</div></div>}
         </div>
 
         {/* User Pill */}

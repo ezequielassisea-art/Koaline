@@ -34,15 +34,23 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, invit
 
   if (!isOpen || !invite) return null;
 
-  const payload = invite.payload;
+  const payload = (invite.payload as Record<string, unknown> | undefined) ?? {};
+
+  // Safe accessors for payload fields with fallbacks
+  const communityId = typeof payload.community_id === 'string' ? payload.community_id : '';
+  const communityName = typeof payload.community_name === 'string' ? payload.community_name : 'Comunidade';
+  const inviterName = typeof payload.inviter_name === 'string' ? payload.inviter_name : 'Alguém';
+  const customMessage = typeof payload.custom_message === 'string' ? payload.custom_message : 'Sem mensagem personalizada.';
+  const communityIcon = typeof payload.community_icon === 'string' ? payload.community_icon : undefined;
+  const communityBanner = typeof payload.community_banner === 'string' ? payload.community_banner : undefined;
 
   const handleAccept = async () => {
-    if (!supabase || !currentUser || isProcessing) return;
+    if (!supabase || !currentUser || isProcessing || !communityId) return;
     setIsProcessing(true);
     try {
       // Aceitar o convite: adicionar usuário à comunidade
       const { error: joinError } = await supabase.rpc('join_orbit_community', {
-        p_community_id: payload.community_id,
+        p_community_id: communityId,
       });
       if (joinError) throw joinError;
 
@@ -50,7 +58,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, invit
       await supabase.from('notifications').update({ read_at: new Date().toISOString() })
         .eq('id', invite.id).eq('user_id', currentUser.id);
 
-      addToast('Convite aceito!', `Você entrou em ${payload.community_name}.`, 'success');
+      addToast('Convite aceito!', `Você entrou em ${communityName}.`, 'success');
 
       // Fechar modal
       onClose();
@@ -73,7 +81,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, invit
       await supabase.from('notifications').update({ read_at: new Date().toISOString() })
         .eq('id', invite.id).eq('user_id', currentUser.id);
 
-      addToast('Convite recusado', `Você recusou o convite para ${payload.community_name}.`, 'info');
+      addToast('Convite recusado', `Você recusou o convite para ${communityName}.`, 'info');
       onClose();
     } catch (error) {
       addToast('Erro ao recusar', error instanceof Error ? error.message : 'Tente novamente.', 'error');
@@ -95,10 +103,10 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, invit
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="invite-modal-title">
       <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-slate-950/95 overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
         {/* Banner Background */}
-        {payload.community_banner && (
+        {communityBanner && (
           <div
             className="absolute inset-0 bg-cover bg-center opacity-30"
-            style={{ backgroundImage: `url(${payload.community_banner})` }}
+            style={{ backgroundImage: `url(${communityBanner})` }}
             aria-hidden="true"
           />
         )}
@@ -118,10 +126,10 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, invit
             {/* Community Avatar/Icon */}
             <div className="relative flex-shrink-0">
               <div className="w-20 h-20 rounded-xl border-2 border-white/20 overflow-hidden bg-slate-800 flex items-center justify-center shadow-xl">
-                {payload.community_icon && payload.community_icon.startsWith('data:') ? (
-                  <img src={payload.community_icon} alt="" className="w-full h-full object-cover" />
-                ) : payload.community_icon && !payload.community_icon.startsWith('data:') ? (
-                  <span className="text-4xl font-bold text-indigo-400">{payload.community_icon}</span>
+                {communityIcon && communityIcon.startsWith('data:') ? (
+                  <img src={communityIcon} alt="" className="w-full h-full object-cover" />
+                ) : communityIcon && !communityIcon.startsWith('data:') ? (
+                  <span className="text-4xl font-bold text-indigo-400">{communityIcon}</span>
                 ) : (
                   <Crown className="w-10 h-10 text-indigo-400" />
                 )}
@@ -133,11 +141,11 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, invit
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-indigo-400" />
                 <h2 id="invite-modal-title" className="text-xl font-bold text-white truncate">
-                  Convite da comunidade {payload.community_name}
+                  Convite da comunidade {communityName}
                 </h2>
               </div>
               <p className="mt-1 text-sm text-slate-400">
-                {payload.inviter_name} convidou você para participar
+                {inviterName} convidou você para participar
               </p>
             </div>
           </div>
@@ -145,7 +153,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, invit
           {/* Custom Message */}
           <div className="mb-6 p-4 rounded-xl border border-slate-700/50 bg-slate-900/50">
             <p className="text-sm font-medium text-slate-300 mb-2">Mensagem personalizada:</p>
-            <p className="text-slate-100 whitespace-pre-wrap">{payload.custom_message || 'Sem mensagem personalizada.'}</p>
+            <p className="text-slate-100 whitespace-pre-wrap">{customMessage}</p>
           </div>
 
           {/* Action Buttons */}
@@ -161,7 +169,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({ isOpen, onClose, invit
             </button>
             <button
               onClick={handleAccept}
-              disabled={isProcessing}
+              disabled={isProcessing || !communityId}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 shadow-lg shadow-indigo-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Aceitar convite"
             >
