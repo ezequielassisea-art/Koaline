@@ -142,6 +142,7 @@ interface AppContextType {
   updateChannel: (id: string, updates: Partial<Channel>) => void;
   deleteChannel: (id: string) => boolean;
   removeCommunity: (id: string) => Promise<boolean>;
+  leaveCommunity: (communityId: string) => Promise<boolean>;
 
   // Messaging
   messages: Record<string, Message[]>;
@@ -1654,6 +1655,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return true;
   };
 
+  const leaveCommunity = async (communityId: string): Promise<boolean> => {
+    const client = supabase;
+    if (!client || !currentUser.id) {
+      addToast('Não foi possível sair', 'Sua sessão não está disponível.', 'error');
+      return false;
+    }
+
+    const community = communities.find((c) => c.id === communityId);
+    if (!community) {
+      addToast('Comunidade não encontrada', 'A comunidade não existe mais.', 'error');
+      return false;
+    }
+
+    // O dono não pode sair, apenas transferir ou excluir
+    if (community.ownerId === currentUser.id || community.creatorId === currentUser.id) {
+      addToast('Ação não permitida', 'O proprietário não pode sair da comunidade. Transfira a posse ou exclua a comunidade.', 'warning');
+      return false;
+    }
+
+    try {
+      const { error } = await client
+        .from('community_members')
+        .delete()
+        .eq('community_id', communityId)
+        .eq('user_id', currentUser.id);
+
+      if (error) throw error;
+
+      // Remover a comunidade do estado global
+      const remaining = communities.filter((c) => c.id !== communityId);
+      setCommunities(remaining);
+      setMembers((prev) => prev.filter((member) => !(member.communityId === communityId && member.userId === currentUser.id)));
+      setInvites((prev) => (prev as Array<{ communityId?: string }>).filter((item) => item.communityId !== communityId));
+      setLogs((prev) => (prev as Array<{ communityId?: string }>).filter((item) => item.communityId !== communityId));
+      localStorage.removeItem(`koaline:admin:${communityId}`);
+
+      // Redirecionar para a home (primeira comunidade ou DMs)
+      if (currentCommunityId === communityId) {
+        const nextCommunity = remaining[0];
+        setCurrentCommunityId(nextCommunity?.id || '');
+        setCurrentChannelId(nextCommunity?.channels.find((channel) => channel.type === 'text')?.id || '');
+        setIsDirectMessages(!nextCommunity);
+      }
+
+      addToast('Você saiu da comunidade', `Você não faz mais parte de ${community.name}.`, 'success');
+      return true;
+    } catch (error) {
+      addToast('Não foi possível sair', error instanceof Error ? error.message : 'Tente novamente.', 'error');
+      return false;
+    }
+  };
+
   const activeChannelKey = isDirectMessages && activeDmId ? activeDmId : currentChannelId;
 
   const typingChannelRef = useRef<{ id: string; channel: ReturnType<NonNullable<typeof supabase>['channel']>; ready: boolean } | null>(null);
@@ -2377,6 +2430,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateChannel,
         deleteChannel,
         removeCommunity,
+        leaveCommunity,
         messages,
         sendMessage,
         editMessage,
