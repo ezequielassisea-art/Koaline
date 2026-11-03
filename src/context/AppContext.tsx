@@ -108,6 +108,18 @@ type PendingCallRequest =
   | { type: 'channel'; channel: Channel; mode: 'voice' | 'video'; isDeafened: boolean }
   | { type: 'direct'; targetUser: User; mode: 'voice' | 'video' };
 
+// Voice Presence types
+type VoicePresenceUser = {
+  user_id: string;
+  username?: string;
+  full_name?: string;
+  avatar_url?: string;
+  status?: User['status'];
+  muted?: boolean;
+  channel_id?: string;
+  joined_at?: number;
+};
+
 interface AppContextType {
   // User & Auth
   currentUser: User;
@@ -192,6 +204,8 @@ interface AppContextType {
   switchCallChannel: (channel: Channel) => void;
   moveVoiceUser: (userId: string, channelId: string) => boolean;
   syncVoiceParticipants: (channelId: string, users: User[], startedAt?: number) => void;
+  // Global Voice Presence
+  voicePresence: Record<string, VoicePresenceUser[]>; // communityId -> users in voice
 
   // Private Calls (1:1)
   incomingCall: IncomingCall | null;
@@ -383,6 +397,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [invites, setInvites] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:invites') || '[]'); } catch { return []; } });
   const [logs, setLogs] = useState<unknown[]>(() => { try { return JSON.parse(localStorage.getItem('koaline:logs') || '[]'); } catch { return []; } });
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
+  const [voicePresence, setVoicePresence] = useState<Record<string, VoicePresenceUser[]>>({});
 
   const activateDm = (conversationId: string | null) => {
     if (conversationId) setMessages((previous) => ({ ...previous, [conversationId]: [] }));
@@ -862,6 +877,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: currentUser.status === 'idle' || currentUser.status === 'dnd' ? currentUser.status : 'online',
     });
   }, [currentUser.name, currentUser.handle, currentUser.avatar, currentUser.status, currentUser.id]);
+
+  // Global Voice Presence - tracks users in voice channels per community
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn || isAuthLoading || !currentUser.id || !communities.length) {
+      return;
+    }
+
+    let active = true;
+    const voicePresenceChannels: ReturnType<typeof client.channel>[] = [];
+
+    const setupVoicePresence = async () => {
+      for (const community of communities) {
+        const voiceChannels = community.channels.filter((c) => c.type === 'voice');
+        if (!voiceChannels.length) continue;
+
+        for (const voiceChannel of voiceChannels) {
+          const channel = client.channel(`voice-presence-${voiceChannel.id}`, {
+            config: { presence: { key: currentUser.id } },
+          });
+
+          const applyVoicePresence = () => {
+            if (!active) return;
+            const presence = channel.presenceState<VoicePresenceUser>();
+            const entries = Object.entries(presence).flatMap(([key, metas]) => {
+              const meta = metas[metas.length - 1];
+              const userId = meta?.user_id || key;
+              return userId ? [{ ...meta, user_id: userId }] : [];
+            });
+            const unique = [...new Map(entries.map((entry) => [entry.user_id, entry])).values()];
+
+            setVoicePresence((prev) => ({
+              ...prev,
+              [community.id]: unique,
+            }));
+          };
+
+          channel
+            .on('presence', { event: 'sync' }, applyVoicePresence)
+            .on('presence', { event: 'join' }, applyVoicePresence)
+            .on('presence', { event: 'leave' }, applyVoicePresence)
+            .subscribe((status) => {
+              if (status === 'SUBSCRIBED' && active) {
+                applyVoicePresence();
+              }
+            });
+
+          voicePresenceChannels.push(channel);
+        }
+      }
+    };
+
+    void setupVoicePresence();
+
+    return () => {
+      active = false;
+      voicePresenceChannels.forEach((channel) => {
+        void client.removeChannel(channel);
+      });
+    };
+  }, [isLoggedIn, isAuthLoading, currentUser.id, communities]);
 
   // Call Signaling Channel - listens for incoming calls on user's personal channel
   useEffect(() => {
@@ -1817,6 +1893,93 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
+    // Helper function to create mention notifications
+    const createMentionNotifications = async (content: string, channelId: string, channelName: string, communityId?: string) => {
+      // Check for @todos mention
+      const todosMatch = content.match(/@todos\b/gi);
+      // Check for @username mentions
+      const usernameMatches = content.match(/@([a-zA-Z0-9_]{3,20})\b/g);
+
+      const notificationsToInsert: Array<{
+        user_id: string;
+        actor_id: string;
+        type: string;
+        payload: Record<string, unknown>;
+      }> = [];
+
+      if (todosMatch && communityId) {
+        // Get all members of the community
+        const { data: members, error: membersError } = await client
+          .from('community_members')
+          .select('user_id')
+          .eq('community_id', communityId);
+
+        if (!membersError && members) {
+          for (const member of members) {
+            if (member.user_id !== authUser.id) { // Don't notify self
+              notificationsToInsert.push({
+                user_id: member.user_id,
+                actor_id: authUser.id,
+                type: 'mention',
+                payload: {
+                  message: content,
+                  channel_id: channelId,
+                  channel_name: channelName,
+                  mention_type: 'todos',
+                  community_id: communityId,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      if (usernameMatches) {
+        // Extract unique usernames (remove @ and duplicates)
+        const uniqueHandles = [...new Set(usernameMatches.map(m => m.slice(1).toLowerCase()))];
+
+        for (const handle of uniqueHandles) {
+          // Find user by username in profiles
+          const { data: profile, error: profileError } = await client
+            .from('profiles')
+            .select('id')
+            .eq('username', handle)
+            .maybeSingle();
+
+          if (!profileError && profile && profile.id !== authUser.id) {
+            notificationsToInsert.push({
+              user_id: profile.id,
+              actor_id: authUser.id,
+              type: 'mention',
+              payload: {
+                message: content,
+                channel_id: channelId,
+                channel_name: channelName,
+                mention_type: 'user',
+                mentioned_handle: handle,
+                community_id: communityId,
+              },
+            });
+          }
+        }
+      }
+
+      // Insert all notifications
+      if (notificationsToInsert.length > 0) {
+        try {
+          const { error: notifError } = await client
+            .from('notifications')
+            .insert(notificationsToInsert);
+
+          if (notifError) {
+            console.error('Erro ao criar notificações de menção:', notifError);
+          }
+        } catch (e) {
+          console.error('Exceção ao criar notificações de menção:', e);
+        }
+      }
+    };
+
     // Se for DM (Direct Messages)
     if (isDirectMessages) {
       const conversationId = activeDmId;
@@ -1870,6 +2033,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         )
       );
 
+      // Create notification for DM recipient
+      try {
+        const dm = dms.find((d) => d.id === conversationId);
+        if (dm && dm.user.id !== authUser.id) {
+          const { error: notifError } = await client
+            .from('notifications')
+            .insert({
+              user_id: dm.user.id,
+              actor_id: authUser.id,
+              type: 'dm_message',
+              payload: {
+                message: messageContent,
+                conversation_id: conversationId,
+                sender_name: currentUser.name,
+                sender_handle: currentUser.handle,
+                sender_avatar: currentUser.avatar,
+              },
+            });
+          if (notifError) {
+            console.error('Erro ao criar notificação de DM:', notifError);
+          }
+        }
+      } catch (e) {
+        console.error('Exceção ao criar notificação de DM:', e);
+      }
+
       return true;
     }
 
@@ -1921,6 +2110,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (channelMessages.some((item) => item.id === newMessage.id)) return previous;
         return { ...previous, [channelId]: [...channelMessages, newMessage] };
       });
+
+      // Create mention notifications for channel messages
+      const channelCommunityId = communities.find((c) => c.channels.some((ch) => ch.id === channelId))?.id;
+      const channelName = selectedChannel?.name || 'canal';
+      await createMentionNotifications(messageContent, channelId, channelName, channelCommunityId);
     }
     return Boolean(data);
   };
@@ -2472,6 +2666,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         switchCallChannel,
         moveVoiceUser,
         syncVoiceParticipants,
+        voicePresence,
         // Private Calls (1:1)
         incomingCall,
         outgoingCall,

@@ -10,8 +10,8 @@ import {
   User,
   Settings,
   LogOut,
-  Sparkles,
   MessageSquare,
+  AtSign,
 
 
   Volume2,
@@ -97,6 +97,8 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
   const unreadDirectMessages = dms.filter((dm) => dm.unread && !dm.isArchived).length;
   const inviteNotifications = notifications.filter((notification) => notification.type === 'community_invite');
+  const dmMessageNotifications = notifications.filter((notification) => notification.type === 'dm_message' && !notification.read_at);
+  const mentionNotifications = notifications.filter((notification) => notification.type === 'mention' && !notification.read_at);
   const unreadMentions = Object.entries(messages).reduce((count, [channelId, channelMessages]) => {
     const lastReadAt = lastReadAtByChannel[channelId];
     const normalizedHandle = currentUser.handle.replace(/^@/, '').split('#')[0].toLowerCase();
@@ -114,7 +116,7 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
       return mentionsUser || /@(?:everyone|all)\b/i.test(content);
     }).length;
   }, 0);
-  const notificationCount = unreadDirectMessages + unreadMentions + inviteNotifications.filter((item) => !item.read_at).length;
+  const notificationCount = unreadDirectMessages + unreadMentions + inviteNotifications.filter((item) => !item.read_at).length + dmMessageNotifications.length + mentionNotifications.length;
 
   const openInviteNotification = async (notification: AppNotification) => {
     const client = supabase;
@@ -299,7 +301,36 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           <Bell className="w-4 h-4" />
           {notificationCount > 0 && <span className="notification-badge !bg-red-500 !text-white" aria-hidden="true">{notificationCount}</span>}
         </button>
-        {isNotificationsOpen && <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl"><div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><strong className="text-sm text-white">Notificações</strong><button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button></div><div className="max-h-80 overflow-y-auto">{inviteNotifications.length === 0 ? <p className="p-4 text-sm text-slate-400">Nenhum convite por enquanto.</p> : inviteNotifications.map((notification) => { const payload = notification.payload as Record<string, unknown> | undefined; const inviterName = typeof payload?.inviter_name === 'string' ? payload.inviter_name : '@membro'; const communityName = typeof payload?.community_name === 'string' ? payload.community_name : 'uma comunidade'; return <button key={notification.id} disabled={openingNotificationId === notification.id} onClick={() => void openInviteNotification(notification)} className={`w-full border-b border-slate-800 px-4 py-3 text-left transition-colors hover:bg-slate-900 ${notification.read_at ? 'opacity-70' : 'bg-indigo-500/5'}`}><span className="block text-sm text-slate-200">{inviterName} te convidou para {communityName}</span><span className="mt-1 block text-xs text-slate-400">Clique para ver o convite.</span><span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span></button>; })}</div></div>}
+        {isNotificationsOpen && <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl"><div className="flex items-center justify-between border-b border-slate-800 px-4 py-3"><strong className="text-sm text-white">Notificações</strong><button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button></div><div className="max-h-80 overflow-y-auto">
+          {(() => {
+            const allNotifications = [...inviteNotifications, ...notifications.filter(n => n.type === 'dm_message' || n.type === 'mention')]
+              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+            if (allNotifications.length === 0) {
+              return <p className="p-4 text-sm text-slate-400">Nenhuma notificação por enquanto.</p>;
+            }
+            return allNotifications.map((notification) => {
+              const payload = notification.payload as Record<string, unknown> | undefined;
+              if (notification.type === 'community_invite') {
+                const inviterName = typeof payload?.inviter_name === 'string' ? payload.inviter_name : '@membro';
+                const communityName = typeof payload?.community_name === 'string' ? payload.community_name : 'uma comunidade';
+                return <button key={notification.id} disabled={openingNotificationId === notification.id} onClick={() => void openInviteNotification(notification)} className={`w-full border-b border-slate-800 px-4 py-3 text-left transition-colors hover:bg-slate-900 ${notification.read_at ? 'opacity-70' : 'bg-indigo-500/5'}`}><span className="block text-sm text-slate-200">{inviterName} te convidou para {communityName}</span><span className="mt-1 block text-xs text-slate-400">Clique para ver o convite.</span><span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span></button>;
+              }
+              if (notification.type === 'dm_message') {
+                const senderName = typeof payload?.sender_name === 'string' ? payload.sender_name : 'Alguém';
+                const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Nova mensagem';
+                return <button key={notification.id} onClick={() => { setIsNotificationsOpen(false); }} className={`w-full border-b border-slate-800 px-4 py-3 text-left transition-colors hover:bg-slate-900 ${notification.read_at ? 'opacity-70' : 'bg-sky-500/5'}`}><span className="block text-sm text-slate-200 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-sky-400" /> {senderName}</span><span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span><span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span></button>;
+              }
+              if (notification.type === 'mention') {
+                const channelName = typeof payload?.channel_name === 'string' ? payload.channel_name : 'canal';
+                const mentionType = typeof payload?.mention_type === 'string' ? payload.mention_type : 'user';
+                const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Menção';
+                const icon = mentionType === 'todos' ? <span className="text-amber-400">@todos</span> : <span className="text-indigo-400">@{typeof payload?.mentioned_handle === 'string' ? payload.mentioned_handle : 'usuário'}</span>;
+                return <button key={notification.id} onClick={() => { setIsNotificationsOpen(false); }} className={`w-full border-b border-slate-800 px-4 py-3 text-left transition-colors hover:bg-slate-900 ${notification.read_at ? 'opacity-70' : 'bg-indigo-500/5'}`}><span className="block text-sm text-slate-200 flex items-center gap-1.5"><AtSign className="w-3.5 h-3.5 text-indigo-400" /> Menção em #{channelName} {icon}</span><span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span><span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span></button>;
+              }
+              return null;
+            });
+          })()}
+        </div></div>}
         </div>
 
         {/* User Pill */}
@@ -386,17 +417,6 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
                   <span>Volume</span><input type="range" min="0" max="100" value={Math.round(audioPreferences.volume * 100)} onChange={(event) => updateAudioPreferences({ ...audioPreferences, volume: Number(event.target.value) / 100 })} className="min-w-0 flex-1 accent-sky-500" /><span className="w-8 text-right">{Math.round(audioPreferences.volume * 100)}%</span>
                 </label>
               </div>
-
-              <button
-                onClick={() => {
-                  setIsThemeCustomizerOpen(true);
-                  setIsUserMenuOpen(false);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-nest-sm text-left text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors"
-              >
-                <Sparkles className="w-4 h-4 text-sky-400" />
-                <span>Personalizar Tema</span>
-              </button>
 
               <div className="my-1 border-t border-slate-800" />
 

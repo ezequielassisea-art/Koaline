@@ -132,14 +132,23 @@ export const AuthOnboardingModal: React.FC = () => {
       try {
         const client = requireSupabase();
         const { data, error } = await client.auth.signUp({ email: email.trim(), password, options: { data: { username: normalizedHandle, full_name: displayName, avatar_url: currentUser.avatar || null, onboarding_completed: false } } });
-        if (error) throw error;
+        if (error) {
+          console.error('[AuthOnboardingModal] Supabase signUp error:', error);
+          throw error;
+        }
         if (data.user) {
           const { error: profileError } = await client.from('profiles').upsert({ id: data.user.id, username: normalizedHandle, full_name: displayName, avatar_url: currentUser.avatar || null, onboarding_completed: false }, { onConflict: 'id' });
-          if (profileError) throw profileError;
+          if (profileError) {
+            console.error('[AuthOnboardingModal] Supabase profiles upsert error:', profileError);
+            throw profileError;
+          }
         }
         localStorage.removeItem(DRAFT_KEY);
         if (!data.session) addToast('Confirme seu e-mail', 'Enviamos um link de confirmação antes de entrar.', 'success');
-      } catch (error) { addToast('Não foi possível criar a conta', /already registered|already exists/i.test(error instanceof Error ? error.message : '') ? 'Este e-mail já está cadastrado.' : error instanceof Error ? error.message : 'Tente novamente.', 'error'); }
+      } catch (error) {
+        console.error('[AuthOnboardingModal] Register error:', error);
+        addToast('Não foi possível criar a conta', /already registered|already exists/i.test(error instanceof Error ? error.message : '') ? 'Este e-mail já está cadastrado.' : error instanceof Error ? error.message : 'Tente novamente.', 'error');
+      }
       finally { setIsLoading(false); }
     })();
   };

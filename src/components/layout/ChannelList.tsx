@@ -13,7 +13,7 @@ import {
   X,
   MicOff,
 } from 'lucide-react';
-import { Channel, User } from '../../types';
+import { Channel, User, UserStatus } from '../../types';
 import { canAccessAdminPanel } from '../admin/adminAccess';
 import { canModerateCommunity } from '../admin/adminAccess';
 import { DraggableUserCard, DropZoneCall } from '../call/VoiceDragDrop';
@@ -43,6 +43,7 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
     moveVoiceUser,
     syncVoiceParticipants,
     startCall,
+    voicePresence,
   } = useApp();
 
   const [collapsedCategories, setCollapsedCategories] = React.useState<Record<string, boolean>>({});
@@ -68,14 +69,15 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
         .ilike('username', `%${cleanUserQuery}%`)
         .limit(5);
       if (!active) return;
-      setUserSearchResults(error ? [] : (data || []).filter((profile) => profile.username).map((profile) => ({
+      type ProfileRow = { id: string; username: string | null; avatar_url: string | null; full_name: string | null };
+      setUserSearchResults(error ? [] : (data || []).filter((profile: ProfileRow) => profile.username).map((profile: ProfileRow) => ({
         ...currentUser,
         id: profile.id,
         name: profile.full_name || profile.username || 'Membro Koaline',
-        handle: profile.username,
+        handle: profile.username || '',
         avatar: profile.avatar_url || '',
         status: 'offline' as const,
-      })).filter((user) => user.id !== currentUser.id));
+      })).filter((user: User) => user.id !== currentUser.id));
       setUserSearchLoading(false);
     }, 250);
     return () => { active = false; window.clearTimeout(timer); };
@@ -83,43 +85,37 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
   const voiceChannels = activeCommunity?.channels.filter((channel) => channel.type === 'voice') || [];
-  const voiceChannelKey = voiceChannels.map((channel) => channel.id).join('|');
+
+  // Sync global voice presence to community channels
   React.useEffect(() => {
-    const client = supabase;
-    if (!client || !currentUser.id || isDirectMessages || !activeCommunity || !voiceChannelKey) return;
-    let active = true;
-    const channels = voiceChannelKey.split('|').map((channelId) => {
-      const presenceChannel = client.channel(`koaline:voice-room:${channelId}`);
-      const syncPresence = () => {
-        if (!active) return;
-        const entries = Object.entries(presenceChannel.presenceState<{ user_id?: string; username?: string; full_name?: string; avatar_url?: string; status?: User['status']; muted?: boolean; joined_at?: number }>())
-          .flatMap(([key, metas]) => metas.map((meta) => ({ ...meta, user_id: meta.user_id || key })))
-          .filter((entry) => !!entry.user_id);
-        const unique = [...new Map(entries.map((entry) => [entry.user_id!, entry])).values()];
-        const users: User[] = unique.map((entry) => ({
-          ...currentUser,
-          id: entry.user_id!,
-          name: entry.full_name || entry.username || 'Membro Koaline',
-          handle: entry.username || '',
-          avatar: entry.avatar_url || '',
-          status: entry.status === 'idle' || entry.status === 'dnd' ? entry.status : 'online',
-          voiceMuted: !!entry.muted,
-        }));
-        const joinTimes = unique.map((entry) => entry.joined_at).filter((value): value is number => Number.isFinite(value));
-        syncVoiceParticipants(channelId, users, joinTimes.length ? Math.min(...joinTimes) : undefined);
-      };
-      presenceChannel
-        .on('presence', { event: 'sync' }, syncPresence)
-        .on('presence', { event: 'join' }, syncPresence)
-        .on('presence', { event: 'leave' }, syncPresence)
-        .subscribe((status) => { if (status === 'SUBSCRIBED') syncPresence(); });
-      return presenceChannel;
+    if (!activeCommunity || !voicePresence[activeCommunity.id]?.length) return;
+    const voiceUsers = voicePresence[activeCommunity.id];
+    if (!voiceUsers.length) return;
+
+    // Group users by channel_id
+    const usersByChannel = new Map<string, typeof voiceUsers>();
+    voiceUsers.forEach((user) => {
+      const channelId = user.channel_id;
+      if (!channelId) return;
+      if (!usersByChannel.has(channelId)) usersByChannel.set(channelId, []);
+      usersByChannel.get(channelId)!.push(user);
     });
-    return () => {
-      active = false;
-      channels.forEach((channel) => { if (channel) void client.removeChannel(channel); });
-    };
-  }, [activeCommunity?.id, currentUser.id, isDirectMessages, voiceChannelKey]);
+
+    usersByChannel.forEach((users, channelId) => {
+      const userList = users.map((entry) => ({
+        ...currentUser,
+        id: entry.user_id,
+        name: entry.full_name || entry.username || 'Membro Koaline',
+        handle: entry.username || '',
+        avatar: entry.avatar_url || '',
+        status: (entry.status === 'idle' || entry.status === 'dnd' ? entry.status : 'online') as UserStatus,
+        voiceMuted: !!entry.muted,
+      }));
+      const joinTimes = users.map((entry) => entry.joined_at).filter((value): value is number => Number.isFinite(value));
+      syncVoiceParticipants(channelId, userList, joinTimes.length ? Math.min(...joinTimes) : undefined);
+    });
+  }, [activeCommunity?.id, voicePresence, currentUser, syncVoiceParticipants]);
+
   if (!activeCommunity) return null;
   let archivedChannelIds = new Set<string>();
   try { archivedChannelIds = new Set<string>(JSON.parse(localStorage.getItem(`koaline:admin:${currentCommunityId}`) || '{}').archived || []); }
