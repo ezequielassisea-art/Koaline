@@ -172,15 +172,19 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
 
     // 2. Redirecionar baseado no tipo
     try {
+      let targetMessageId: string | null = null;
+      let targetChannelId: string | null = null;
+
       switch (notification.type) {
         case 'channel_message': {
           if (payload?.channel_id) {
-            const channelId = String(payload.channel_id);
+            targetChannelId = String(payload.channel_id);
+            targetMessageId = payload?.message_id as string | null;
             // Encontrar a comunidade desse canal
-            const targetCommunity = communities.find((c) => c.channels.some((ch) => ch.id === channelId));
+            const targetCommunity = communities.find((c) => c.channels.some((ch) => ch.id === targetChannelId));
             if (targetCommunity) {
               setCurrentCommunityId(targetCommunity.id);
-              setCurrentChannelId(channelId);
+              setCurrentChannelId(targetChannelId);
               setIsDirectMessages(false);
             }
           }
@@ -188,9 +192,10 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
         }
         case 'dm_message': {
           if (payload?.conversation_id) {
-            const conversationId = String(payload.conversation_id);
+            targetChannelId = String(payload.conversation_id);
+            targetMessageId = payload?.message_id as string | null;
             // Encontrar a DM
-            const dm = dms.find((d) => d.id === conversationId);
+            const dm = dms.find((d) => d.id === targetChannelId);
             if (dm) {
               await openDirectMessage(dm.user);
             }
@@ -204,16 +209,33 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
         }
         case 'mention': {
           if (payload?.channel_id) {
-            const channelId = String(payload.channel_id);
-            const targetCommunity = communities.find((c) => c.channels.some((ch) => ch.id === channelId));
+            targetChannelId = String(payload.channel_id);
+            targetMessageId = payload?.message_id as string | null;
+            const targetCommunity = communities.find((c) => c.channels.some((ch) => ch.id === targetChannelId));
             if (targetCommunity) {
               setCurrentCommunityId(targetCommunity.id);
-              setCurrentChannelId(channelId);
+              setCurrentChannelId(targetChannelId);
               setIsDirectMessages(false);
             }
           }
           break;
         }
+      }
+
+      // 3. Scroll to message and apply highlight effect
+      if (targetMessageId && targetChannelId) {
+        // Wait for the channel to be set and messages to load, then scroll
+        setTimeout(() => {
+          const messageElement = document.getElementById(`message-${targetMessageId}`);
+          if (messageElement) {
+            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            messageElement.classList.add('is-highlighted');
+            // Remove highlight after animation completes (2.5s)
+            setTimeout(() => {
+              messageElement.classList.remove('is-highlighted');
+            }, 2500);
+          }
+        }, 500);
       }
     } catch (error) {
       console.error('Erro ao redirecionar notificação:', error);
@@ -382,101 +404,116 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           {notificationCount > 0 && <span className="notification-badge !bg-red-500 !text-white" aria-hidden="true">{notificationCount}</span>}
         </button>
         {isNotificationsOpen && (() => {
-            const allNotifications = [...inviteNotifications, ...notifications.filter(n => n.type === 'dm_message' || n.type === 'mention' || n.type === 'channel_message')]
+            const relevantNotifications = [...inviteNotifications, ...notifications.filter(n => n.type === 'dm_message' || n.type === 'mention' || n.type === 'channel_message')]
               .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+            // Group notifications by actor_id + type
+            const groupedNotifications = new Map<string, AppNotification[]>();
+            relevantNotifications.forEach((notification) => {
+              const key = `${notification.actor_id}:${notification.type}`;
+              if (!groupedNotifications.has(key)) {
+                groupedNotifications.set(key, []);
+              }
+              groupedNotifications.get(key)!.push(notification);
+            });
+
+            const renderNotificationGroup = (group: AppNotification[]) => {
+              const first = group[0];
+              const payload = first.payload as Record<string, unknown> | undefined;
+              const isUnread = group.some(n => !n.read_at);
+              const latestDate = group.reduce((latest, n) => new Date(n.created_at) > new Date(latest) ? n.created_at : latest, first.created_at);
+
+              const baseClasses = 'w-full border-b border-slate-800 px-4 py-3 text-left transition-colors relative group';
+              const unreadBg = isUnread ? 'bg-slate-900/50' : 'opacity-60';
+              const unreadIndicator = isUnread ? <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-sky-400" aria-hidden="true" /> : null;
+              const count = group.length > 1 ? <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-slate-800 text-slate-400">{group.length}</span> : null;
+
+              if (first.type === 'community_invite') {
+                const inviterName = typeof payload?.inviter_name === 'string' ? payload.inviter_name : '@membro';
+                const communityName = typeof payload?.community_name === 'string' ? payload.community_name : 'uma comunidade';
+                return (
+                  <div key={`${first.actor_id}:community_invite`} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
+                    {unreadIndicator}
+                    <button onClick={() => handleNotificationClick(first)} className="w-full text-left flex items-center justify-between">
+                      <span className="block text-sm text-slate-200">{inviterName} te convidou para {communityName}</span>
+                      {count}
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                );
+              }
+              if (first.type === 'dm_message') {
+                const senderName = typeof payload?.sender_name === 'string' ? payload.sender_name : 'Alguém';
+                const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Nova mensagem';
+                return (
+                  <div key={`${first.actor_id}:dm_message`} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
+                    {unreadIndicator}
+                    <button onClick={() => handleNotificationClick(first)} className="w-full text-left flex items-center justify-between">
+                      <span className="block text-sm text-slate-200 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-sky-400" /> {senderName}</span>
+                      {count}
+                    </button>
+                    <span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span>
+                    <span className="mt-1 block text-[10px] text-slate-500">{new Date(latestDate).toLocaleString('pt-BR')}</span>
+                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                );
+              }
+              if (first.type === 'mention') {
+                const channelName = typeof payload?.channel_name === 'string' ? payload.channel_name : 'canal';
+                const mentionType = typeof payload?.mention_type === 'string' ? payload.mention_type : 'user';
+                const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Menção';
+                const icon = mentionType === 'todos' ? <span className="text-amber-400">@todos</span> : <span className="text-indigo-400">@{typeof payload?.mentioned_handle === 'string' ? payload.mentioned_handle : 'usuário'}</span>;
+                return (
+                  <div key={`${first.actor_id}:mention`} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
+                    {unreadIndicator}
+                    <button onClick={() => handleNotificationClick(first)} className="w-full text-left flex items-center justify-between">
+                      <span className="block text-sm text-slate-200 flex items-center gap-1.5"><AtSign className="w-3.5 h-3.5 text-indigo-400" /> Menção em #{channelName} {icon}</span>
+                      {count}
+                    </button>
+                    <span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span>
+                    <span className="mt-1 block text-[10px] text-slate-500">{new Date(latestDate).toLocaleString('pt-BR')}</span>
+                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                );
+              }
+              if (first.type === 'channel_message') {
+                const channelName = typeof payload?.channel_name === 'string' ? payload.channel_name : 'canal';
+                const senderName = typeof payload?.sender_name === 'string' ? payload.sender_name : 'Alguém';
+                const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Nova mensagem';
+                return (
+                  <div key={`${first.actor_id}:channel_message`} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
+                    {unreadIndicator}
+                    <button onClick={() => handleNotificationClick(first)} className="w-full text-left flex items-center justify-between">
+                      <span className="block text-sm text-slate-200 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-emerald-400" /> {senderName} em #{channelName}</span>
+                      {count}
+                    </button>
+                    <span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span>
+                    <span className="mt-1 block text-[10px] text-slate-500">{new Date(latestDate).toLocaleString('pt-BR')}</span>
+                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                );
+              }
+              return null;
+            };
+
             return (
-              <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
-                <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+              <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl flex flex-col overflow-hidden">
+                <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 flex-shrink-0">
                   <strong className="text-sm text-white">Notificações</strong>
                   <button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button>
                 </div>
-                <div className="max-h-80 overflow-y-auto">
-                  {allNotifications.length === 0 ? (
+                <div className="flex-1 max-h-80 overflow-y-auto">
+                  {relevantNotifications.length === 0 ? (
                     <p className="p-4 text-sm text-slate-400">Nenhuma notificação por enquanto.</p>
                   ) : (
-                    <>
-                      {allNotifications.map((notification) => {
-                        const payload = notification.payload as Record<string, unknown> | undefined;
-                        const isUnread = !notification.read_at;
-                        const isOpening = openingNotificationId === notification.id;
-                        // Estilos base para lida/não lida
-                        const baseClasses = 'w-full border-b border-slate-800 px-4 py-3 text-left transition-colors relative group';
-                        const unreadBg = isUnread ? 'bg-slate-900/50' : 'opacity-60';
-                        const unreadIndicator = isUnread ? <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-sky-400" aria-hidden="true" /> : null;
-
-                        if (notification.type === 'community_invite') {
-                          const inviterName = typeof payload?.inviter_name === 'string' ? payload.inviter_name : '@membro';
-                          const communityName = typeof payload?.community_name === 'string' ? payload.community_name : 'uma comunidade';
-                          return (
-                            <div key={notification.id} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
-                              {unreadIndicator}
-                              <button disabled={isOpening} onClick={() => handleNotificationClick(notification)} className="w-full text-left">
-                                <span className="block text-sm text-slate-200">{inviterName} te convidou para {communityName}</span>
-                                <span className="mt-1 block text-xs text-slate-400">Clique para ver o convite.</span>
-                                <span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span>
-                              </button>
-                              <button onClick={(e) => handleDeleteNotification(e, notification.id)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificação"><X className="w-3.5 h-3.5" /></button>
-                            </div>
-                          );
-                        }
-                        if (notification.type === 'dm_message') {
-                          const senderName = typeof payload?.sender_name === 'string' ? payload.sender_name : 'Alguém';
-                          const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Nova mensagem';
-                          return (
-                            <div key={notification.id} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
-                              {unreadIndicator}
-                              <button onClick={() => handleNotificationClick(notification)} className="w-full text-left">
-                                <span className="block text-sm text-slate-200 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-sky-400" /> {senderName}</span>
-                                <span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span>
-                                <span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span>
-                              </button>
-                              <button onClick={(e) => handleDeleteNotification(e, notification.id)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificação"><X className="w-3.5 h-3.5" /></button>
-                            </div>
-                          );
-                        }
-                        if (notification.type === 'mention') {
-                          const channelName = typeof payload?.channel_name === 'string' ? payload.channel_name : 'canal';
-                          const mentionType = typeof payload?.mention_type === 'string' ? payload.mention_type : 'user';
-                          const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Menção';
-                          const icon = mentionType === 'todos' ? <span className="text-amber-400">@todos</span> : <span className="text-indigo-400">@{typeof payload?.mentioned_handle === 'string' ? payload.mentioned_handle : 'usuário'}</span>;
-                          return (
-                            <div key={notification.id} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
-                              {unreadIndicator}
-                              <button onClick={() => handleNotificationClick(notification)} className="w-full text-left">
-                                <span className="block text-sm text-slate-200 flex items-center gap-1.5"><AtSign className="w-3.5 h-3.5 text-indigo-400" /> Menção em #{channelName} {icon}</span>
-                                <span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span>
-                                <span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span>
-                              </button>
-                              <button onClick={(e) => handleDeleteNotification(e, notification.id)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificação"><X className="w-3.5 h-3.5" /></button>
-                            </div>
-                          );
-                        }
-                        if (notification.type === 'channel_message') {
-                          const channelName = typeof payload?.channel_name === 'string' ? payload.channel_name : 'canal';
-                          const senderName = typeof payload?.sender_name === 'string' ? payload.sender_name : 'Alguém';
-                          const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Nova mensagem';
-                          return (
-                            <div key={notification.id} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
-                              {unreadIndicator}
-                              <button onClick={() => handleNotificationClick(notification)} className="w-full text-left">
-                                <span className="block text-sm text-slate-200 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-emerald-400" /> {senderName} em #{channelName}</span>
-                                <span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span>
-                                <span className="mt-1 block text-[10px] text-slate-500">{new Date(notification.created_at).toLocaleString('pt-BR')}</span>
-                              </button>
-                              <button onClick={(e) => handleDeleteNotification(e, notification.id)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificação"><X className="w-3.5 h-3.5" /></button>
-                            </div>
-                          );
-                        }
-                        return null;
-                      })}
-                      {/* Botão "Limpar todas" no rodapé */}
-                      <div className="border-t border-slate-800 p-3">
-                        <button onClick={handleClearAllNotifications} className="w-full py-2 text-sm font-medium text-rose-400 hover:text-rose-300 transition-colors rounded-nest-sm hover:bg-rose-500/10">
-                          Limpar todas
-                        </button>
-                      </div>
-                    </>
+                    Array.from(groupedNotifications.values()).map(renderNotificationGroup)
                   )}
+                </div>
+                {/* Botão "Limpar todas" fixo no rodapé */}
+                <div className="border-t border-slate-800 p-3 flex-shrink-0">
+                  <button onClick={handleClearAllNotifications} className="w-full py-2 text-sm font-medium text-rose-400 hover:text-rose-300 transition-colors rounded-nest-sm hover:bg-rose-500/10">
+                    Limpar todas
+                  </button>
                 </div>
               </div>
             );

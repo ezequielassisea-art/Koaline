@@ -1905,7 +1905,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Helper function to create mention notifications
-    const createMentionNotifications = async (content: string, channelId: string, channelName: string, communityId?: string) => {
+    const createMentionNotifications = async (content: string, channelId: string, channelName: string, communityId?: string, messageId?: string) => {
       // Check for @todos mention
       const todosMatch = content.match(/@todos\b/gi);
       // Check for @username mentions
@@ -1938,6 +1938,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   channel_name: channelName,
                   mention_type: 'todos',
                   community_id: communityId,
+                  message_id: messageId,
                 },
               });
             }
@@ -1969,6 +1970,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 mention_type: 'user',
                 mentioned_handle: handle,
                 community_id: communityId,
+                message_id: messageId,
               },
             });
           }
@@ -2000,7 +2002,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       senderId: string,
       senderName: string,
       senderHandle: string,
-      senderAvatar: string
+      senderAvatar: string,
+      messageId: string
     ) => {
       try {
         // Get all members of the community
@@ -2032,6 +2035,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 sender_name: senderName,
                 sender_handle: senderHandle,
                 sender_avatar: senderAvatar,
+                message_id: messageId,
               },
             });
           }
@@ -2125,6 +2129,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 sender_name: currentUser.name,
                 sender_handle: currentUser.handle,
                 sender_avatar: currentUser.avatar,
+                message_id: newMessage.id,
               },
             });
           if (notifError) {
@@ -2190,11 +2195,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Create mention notifications for channel messages
       const channelCommunityId = communities.find((c) => c.channels.some((ch) => ch.id === channelId))?.id;
       const channelName = selectedChannel?.name || 'canal';
-      await createMentionNotifications(messageContent, channelId, channelName, channelCommunityId);
+      await createMentionNotifications(messageContent, channelId, channelName, channelCommunityId, newMessage.id);
 
       // Create general channel message notifications for all community members (except sender)
       if (channelCommunityId) {
-        await createChannelMessageNotifications(messageContent, channelId, channelName, channelCommunityId, authUser.id, currentUser.name, currentUser.handle, currentUser.avatar);
+        await createChannelMessageNotifications(messageContent, channelId, channelName, channelCommunityId, authUser.id, currentUser.name, currentUser.handle, currentUser.avatar, newMessage.id);
       }
     }
     return Boolean(data);

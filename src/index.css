@@ -1798,9 +1798,37 @@ textarea {
   opacity: 1;
   }
 }
+
+/* Highlight animation for message when clicking notification */
+@keyframes highlightPulse {
+  0% {
+    background-color: color-mix(in srgb, var(--primary) 25%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 40%, transparent);
+  }
+  50% {
+    background-color: color-mix(in srgb, var(--primary) 15%, transparent);
+    box-shadow: 0 0 20px 4px color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+  100% {
+    background-color: color-mix(in srgb, var(--primary) 25%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 40%, transparent);
+  }
+}
+
+.koaline-message.is-highlighted {
+  animation: highlightPulse 2.5s ease-out forwards;
+  border-radius: 12px;
+  position: relative;
+  z-index: 10;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .status-presence.is-online {
   animation: none;
+  }
+  .koaline-message.is-highlighted {
+    animation: none;
+    background-color: color-mix(in srgb, var(--primary) 15%, transparent);
   }
 }
 .admin-presence {
