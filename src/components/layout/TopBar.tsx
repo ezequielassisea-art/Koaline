@@ -229,11 +229,11 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           const messageElement = document.getElementById(`message-${targetMessageId}`);
           if (messageElement) {
             messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            messageElement.classList.add('is-highlighted');
-            // Remove highlight after animation completes (2.5s)
+            messageElement.classList.add('highlight-message');
+            // Remove highlight after animation completes (2s)
             setTimeout(() => {
-              messageElement.classList.remove('is-highlighted');
-            }, 2500);
+              messageElement.classList.remove('highlight-message');
+            }, 2000);
           }
         }, 500);
       }

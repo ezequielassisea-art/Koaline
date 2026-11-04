@@ -1831,6 +1831,27 @@ textarea {
     background-color: color-mix(in srgb, var(--primary) 15%, transparent);
   }
 }
+
+/* Highlight animation for message when clicking notification (Task 4) */
+@keyframes messageHighlightPulse {
+  0% { background-color: rgba(0, 191, 255, 0.4); }
+  50% { background-color: rgba(0, 191, 255, 0.1); }
+  100% { background-color: transparent; }
+}
+
+.highlight-message {
+  animation: messageHighlightPulse 2s ease-in-out;
+  border-radius: 12px;
+  position: relative;
+  z-index: 10;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .highlight-message {
+    animation: none;
+    background-color: rgba(0, 191, 255, 0.15);
+  }
+}
 .admin-presence {
   display: inline-flex;
   align-items: center;
