@@ -2241,13 +2241,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     const editedAt = new Date().toISOString();
-    const { error } = await client.from('messages').update({ content: trimmedContent, edited_at: editedAt }).eq('id', messageId);
+    const { data, error } = await client
+      .from('messages')
+      .update({ content: trimmedContent, edited_at: editedAt })
+      .eq('id', messageId)
+      .select();
     if (error) {
-      console.error('[editMessage] Erro ao editar mensagem:', error);
-      notify.error('Falha ao editar: ' + error.message);
+      console.error('[editMessage] Erro no banco ao editar:', error);
+      notify.error('Erro ao editar no banco: ' + error.message);
       return;
     }
-    // Sucesso no banco - atualiza estado local
+    if (!data || data.length === 0) {
+      console.error('[editMessage] NENHUMA LINHA ATUALIZADA. Verifique o ID ou RLS. messageId:', messageId);
+      notify.error('Não foi possível salvar a edição. Verifique suas permissões.');
+      return;
+    }
+    // SÓ AGORA, após confirmar que salvou, atualiza a tela:
     setMessages((prev) => {
       const channelMsgs = prev[activeChannelKey] || [];
       return {
