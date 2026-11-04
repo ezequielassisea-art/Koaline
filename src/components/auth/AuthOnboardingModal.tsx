@@ -127,13 +127,22 @@ export const AuthOnboardingModal: React.FC = () => {
     event.preventDefault();
     if (!handleValid || isHandleAvailable !== true || !email.trim() || !passwordsMatch || strength < 2) return;
     const displayName = name.trim() || normalizedHandle;
+    const redirectUrl = `${window.location.origin}/`;
+    console.log('[AuthOnboardingModal] URL de redirecionamento:', redirectUrl);
     setIsLoading(true);
     void (async () => {
       try {
         const client = requireSupabase();
-        const { data, error } = await client.auth.signUp({ email: email.trim(), password, options: { data: { username: normalizedHandle, full_name: displayName, avatar_url: currentUser.avatar || null, onboarding_completed: false } } });
+        const { data, error } = await client.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            emailRedirectTo: redirectUrl,
+            data: { username: normalizedHandle, full_name: displayName, avatar_url: currentUser.avatar || null, onboarding_completed: false },
+          },
+        });
         if (error) {
-          console.error('[AuthOnboardingModal] Supabase signUp error:', error);
+          console.error('[AuthOnboardingModal] Erro no signUp:', error);
           throw error;
         }
         if (data.user) {
