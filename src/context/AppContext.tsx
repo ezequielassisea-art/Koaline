@@ -2229,30 +2229,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return Boolean(data);
   };
 
-  const editMessage = (messageId: string, newContent: string) => {
+  const editMessage = async (messageId: string, newContent: string) => {
+    const client = supabase;
+    if (!client) {
+      notify.error('A conexão com o Supabase não está configurada.');
+      return;
+    }
+    const trimmedContent = newContent.trim();
+    if (!trimmedContent) {
+      notify.error('A mensagem não pode ficar vazia.');
+      return;
+    }
+    const { error } = await client.from('messages').update({ content: trimmedContent, edited: true }).eq('id', messageId);
+    if (error) {
+      console.error('[editMessage] Erro ao editar mensagem:', error);
+      notify.error('Não foi possível editar a mensagem: ' + error.message);
+      return;
+    }
+    // Sucesso no banco - atualiza estado local
     setMessages((prev) => {
       const channelMsgs = prev[activeChannelKey] || [];
       return {
         ...prev,
         [activeChannelKey]: channelMsgs.map((m) =>
-          m.id === messageId ? { ...m, content: newContent, edited: true } : m
+          m.id === messageId ? { ...m, content: trimmedContent, edited: true } : m
         ),
       };
     });
     addToast('Mensagem Editada', 'Alteração salva com sucesso.');
   };
 
-  const deleteMessage = (messageId: string) => {
+  const deleteMessage = async (messageId: string) => {
+    const client = supabase;
+    if (!client) {
+      notify.error('A conexão com o Supabase não está configurada.');
+      return;
+    }
+    const { error } = await client.from('messages').delete().eq('id', messageId);
+    if (error) {
+      console.error('[deleteMessage] Erro ao apagar mensagem:', error);
+      notify.error('Não foi possível apagar a mensagem: ' + error.message);
+      return;
+    }
+    // Sucesso no banco - atualiza estado local
     setMessages((prev) => {
       const channelMsgs = prev[activeChannelKey] || [];
       return {
         ...prev,
-        [activeChannelKey]: channelMsgs.map((m) =>
-          m.id === messageId ? { ...m, isDeleted: true, content: 'Mensagem apagada' } : m
-        ),
+        [activeChannelKey]: channelMsgs.filter((m) => m.id !== messageId),
       };
     });
-    addToast('Mensagem Apagada', 'Mensagem removida.');
+    addToast('Mensagem Apagada', 'Mensagem removida com sucesso.');
   };
 
   const toggleReaction = (messageId: string, emoji: string) => {
