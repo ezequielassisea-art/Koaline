@@ -228,6 +228,8 @@ interface AppContextType {
   markNotificationsRead: () => void;
   notifications: AppNotification[];
   markNotificationRead: (notificationId: string) => Promise<void>;
+  deleteNotification: (notificationId: string) => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
   lastReadAtByChannel: Record<string, string>;
   markChannelRead: (channelId: string) => void;
 
@@ -1426,6 +1428,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const readAt = new Date().toISOString();
     const { error } = await client.from('notifications').update({ read_at: readAt }).eq('id', notificationId).eq('user_id', currentUser.id);
     if (!error) setNotifications((previous) => previous.map((notification) => notification.id === notificationId ? { ...notification, read_at: readAt } : notification));
+  };
+
+  const deleteNotification = async (notificationId: string) => {
+    const client = supabase;
+    if (!client || !currentUser.id) return;
+    const { error } = await client.from('notifications').delete().eq('id', notificationId).eq('user_id', currentUser.id);
+    if (!error) setNotifications((previous) => previous.filter((notification) => notification.id !== notificationId));
+  };
+
+  const clearAllNotifications = async () => {
+    const client = supabase;
+    if (!client || !currentUser.id) return;
+    const { error } = await client.from('notifications').delete().eq('user_id', currentUser.id);
+    if (!error) setNotifications([]);
   };
 
   const moveVoiceUser = (userId: string, channelId: string) => {
@@ -2749,6 +2765,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markNotificationsRead,
         notifications,
         markNotificationRead,
+        deleteNotification,
+        clearAllNotifications,
         lastReadAtByChannel,
         markChannelRead,
         activeUserMenu,
