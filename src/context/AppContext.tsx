@@ -2240,6 +2240,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notify.error('A mensagem não pode ficar vazia.');
       return;
     }
+    console.log('[editMessage] ID da mensagem a ser editada:', messageId, '| Conteúdo:', trimmedContent);
     const editedAt = new Date().toISOString();
     const { data, error } = await client
       .from('messages')
