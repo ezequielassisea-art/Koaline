@@ -264,8 +264,8 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
                 <div
                   key={dm.id}
                   onClick={() => setActiveDmId(dm.id)}
-                  className={`group flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all ${
-                    activeDmId === dm.id ? 'bg-indigo-600/20 text-white' : 'hover:bg-slate-800 text-slate-300'
+                  className={`group flex items-center gap-3 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all ${
+                    activeDmId === dm.id ? 'bg-indigo-600/20' : 'hover:bg-slate-800'
                   }`}
                 >
                   <div className="relative flex-shrink-0">
@@ -275,16 +275,19 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
                     }`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="truncate font-semibold">{dm.user.name}</span>
-                      <span className="text-[10px] text-slate-500 ml-1 flex-shrink-0">{dm.lastMessageTime ? formatRelativeTime(dm.lastMessageTime) : ''}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center justify-between">
+                        <span className="truncate font-semibold text-[var(--color-text-main)]">{dm.user.name}</span>
+                        <span className="text-[10px] text-[var(--color-text-muted)] ml-1 flex-shrink-0">{dm.lastMessageTime ? formatRelativeTime(dm.lastMessageTime) : ''}</span>
+                      </div>
+                      <p className="text-[11px] text-[var(--color-text-muted)] truncate">@{dm.user.handle}</p>
+                      <p className="text-[11px] text-[var(--color-text-muted)] truncate mt-0.5">{dm.lastMessage}</p>
                     </div>
-                    <p className="text-[11px] text-slate-400 truncate mt-0.5">{dm.lastMessage}</p>
                   </div>
                   {dm.unread && <span className="w-2 h-2 rounded-full bg-indigo-500 flex-shrink-0" />}
                   <button
                     onClick={(e) => { e.stopPropagation(); toggleArchiveDm(dm.id); }}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-slate-200 rounded transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-main)] rounded transition-opacity"
                   >
                     <Archive className="w-3 h-3" />
                   </button>
@@ -376,14 +379,28 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
                             </div>
                           </div>
                           {isVoice && connectedUsers.length > 0 && <div className="space-y-0.5 pb-1 pl-9 pr-2" onClick={(event) => event.stopPropagation()}>
-                            {connectedUsers.map((u) => <div key={u.id} className="group/member flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-[var(--text-muted)] transition-colors hover:bg-slate-800/70" title={u.name}>
-                              <button type="button" onClick={() => openUserProfile(u)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                                {u.avatar ? <img src={u.avatar} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" /> : <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-200">{u.name?.trim().charAt(0).toUpperCase() || '◇'}</span>}
-                                <span className="truncate text-[11px]">{u.name || u.handle || 'Membro Koaline'}</span>
-                              </button>
-                              {u.voiceMuted && <MicOff className="h-3.5 w-3.5 shrink-0 text-rose-400" aria-label="Microfone mutado" />}
-                              <DraggableUserCard user={u} permission={canMoveUsers} onOpen={() => openUserProfile(u)} />
-                            </div>)}
+                            {connectedUsers.map((u) => (
+                              <div key={u.id} className="group/member flex min-w-0 items-center gap-3 rounded-md px-1.5 py-1 transition-colors hover:bg-slate-800/70" title={u.name}>
+                                <button type="button" onClick={() => openUserProfile(u)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                                  <div className="relative flex-shrink-0">
+                                    {u.avatar ? (
+                                      <img src={u.avatar} alt="" className="h-6 w-6 shrink-0 rounded-full object-cover" />
+                                    ) : (
+                                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-700 text-[10px] text-slate-200">{u.name?.trim().charAt(0).toUpperCase() || '◇'}</span>
+                                    )}
+                                    <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-slate-900 ${
+                                      u.status === 'online' ? 'bg-emerald-500' : u.status === 'idle' ? 'bg-amber-500' : u.status === 'dnd' ? 'bg-rose-500' : 'bg-zinc-400'
+                                    }`} />
+                                  </div>
+                                  <div className="flex flex-col gap-0.5 min-w-0">
+                                    <span className="truncate font-semibold text-[var(--color-text-main)] text-[11px]">{u.name || u.handle || 'Membro Koaline'}</span>
+                                    <span className="truncate text-[10px] text-[var(--color-text-muted)]">@{u.handle || 'usuario'}</span>
+                                  </div>
+                                </button>
+                                {u.voiceMuted && <MicOff className="h-3.5 w-3.5 shrink-0 text-rose-400/80" aria-label="Microfone mutado" />}
+                                <DraggableUserCard user={u} permission={canMoveUsers} onOpen={() => openUserProfile(u)} />
+                              </div>
+                            ))}
                           </div>}
                           </DropZoneCall>
                         );
