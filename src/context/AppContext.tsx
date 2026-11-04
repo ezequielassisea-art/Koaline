@@ -653,6 +653,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setNotifications((previous) => [notification, ...previous.filter((item) => item.id !== notification.id)].slice(0, 50));
         void audioManager.play('notification');
       })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` }, (payload) => {
+        if (!active) return;
+        const deletedId = (payload.old as AppNotification)?.id;
+        if (deletedId) {
+          setNotifications((previous) => previous.filter((item) => item.id !== deletedId));
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` }, (payload) => {
+        if (!active) return;
+        const updatedNotification = payload.new as AppNotification;
+        if (!updatedNotification?.id) return;
+        setNotifications((previous) => previous.map((item) => item.id === updatedNotification.id ? updatedNotification : item));
+      })
       .subscribe();
     return () => {
       active = false;
@@ -1428,20 +1441,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const readAt = new Date().toISOString();
     const { error } = await client.from('notifications').update({ read_at: readAt }).eq('id', notificationId).eq('user_id', currentUser.id);
     if (!error) setNotifications((previous) => previous.map((notification) => notification.id === notificationId ? { ...notification, read_at: readAt } : notification));
+    else console.error('[markNotificationRead] Erro ao marcar como lida:', error);
   };
 
   const deleteNotification = async (notificationId: string) => {
     const client = supabase;
     if (!client || !currentUser.id) return;
     const { error } = await client.from('notifications').delete().eq('id', notificationId).eq('user_id', currentUser.id);
-    if (!error) setNotifications((previous) => previous.filter((notification) => notification.id !== notificationId));
+    if (error) {
+      console.error('[deleteNotification] Erro ao deletar notificação (pode ser RLS):', error);
+      addToast('Erro ao excluir', error.message || 'Não foi possível excluir a notificação.', 'error');
+    } else {
+      setNotifications((previous) => previous.filter((notification) => notification.id !== notificationId));
+    }
   };
 
   const clearAllNotifications = async () => {
     const client = supabase;
     if (!client || !currentUser.id) return;
     const { error } = await client.from('notifications').delete().eq('user_id', currentUser.id);
-    if (!error) setNotifications([]);
+    if (error) {
+      console.error('[clearAllNotifications] Erro ao limpar notificações (pode ser RLS):', error);
+      addToast('Erro ao limpar', error.message || 'Não foi possível limpar as notificações.', 'error');
+    } else {
+      setNotifications([]);
+    }
   };
 
   const moveVoiceUser = (userId: string, channelId: string) => {
