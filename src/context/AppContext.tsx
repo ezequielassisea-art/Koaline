@@ -2240,10 +2240,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notify.error('A mensagem não pode ficar vazia.');
       return;
     }
-    const { error } = await client.from('messages').update({ content: trimmedContent, edited: true }).eq('id', messageId);
+    const editedAt = new Date().toISOString();
+    const { error } = await client.from('messages').update({ content: trimmedContent, edited_at: editedAt }).eq('id', messageId);
     if (error) {
       console.error('[editMessage] Erro ao editar mensagem:', error);
-      notify.error('Não foi possível editar a mensagem: ' + error.message);
+      notify.error('Falha ao editar: ' + error.message);
       return;
     }
     // Sucesso no banco - atualiza estado local
@@ -2252,7 +2253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return {
         ...prev,
         [activeChannelKey]: channelMsgs.map((m) =>
-          m.id === messageId ? { ...m, content: trimmedContent, edited: true } : m
+          m.id === messageId ? { ...m, content: trimmedContent, edited_at: editedAt } : m
         ),
       };
     });
