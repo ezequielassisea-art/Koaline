@@ -643,18 +643,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (active && !error) setNotifications((data || []) as AppNotification[]);
     };
     void loadNotifications();
-    const channel = client.channel(`notifications:${currentUser.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` }, (event) => {
+    const channel = client.channel('notificacoes-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` }, (payload) => {
         if (!active) return;
-        if (event.eventType === 'DELETE') {
-          const deletedId = (event.old as Partial<AppNotification>).id;
-          if (deletedId) setNotifications((previous) => previous.filter((notification) => notification.id !== deletedId));
-          return;
-        }
-        const notification = event.new as AppNotification;
+        const notification = payload.new as AppNotification;
         if (!notification?.id) return;
         setNotifications((previous) => [notification, ...previous.filter((item) => item.id !== notification.id)].slice(0, 50));
-        if (event.eventType === 'INSERT') void audioManager.play('notification');
+        void audioManager.play('notification');
       })
       .subscribe();
     return () => {
@@ -1980,6 +1975,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
 
+    // Helper function to create channel message notifications for all community members
+    const createChannelMessageNotifications = async (
+      content: string,
+      channelId: string,
+      channelName: string,
+      communityId: string,
+      senderId: string,
+      senderName: string,
+      senderHandle: string,
+      senderAvatar: string
+    ) => {
+      try {
+        // Get all members of the community
+        const { data: members, error: membersError } = await client
+          .from('community_members')
+          .select('user_id')
+          .eq('community_id', communityId);
+
+        if (membersError || !members) return;
+
+        const notificationsToInsert: Array<{
+          user_id: string;
+          actor_id: string;
+          type: string;
+          payload: Record<string, unknown>;
+        }> = [];
+
+        for (const member of members) {
+          if (member.user_id !== senderId) { // Don't notify sender
+            notificationsToInsert.push({
+              user_id: member.user_id,
+              actor_id: senderId,
+              type: 'channel_message',
+              payload: {
+                message: content,
+                channel_id: channelId,
+                channel_name: channelName,
+                community_id: communityId,
+                sender_name: senderName,
+                sender_handle: senderHandle,
+                sender_avatar: senderAvatar,
+              },
+            });
+          }
+        }
+
+        // Insert all notifications
+        if (notificationsToInsert.length > 0) {
+          try {
+            const { error: notifError } = await client
+              .from('notifications')
+              .insert(notificationsToInsert);
+
+            if (notifError) {
+              console.error('Erro ao criar notificações de mensagem no canal:', notifError);
+            }
+          } catch (e) {
+            console.error('Exceção ao criar notificações de mensagem no canal:', e);
+          }
+        }
+      } catch (e) {
+        console.error('Exceção ao buscar membros para notificações de canal:', e);
+      }
+    };
+
     // Se for DM (Direct Messages)
     if (isDirectMessages) {
       const conversationId = activeDmId;
@@ -2115,6 +2175,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const channelCommunityId = communities.find((c) => c.channels.some((ch) => ch.id === channelId))?.id;
       const channelName = selectedChannel?.name || 'canal';
       await createMentionNotifications(messageContent, channelId, channelName, channelCommunityId);
+
+      // Create general channel message notifications for all community members (except sender)
+      if (channelCommunityId) {
+        await createChannelMessageNotifications(messageContent, channelId, channelName, channelCommunityId, authUser.id, currentUser.name, currentUser.handle, currentUser.avatar);
+      }
     }
     return Boolean(data);
   };
