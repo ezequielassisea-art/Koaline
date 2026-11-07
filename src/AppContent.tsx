@@ -43,6 +43,11 @@ export const AppContent: React.FC = () => {
     isThemeCustomizerOpen,
     isCreateChannelModalOpen,
     activeUserMenu,
+    // Collapsible sidebar states
+    isLeftSidebarOpen,
+    setIsLeftSidebarOpen,
+    isRightSidebarOpen,
+    setIsRightSidebarOpen,
   } = useApp();
 
   const [isAdminPanelOpen, setIsAdminPanelOpen] = React.useState(false);
@@ -125,52 +130,99 @@ export const AppContent: React.FC = () => {
       <IncomingCallCard />
       <TopBar />
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex min-h-0 flex-1 overflow-hidden" style={{ display: isNotFound ? 'none' : 'flex' }}>
-          {(communities.length > 0 || isDirectMessages) && <ChannelList onOpenAdmin={openAdminPanel} />}
-          <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative">
-            {isDirectMessages ? (
-              <DirectMessageView />
-            ) : communities.length === 0 ? (
-              <div className="m-auto w-full max-w-lg p-8 text-center">
-                <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-slate-700 bg-slate-900 text-2xl">
-                  ◇
-                </div>
-                <h1 className="mb-2 text-2xl font-bold">Sua conta está pronta</h1>
-                <p className="mb-6 text-sm text-slate-400">
-                  Crie sua comunidade ou entre em uma existente usando um código de convite para começar a conversar.
-                </p>
-                <div className="flex flex-col gap-3">
-                  <button
-                    type="button"
-                    className="rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
-                    onClick={handleCreateCommunityPrompt}
-                  >
-                    Criar Comunidade
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-slate-700 bg-slate-800 px-5 py-3 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition-colors"
-                    onClick={() => {
-                      const code = window.prompt('Cole o código do convite:');
-                      if (code && !joinCommunityByInvite(code)) {
-                        addToast('Convite inválido', 'O código pode ter expirado, sido revogado ou atingido o limite de usos.', 'warning');
-                      }
-                    }}
-                  >
-                    Tenho um convite
-                  </button>
-                </div>
+        {!isNotFound && (
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            {/* Left Sidebar - Conversations */}
+            {(communities.length > 0 || isDirectMessages) && (
+              <div className={`flex flex-col transition-all duration-300 overflow-hidden ${
+                isLeftSidebarOpen ? 'w-80' : 'w-16'
+              }`}>
+                <ChannelList onOpenAdmin={openAdminPanel} isCollapsed={!isLeftSidebarOpen} />
               </div>
-            ) : isCallFullscreen ? (
-              <React.Suspense fallback={<div className="flex h-full items-center justify-center bg-slate-950 text-sm text-slate-400">Carregando sala de voz…</div>}>
-                <VoiceRoom />
-              </React.Suspense>
-            ) : (
-              <ChatView />
             )}
-            {activeCall?.isMinimized && activeCall.isScreenSharing && <ScreenSharePiP />}
-          </main>
-        </div>
+
+            {/* Center Column - Active Chat */}
+            <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative">
+              {isDirectMessages ? (
+                <DirectMessageView />
+              ) : communities.length === 0 ? (
+                <div className="m-auto w-full max-w-lg p-8 text-center">
+                  <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-slate-700 bg-slate-900 text-2xl">
+                    ◇
+                  </div>
+                  <h1 className="mb-2 text-2xl font-bold">Sua conta está pronta</h1>
+                  <p className="mb-6 text-sm text-slate-400">
+                    Crie sua comunidade ou entre em uma existente usando um código de convite para começar a conversar.
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      className="rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
+                      onClick={handleCreateCommunityPrompt}
+                    >
+                      Criar Comunidade
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-5 py-3 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition-colors"
+                      onClick={() => {
+                        const code = window.prompt('Cole o código do convite:');
+                        if (code && !joinCommunityByInvite(code)) {
+                          addToast('Convite inválido', 'O código pode ter expirado, sido revogado ou atingido o limite de usos.', 'warning');
+                        }
+                      }}
+                    >
+                      Tenho um convite
+                    </button>
+                  </div>
+                </div>
+              ) : isCallFullscreen ? (
+                <React.Suspense fallback={<div className="flex h-full items-center justify-center bg-slate-950 text-sm text-slate-400">Carregando sala de voz…</div>}>
+                  <VoiceRoom />
+                </React.Suspense>
+              ) : (
+                <ChatView />
+              )}
+              {activeCall?.isMinimized && activeCall.isScreenSharing && <ScreenSharePiP />}
+            </main>
+
+            {/* Right Sidebar - Context Panel */}
+            <div className={`flex flex-col transition-all duration-300 overflow-hidden ${
+              isRightSidebarOpen ? 'w-72' : 'w-12'
+            }`}>
+              {isRightSidebarOpen && isContextPanelOpen && <ContextPanel />}
+              {!isRightSidebarOpen && (
+                <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800/60">
+                  <button
+                    onClick={() => setIsRightSidebarOpen(true)}
+                    className="flex h-12 items-center justify-center p-2 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                    title="Expandir painel lateral"
+                    aria-label="Expandir painel lateral"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+                  </button>
+                  <div className="flex-1" />
+                  <div className="p-2 border-t border-slate-800/60">
+                    <div className="relative w-8 h-8 mx-auto">
+                      {currentUser.avatar ? (
+                        <img src={currentUser.avatar} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover ring-1 ring-border" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-slate-700 ring-1 ring-border grid place-items-center text-xs text-white">
+                          {currentUser.name.trim().charAt(0).toUpperCase() || '◇'}
+                        </div>
+                      )}
+                      <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
+                        currentUser.status === 'online' ? 'bg-emerald-500' :
+                        currentUser.status === 'idle' ? 'bg-amber-500' :
+                        currentUser.status === 'dnd' ? 'bg-rose-500' : 'bg-zinc-400'
+                      }`} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {isNotFound && (
           <main className="koaline-not-found">
@@ -190,7 +242,6 @@ export const AppContent: React.FC = () => {
             </div>
           </main>
         )}
-        {communities.length > 0 && isContextPanelOpen && <ContextPanel />}
       </div>
       {activeUserMenu && <UserContextMenu />}
       {isProfileEditorOpen && <ProfileEditor />}

@@ -170,6 +170,10 @@ interface AppContextType {
   // UI Panels
   isColumn1Collapsed: boolean;
   setIsColumn1Collapsed: (val: boolean) => void;
+  isLeftSidebarOpen: boolean;
+  setIsLeftSidebarOpen: (val: boolean) => void;
+  isRightSidebarOpen: boolean;
+  setIsRightSidebarOpen: (val: boolean) => void;
   isContextPanelOpen: boolean;
   setIsContextPanelOpen: (val: boolean) => void;
   contextPanelUser: User | null;
@@ -794,6 +798,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // UI Panels
   const [isColumn1Collapsed, setIsColumn1Collapsed] = useState(false);
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
   const [isContextPanelOpen, setIsContextPanelOpen] = useState(false);
   const [contextPanelUser, setContextPanelUser] = useState<User | null>(null);
 
@@ -2784,6 +2790,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setTypingStatus,
         isColumn1Collapsed,
         setIsColumn1Collapsed,
+        isLeftSidebarOpen,
+        setIsLeftSidebarOpen,
+        isRightSidebarOpen,
+        setIsRightSidebarOpen,
         isContextPanelOpen,
         setIsContextPanelOpen,
         contextPanelUser,

@@ -13,6 +13,7 @@ import {
   Plus,
   Loader2,
   LogOut,
+  Settings,
 } from 'lucide-react';
 
 export const ContextPanel: React.FC = () => {
@@ -322,6 +323,33 @@ export const ContextPanel: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* User Profile Block at bottom - mt-auto */}
+        <div className="mt-auto pt-4 border-t border-slate-800">
+          <button
+            onClick={() => setIsProfileEditorOpen(true)}
+            className="group w-full flex items-center gap-3 p-2 rounded-nest-sm bg-slate-950 hover:bg-slate-800 transition-colors border border-slate-800 text-left"
+            title="Editar perfil"
+            aria-label="Editar perfil"
+          >
+            {currentUser.avatar ? (
+              <img src={currentUser.avatar} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover ring-1 ring-border flex-shrink-0" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-slate-700 ring-1 ring-border flex-shrink-0 grid place-items-center text-xs font-semibold text-white">
+                {currentUser.name.trim().charAt(0).toUpperCase() || '◇'}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="truncate font-semibold text-sm text-white">
+                {currentUser.name.split(' ')[0]}
+              </div>
+              <div className="truncate text-[11px] text-slate-400">
+                @{currentUser.handle}
+              </div>
+            </div>
+            <Settings className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition-colors flex-shrink-0" />
+          </button>
+        </div>
       </div>
     </aside>
   );

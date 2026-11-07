@@ -12,10 +12,12 @@ import {
   LogOut,
   MessageSquare,
   AtSign,
-
-
+  Search,
+  UserPlus,
   Volume2,
   VolumeX,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { parseAppDate } from '../../utils/time';
 import { audioManager } from '../../services/AudioManager';
@@ -76,6 +78,8 @@ export const TopBar: React.FC = () => {
     deleteNotification,
     clearAllNotifications,
     leaveCommunity,
+    isLeftSidebarOpen,
+    setIsLeftSidebarOpen,
   } = useApp();
 
 const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
@@ -93,6 +97,8 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
     setAudioPreferences(next);
     audioManager.setPreferences(next.volume, next.muted);
   };
+
+  const [searchQuery, setSearchQuery] = useState('');
 
   const commDropdownRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -283,104 +289,50 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
   };
 
   return (
-    <header className="h-16 px-4 md:px-6 bg-slate-900 border-b border-border flex items-center justify-between sticky top-0 z-30 transition-colors">
-      {/* LEFT: Wordmark + Community Selector Pill */}
-      <div className="flex items-center gap-3 sm:gap-4">
+    <header className="h-16 px-4 md:px-6 bg-slate-900/80 backdrop-blur-sm border-b border-border flex items-center justify-between sticky top-0 z-30 transition-colors">
+      {/* LEFT: Collapse left sidebar button */}
+      <div className="flex items-center justify-start w-16">
+        <button
+          onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
+          title={isLeftSidebarOpen ? 'Recolher barra lateral' : 'Expandir barra lateral'}
+          aria-label={isLeftSidebarOpen ? 'Recolher barra lateral' : 'Expandir barra lateral'}
+          className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors flex items-center justify-center"
+        >
+          {isLeftSidebarOpen ? (
+            <ChevronLeft className="w-5 h-5" />
+          ) : (
+            <ChevronRight className="w-5 h-5" />
+          )}
+        </button>
+      </div>
 
-
-
-
-        {/* Community Selector Pill */}
-        <div className="relative" ref={commDropdownRef}>
-          <button
-            onClick={() => setIsCommunityDropdownOpen(!isCommunityDropdownOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-nest-pill bg-slate-800 hover:bg-slate-700 border border-border text-sm font-medium transition-all active:scale-95 max-w-[200px]"
-          >
-            {isDirectMessages ? <MessageSquare className="w-4 h-4 text-indigo-300" /> : activeCommunity?.icon?.startsWith('data:image/') ? <img src={activeCommunity.icon} alt="" className="w-5 h-5 rounded-md object-cover" /> : <span className="text-base">{activeCommunity?.icon || '◇'}</span>}
-            <span className="truncate text-slate-100 font-semibold text-xs sm:text-sm">
-              {isDirectMessages ? 'Mensagens Diretas' : activeCommunity?.name || 'Comunidades'}
-            </span>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-          </button>
-
-          {isCommunityDropdownOpen && (
-            <div className="absolute top-full left-0 mt-2 w-64 p-2 rounded-nest-sm bg-slate-900 border border-slate-700 shadow-2xl z-40 animate-in fade-in zoom-in-95">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1">
-                Servidores & Espaços
-              </div>
-
-              {communities.map((comm) => (
-                <button
-                  key={comm.id}
-                  onClick={() => {
-                    setCurrentCommunityId(comm.id);
-                    setIsDirectMessages(false);
-                    setIsCommunityDropdownOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-nest-sm text-left text-xs font-medium transition-colors ${
-                    !isDirectMessages && comm.id === currentCommunityId
-                      ? 'bg-indigo-600/20 text-indigo-400 font-semibold'
-                      : 'hover:bg-slate-800 text-slate-200'
-                  }`}
-                >
-                  {comm.icon.startsWith('data:image/') ? <img src={comm.icon} alt="" className="w-7 h-7 rounded-md object-cover" /> : <span className="text-lg">{comm.icon}</span>}
-                  <div className="truncate flex-1">
-                    <div className="truncate">{comm.name}</div>
-                    <div className="text-[10px] text-slate-400 truncate">{comm.membersCount} membros</div>
-                  </div>
-                </button>
-              ))}
-
-              {currentCommunityId && !isDirectMessages && (
-                <>
-                  <div className="my-1.5 border-t border-slate-800" />
-                  <button
-                    onClick={async () => {
-                      setIsCommunityDropdownOpen(false);
-                      const confirmed = window.confirm('Tem certeza que deseja sair desta comunidade?');
-                      if (confirmed) {
-                        await leaveCommunity(currentCommunityId);
-                      }
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-nest-sm text-left text-xs font-medium transition-colors hover:bg-rose-500/10 text-rose-400"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>Sair da Comunidade</span>
-                  </button>
-                </>
-              )}
-
-              <div className="my-1.5 border-t border-slate-800" />
-
-              <button
-                onClick={() => {
-                  setIsDirectMessages(true);
-                  setIsCommunityDropdownOpen(false);
-                }}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-nest-sm text-left text-xs font-medium transition-colors ${
-                  isDirectMessages
-                    ? 'bg-sky-500/20 text-sky-400 font-semibold'
-                    : 'hover:bg-slate-800 text-slate-200'
-                }`}
-              >
-                <MessageSquare className="w-4 h-4 text-sky-400" />
-                <div className="truncate flex-1">
-                  <div>Mensagens Diretas</div>
-                  <div className="text-[10px] text-slate-400">Conversas privadas</div>
-                </div>
-              </button>
-            </div>
+      {/* CENTER: Unified Search Bar */}
+      <div className="flex-1 flex items-center justify-center px-4 md:px-8 max-w-2xl">
+        <div className="relative w-full max-w-xl">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" aria-hidden="true" />
+          <input
+            type="text"
+            placeholder="Buscar mensagens, amigos, grupos..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-slate-800/50 border border-slate-700/50 rounded-nest-pill px-10 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all backdrop-blur-sm"
+            aria-label="Buscar mensagens, amigos e grupos"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+              aria-label="Limpar pesquisa"
+            >
+              <X className="w-4 h-4" />
+            </button>
           )}
         </div>
       </div>
 
-      {/* Espaço central da TopBar, reservado para o CallDock minimizado */}
-      <div className="flex-1 min-w-0 flex justify-end px-2 sm:px-4">
-        <CallDock />
-      </div>
-
-      {/* RIGHT: Notifications, Theme Toggle, User Profile */}
+      {/* RIGHT: Add Friend + Notifications + Theme Toggle */}
       <div className="flex items-center gap-2 sm:gap-3">
+        {/* Theme Toggle */}
         <button
           onClick={toggleDarkMode}
           title="Alternar tema"
@@ -393,6 +345,7 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           )}
         </button>
 
+        {/* Notifications */}
         <div className="relative">
         <button
           onClick={() => { setIsNotificationsOpen((value) => !value); markNotificationsRead(); }}
@@ -520,106 +473,15 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           })()}
         </div>
 
-        {/* User Pill */}
-        <div className="relative" ref={userMenuRef}>
-          <button
-            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className="flex items-center gap-2 p-1 pl-2 rounded-nest-pill bg-slate-800 hover:bg-slate-700 border border-border transition-all"
-          >
-            <div className="relative">
-              {currentUser.avatar ? <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
-                className="w-7 h-7 rounded-full object-cover ring-1 ring-border"
-              /> : <div aria-hidden="true" className="w-7 h-7 rounded-full bg-slate-700 ring-1 ring-border" />}
-              <span
-                className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
-                  currentUser.status === 'online'
-                    ? 'bg-emerald-500'
-                    : currentUser.status === 'idle'
-                    ? 'bg-amber-500'
-                    : currentUser.status === 'dnd'
-                    ? 'bg-rose-500'
-                    : 'bg-zinc-400'
-                }`}
-              />
-            </div>
-            <span className="text-xs font-semibold text-slate-200 hidden sm:inline max-w-[100px] truncate">
-              {currentUser.name.split(' ')[0]}
-            </span>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 mr-1" />
-          </button>
-
-          {isUserMenuOpen && (
-            <div className="absolute top-full right-0 mt-2 w-64 p-2 rounded-nest-sm bg-slate-900 border border-slate-700 shadow-2xl z-40 animate-in fade-in zoom-in-95">
-              <div className="flex items-center gap-3 p-2.5 rounded-nest-sm bg-slate-950 mb-2">
-                {currentUser.avatar ? <img
-                  src={currentUser.avatar}
-                  alt={currentUser.name}
-                  className="w-10 h-10 rounded-full object-cover"
-                /> : <div aria-hidden="true" className="w-10 h-10 rounded-full bg-slate-700" />}
-                <div className="truncate">
-                  <div className="text-xs font-bold text-white truncate">
-                    {currentUser.name}
-                  </div>
-                  <div className="text-[11px] text-slate-400">@{currentUser.handle}</div>
-                  <div className="text-[10px] text-indigo-400 font-medium flex items-center gap-1 mt-0.5">
-                    <span>{currentUser.customStatus?.emoji}</span>
-                    <span className="truncate">{currentUser.customStatus?.text}</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={() => {
-                  openUserProfile(currentUser);
-                  setIsUserMenuOpen(false);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-nest-sm text-left text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors"
-              >
-                <User className="w-4 h-4 text-indigo-400" />
-                <span>Ver Meu Perfil</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setIsProfileEditorOpen(true);
-                  setIsUserMenuOpen(false);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-nest-sm text-left text-xs font-medium text-slate-200 hover:bg-slate-800 transition-colors"
-              >
-                <Settings className="w-4 h-4 text-slate-400" />
-                <span>Editar Perfil & Status</span>
-              </button>
-
-<div className="my-2 rounded-xl border border-slate-800 bg-slate-950 p-3">
-                <div className="mb-2 flex items-center justify-between text-[11px] font-semibold text-slate-200">
-                  <span>Áudio</span>
-                  <button type="button" role="switch" aria-checked={audioPreferences.muted} onClick={() => updateAudioPreferences({ ...audioPreferences, muted: !audioPreferences.muted })} className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-slate-300 hover:bg-slate-800">
-                    {audioPreferences.muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-                    {audioPreferences.muted ? 'Mudo' : 'Com som'}
-                  </button>
-                </div>
-                <label className="flex items-center gap-2 text-[10px] text-slate-400">
-                  <span>Volume</span><input type="range" min="0" max="100" value={Math.round(audioPreferences.volume * 100)} onChange={(event) => updateAudioPreferences({ ...audioPreferences, volume: Number(event.target.value) / 100 })} className="min-w-0 flex-1 accent-sky-500" /><span className="w-8 text-right">{Math.round(audioPreferences.volume * 100)}%</span>
-                </label>
-              </div>
-
-              <div className="my-1 border-t border-slate-800" />
-
-              <button
-                onClick={() => {
-                  setIsLoggedIn(false);
-                  setIsUserMenuOpen(false);
-                }}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-nest-sm text-left text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Sair da Conta</span>
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Add Friend Button */}
+        <button
+          onClick={() => setIsCommunityDropdownOpen(true)} // Reusing the community dropdown for now, but we'll add friend logic
+          title="Adicionar amizade"
+          aria-label="Adicionar amizade"
+          className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-indigo-400 transition-colors"
+        >
+          <UserPlus className="w-4 h-4" />
+        </button>
       </div>
       <InviteModal
         isOpen={!!inviteModal}

@@ -20,7 +20,7 @@ import { DraggableUserCard, DropZoneCall } from '../call/VoiceDragDrop';
 import { formatRelativeTime } from '../../utils/time';
 import { supabase } from '../../services/supabaseClient';
 
-const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdmin }) => {
+const ChannelListComponent: React.FC<{ onOpenAdmin: () => void; isCollapsed: boolean }> = ({ onOpenAdmin, isCollapsed }) => {
   const {
     communities,
     currentCommunityId,
@@ -34,8 +34,6 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
     dms,
     toggleArchiveDm,
     setIsCreateChannelModalOpen,
-    isColumn1Collapsed,
-    setIsColumn1Collapsed,
     openUserProfile,
     addToast,
     currentUser,
@@ -167,10 +165,10 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
   return (
     <aside
       className={`h-full bg-slate-900 border-r border-slate-800/60 flex flex-col transition-all duration-300 select-none ${
-        isColumn1Collapsed ? 'w-16' : 'w-64'
+        isCollapsed ? 'w-16' : 'w-64'
       }`}
     >
-      {!isDirectMessages && !isColumn1Collapsed && (
+      {!isDirectMessages && !isCollapsed && (
         <div className="community-banner-frame" aria-label={`Banner da comunidade ${activeCommunity.name}`}>
           <div className="community-banner-visual">
             {activeCommunity.banner && (
@@ -185,7 +183,7 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
       )}
       {/* Header */}
       <div className="h-14 px-4 border-b border-slate-800/60 flex items-center justify-between">
-        {!isColumn1Collapsed ? (
+        {!isCollapsed ? (
           <>
             <span className="text-sm font-title font-bold text-white truncate">
               {isDirectMessages ? 'Mensagens Diretas' : activeCommunity.name}
@@ -201,29 +199,16 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
                   <Plus className="w-4 h-4" />
                 </button>
               )}
-              <button
-                onClick={() => setIsColumn1Collapsed(true)}
-                title="Recolher"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
             </div>
           </>
         ) : (
-          <button
-            onClick={() => setIsColumn1Collapsed(false)}
-            title="Expandir"
-            className="w-full flex justify-center p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
+          <div className="w-full flex justify-center p-2" />
         )}
       </div>
 
       {/* List */}
       <div className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
-        {isColumn1Collapsed ? (
+        {isCollapsed ? (
           <div className="flex flex-col items-center gap-2">
             {isDirectMessages
               ? activeDms.map((dm) => (
@@ -415,7 +400,7 @@ const ChannelListComponent: React.FC<{ onOpenAdmin: () => void }> = ({ onOpenAdm
       </div>
 
       {/* Footer */}
-      {!isColumn1Collapsed && !isDirectMessages && (
+      {!isCollapsed && !isDirectMessages && (
         <div className="p-3 border-t border-slate-800/60 bg-slate-950 flex items-center justify-between">
           <div className="text-xs text-slate-500">
             <span className="font-semibold text-slate-300">{activeCommunity.membersCount}</span> membros
