@@ -388,3 +388,66 @@
 .admin-banner-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .admin-banner-actions small { flex-basis: 100%; color: var(--text-secondary); font-size: 10px; }
 .admin-banner-input { display: none; }
+
+.admin-extensions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.admin-extension-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--bg-elevated);
+}
+.admin-extension-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.admin-extension-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  object-fit: cover;
+}
+.admin-extension-header div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.admin-extension-header strong {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.admin-extension-header small {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.admin-extension-description {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.admin-extension-features {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+}
+.admin-extension-features li {
+  margin: 2px 0;
+}
+.admin-button.secondary {
+  border-color: var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+.admin-button.secondary:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}

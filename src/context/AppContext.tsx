@@ -159,6 +159,7 @@ interface AppContextType {
   // Messaging
   messages: Record<string, Message[]>;
   sendMessage: (content: string, replyTo?: Message['replyTo'], attachments?: Message['attachments']) => Promise<boolean>;
+  processBotCommand: (command: string, channelId: string, communityId?: string) => Promise<void>;
   editMessage: (messageId: string, newContent: string) => void;
   deleteMessage: (messageId: string) => void;
   toggleReaction: (messageId: string, emoji: string) => void;
@@ -1392,6 +1393,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => { void client.removeChannel(channel); };
   }, [communities, currentCommunityId, isLoggedIn]);
 
+  // Welcome message listener - triggers when a user joins a community where @koa is present
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isLoggedIn) return;
+
+    let active = true;
+    const channel = client
+      .channel('koa-welcome-listener')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'community_members',
+      }, async (payload) => {
+        if (!active) return;
+        const newMember = payload.new as { community_id: string; user_id: string; role: string };
+
+        // Check if the new member is the bot itself - if so, don't send welcome
+        if (newMember.user_id === '00000000-0000-0000-0000-000000000000') return;
+
+        // Check if @koa bot is in this community
+        const { data: botMember } = await client
+          .from('community_members')
+          .select('user_id')
+          .eq('community_id', newMember.community_id)
+          .eq('user_id', '00000000-0000-0000-0000-000000000000')
+          .maybeSingle();
+
+        if (!botMember) return; // @koa not in this community
+
+        // Get the username of the new member
+        const { data: profile } = await client
+          .from('profiles')
+          .select('username')
+          .eq('id', newMember.user_id)
+          .maybeSingle();
+
+        const username = profile?.username || 'novo membro';
+
+        // Find the default text channel
+        const community = communities.find((c) => c.id === newMember.community_id);
+        const defaultChannel = getDefaultTextChannel(community);
+        if (!defaultChannel) return;
+
+        // Send welcome message as @koa bot
+        try {
+          await client.from('messages').insert({
+            channel_id: defaultChannel.id,
+            author_id: '00000000-0000-0000-0000-000000000000',
+            content: `Bem-vindo(a), @${username}! 🐨🎉`
+          });
+        } catch (error) {
+          console.error('[Koa Welcome] Erro ao enviar mensagem de boas-vindas:', error);
+        }
+      })
+      .subscribe();
+
+    return () => { active = false; void client.removeChannel(channel); };
+  }, [isLoggedIn, communities]);
+
   const removeToast = (id: string) => {
     clearToastTimer();
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -1897,6 +1957,108 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  // Bot command processing
+  const processBotCommand = async (command: string, channelId: string, communityId?: string) => {
+    const client = supabase;
+    if (!client) return;
+
+    const botUserId = '00000000-0000-0000-0000-000000000000';
+    let response = '';
+
+    try {
+      // Parse command: @koa /command [args]
+      const parts = command.trim().split(/\s+/);
+      const cmd = parts[0].toLowerCase();
+      const args = parts.slice(1).join(' ');
+
+      switch (cmd) {
+        case '/piada': {
+          const res = await fetch('https://v2.jokeapi.dev/joke/Programming,Misc?type=single&lang=pt');
+          if (!res.ok) throw new Error('API error');
+          const data = await res.json();
+          response = data.joke || 'Não consegui uma piada agora. 😅';
+          break;
+        }
+        case '/clima': {
+          if (!args.trim()) {
+            response = 'Uso: @koa /clima [cidade]';
+            break;
+          }
+          // Geocoding
+          const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(args)}&count=1&language=pt&format=json`);
+          if (!geoRes.ok) throw new Error('Geocoding error');
+          const geoData = await geoRes.json();
+          if (!geoData.results?.[0]) {
+            response = `Não encontrei a cidade "${args}". Tente novamente.`;
+            break;
+          }
+          const { latitude, longitude, name, country } = geoData.results[0];
+          // Weather forecast
+          const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&timezone=auto`);
+          if (!weatherRes.ok) throw new Error('Weather error');
+          const weatherData = await weatherRes.json();
+          const current = weatherData.current_weather;
+          response = `🌤️ Clima em ${name}, ${country}: ${current.temperature}°C, vento ${current.windspeed} km/h (atualizado ${current.time})`;
+          break;
+        }
+        case '/btc':
+        case '/eth': {
+          const ids = cmd === '/btc' ? 'bitcoin' : 'ethereum';
+          const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=brl`);
+          if (!res.ok) throw new Error('CoinGecko error');
+          const data = await res.json();
+          const price = data[ids]?.brl;
+          if (price !== undefined) {
+            const symbol = cmd === '/btc' ? '₿' : 'Ξ';
+            const name = cmd === '/btc' ? 'Bitcoin' : 'Ethereum';
+            response = `${symbol} ${name}: R$ ${price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          } else {
+            response = 'Não consegui obter a cotação agora.';
+          }
+          break;
+        }
+        case '/dolar': {
+          const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=usd&vs_currencies=brl');
+          if (!res.ok) throw new Error('CoinGecko error');
+          const data = await res.json();
+          const price = data.usd?.brl;
+          if (price !== undefined) {
+            response = `💵 Dólar: R$ ${price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+          } else {
+            response = 'Não consegui obter a cotação do dólar agora.';
+          }
+          break;
+        }
+        case '/catfact': {
+          const res = await fetch('https://catfact.ninja/fact');
+          if (!res.ok) throw new Error('CatFact error');
+          const data = await res.json();
+          response = `🐱 ${data.fact}`;
+          break;
+        }
+        default: {
+          response = `Comandos disponíveis:\n• @koa /piada - Piada de programação\n• @koa /clima [cidade] - Previsão do tempo\n• @koa /btc - Preço do Bitcoin\n• @koa /eth - Preço do Ethereum\n• @koa /dolar - Cotação do dólar\n• @koa /catfact - Curiosidade sobre gatos`;
+        }
+      }
+    } catch (error) {
+      console.error('[Koa Bot] Erro ao processar comando:', error);
+      response = 'Ops, não consegui buscar isso agora. Tente novamente mais tarde!';
+    }
+
+    // Send bot response as a message
+    if (response) {
+      try {
+        await client.from('messages').insert({
+          channel_id: channelId,
+          author_id: botUserId,
+          content: response
+        });
+      } catch (error) {
+        console.error('[Koa Bot] Erro ao enviar resposta:', error);
+      }
+    }
+  };
+
   const sendMessage = async (
     content: string,
     replyTo?: Message['replyTo'],
@@ -2191,6 +2353,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (selectedChannel && selectedChannel.type !== 'text') {
       notify.error('Mensagens só podem ser enviadas em canais de texto.');
       return false;
+    }
+
+    // Detect @koa commands
+    const koaCommandMatch = messageContent.match(/@koa\s+(\/\w+.*)/i);
+    if (koaCommandMatch) {
+      const command = koaCommandMatch[1].trim();
+      const channelCommunityId = communities.find((c) => c.channels.some((ch) => ch.id === channelId))?.id;
+      // Process command asynchronously (don't await to not block user's message)
+      void processBotCommand(command, channelId, channelCommunityId);
     }
 
     let data: SupabaseMessageRow | null = null;
@@ -2781,6 +2952,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         leaveCommunity,
         messages,
         sendMessage,
+        processBotCommand,
         editMessage,
         deleteMessage,
         toggleReaction,

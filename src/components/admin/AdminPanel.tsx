@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity, ArrowDown, ArrowUp, Ban, Check, Copy, Crown, GripVertical, Loader2,
+  Activity, ArrowDown, ArrowUp, Ban, Bot, Check, Copy, Crown, GripVertical, Loader2,
   ImagePlus, LockKeyhole, LogOut, Music, Plus, Search, Settings, Shield, Trash2, UserMinus, UserPlus, Users, X,
   Mail, CheckCircle, XCircle
 } from 'lucide-react';
@@ -12,7 +12,7 @@ import { canDeleteCommunityChannel } from './adminAccess';
 import { supabase } from '../../services/supabaseClient';
 import './AdminPanel.css';
 
-type Tab = 'Geral' | 'Canais' | 'Áudios' | 'Membros' | 'Cargos' | 'Convites' | 'Logs / Auditoria' | 'Perigo';
+type Tab = 'Geral' | 'Canais' | 'Áudios' | 'Membros' | 'Cargos' | 'Convites' | 'Logs / Auditoria' | 'Perigo' | 'Extensões';
 type Permission = 'channels' | 'members' | 'roles' | 'kick' | 'ban' | 'audit';
 type Role = { id: string; name: string; color: string; permissions: Permission[] };
 type Invite = { id: string; code: string; expiresAt: number | null; maxUses: number | null; uses: number; revoked: boolean };
@@ -111,6 +111,9 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const [inviteTarget, setInviteTarget] = useState<{ id: string; username: string; full_name?: string | null; avatar_url?: string | null } | null>(null);
   const [inviteMessage, setInviteMessage] = useState('');
   const [inviteSending, setInviteSending] = useState(false);
+  // Koa bot state
+  const [koaAdded, setKoaAdded] = useState(false);
+  const [koaAdding, setKoaAdding] = useState(false);
   useEffect(() => {
     if (!supabase || !currentCommunityId) { setCommunityUsers([]); return; }
     let active = true;
@@ -137,6 +140,23 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       });
     return () => { active = false; };
   }, [currentCommunityId, currentUser.id]);
+
+  // Check if Koa bot is already in the community
+  useEffect(() => {
+    if (!supabase || !currentCommunityId) { setKoaAdded(false); return; }
+    let active = true;
+    void supabase.from('community_members')
+      .select('user_id')
+      .eq('community_id', currentCommunityId)
+      .eq('user_id', '00000000-0000-0000-0000-000000000000')
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (!error && data) setKoaAdded(true);
+        else setKoaAdded(false);
+      });
+    return () => { active = false; };
+  }, [currentCommunityId]);
   useEffect(() => {
     if (!inviteModalOpen || !supabase || inviteQuery.trim().replace(/^@/, '').length < 2) { setInviteMatches([]); return; }
     let active = true;
@@ -156,7 +176,7 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const canAccess = isAdmin || myRoles.some((role) => role.permissions.length > 0);
   const can = (permission: Permission) => isAdmin || myPerms.has(permission);
   const canDeleteChannel = (channel: Channel) => !!community && canDeleteCommunityChannel(currentCommunityId, currentUser, community.ownerId || community.creatorId, channel.ownerId);
-  const allowedTabs = isAdmin ? ['Geral', 'Canais', 'Áudios', 'Membros', 'Cargos', 'Convites', 'Logs / Auditoria', 'Perigo'] as Tab[] : (['Canais', 'Áudios', 'Membros', 'Cargos', 'Logs / Auditoria'] as Tab[]).filter((item) => item === 'Canais' ? myPerms.has('channels') : item === 'Áudios' ? myPerms.has('channels') || myPerms.has('members') : item === 'Membros' ? myPerms.has('members') : item === 'Cargos' ? myPerms.has('roles') : myPerms.has('audit'));
+  const allowedTabs = isAdmin ? ['Geral', 'Canais', 'Áudios', 'Membros', 'Cargos', 'Convites', 'Logs / Auditoria', 'Perigo', 'Extensões'] as Tab[] : (['Canais', 'Áudios', 'Membros', 'Cargos', 'Logs / Auditoria', 'Extensões'] as Tab[]).filter((item) => item === 'Canais' ? myPerms.has('channels') : item === 'Áudios' ? myPerms.has('channels') || myPerms.has('members') : item === 'Membros' ? myPerms.has('members') : item === 'Cargos' ? myPerms.has('roles') : myPerms.has('audit'));
   const visibleTab = allowedTabs.includes(tab) ? tab : allowedTabs[0] || tab;
 
   const persist = (next: Persisted) => {
@@ -211,6 +231,35 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     }
     setCommunityRoles((previous) => ({ ...previous, [targetUserId]: newRole }));
     addToast('Cargo atualizado com sucesso', 'O novo cargo foi salvo.', 'success');
+  };
+  const addKoaBot = async () => {
+    if (!supabase || !isAdmin || !currentCommunityId || koaAdding) return;
+    setKoaAdding(true);
+    try {
+      const { error } = await supabase.from('community_members')
+        .insert({
+          community_id: currentCommunityId,
+          user_id: '00000000-0000-0000-0000-000000000000',
+          role: 'bot'
+        });
+      if (error) {
+        // Check if it's a duplicate key error (already exists)
+        if (error.code === '23505') {
+          addToast('Já adicionado', 'O @koa já está nesta comunidade.', 'info');
+          setKoaAdded(true);
+        } else {
+          throw error;
+        }
+      } else {
+        addToast('Bot adicionado', 'O @koa foi adicionado à comunidade! 🐨', 'success');
+        setKoaAdded(true);
+        log('Bot adicionado', '@koa', 'bot');
+      }
+    } catch (error) {
+      addToast('Erro ao adicionar', describeError(error, 'Não foi possível adicionar o bot.'), 'error');
+    } finally {
+      setKoaAdding(false);
+    }
   };
   const sendInvite = async () => {
     if (!supabase || !isAdmin || !inviteTarget || !community || inviteSending) return;
@@ -404,6 +453,8 @@ export const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             {isAdmin && <div className="admin-card admin-danger"><h3>Excluir comunidade</h3><p>Essa ação remove a comunidade e seus dados permanentemente.</p><button className={`${button} danger`} onClick={() => { setDeleteCommunityName(''); setIsDeleteCommunityOpen(true); }}>Excluir Comunidade</button></div>}
             <div className="admin-card admin-danger"><h3>Resetar configurações</h3><p>Apaga cargos, convites, banimentos e auditoria locais desta comunidade.</p><button className={button} onClick={() => { if (window.confirm('Resetar as configurações locais da comunidade?')) { localStorage.removeItem(`koaline:admin:${community.id}`); persist({ ...blank, ownerId: currentUser.id }); addToast('Configurações resetadas', 'Os dados locais do painel foram reiniciados.', 'success'); } }}>Resetar configurações</button></div>
           </>}
+
+          {visibleTab === 'Extensões' && <><div className="admin-title"><div><h1>Extensões</h1><p>Adicione bots e integrações à sua comunidade.</p></div></div><div className="admin-card"><div className="admin-extensions-grid"><div className="admin-extension-card"><div className="admin-extension-header"><img src="https://api.dicebear.com/7.x/bottts/svg?seed=koa" alt="Koa" className="admin-extension-avatar" /><div><strong>Koa</strong><small>@koa</small></div></div><p className="admin-extension-description">Bot oficial de comandos e boas-vindas</p><ul className="admin-extension-features"><li>🎉 Mensagens de boas-vindas automáticas</li><li>😄 Piadas de programação (/piada)</li><li>🌤️ Previsão do tempo (/clima)</li><li>₿ Cotações de criptomoedas (/btc, /eth)</li><li>💵 Cotação do dólar (/dolar)</li><li>🐱 Curiosidades sobre gatos (/catfact)</li></ul>{koaAdded ? <button className={`${button} secondary`} disabled>✓ Já adicionado</button> : <button className={`${button} primary`} onClick={addKoaBot} disabled={koaAdding}>{koaAdding ? 'Adicionando...' : 'Adicionar ao Servidor'}</button>}</div></div></div></>}
         </main>
       </div>
     </section>
