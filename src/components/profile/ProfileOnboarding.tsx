@@ -3,6 +3,8 @@ import { AtSign, Camera, Check, ImagePlus, UserRound } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Avatar } from '../common/Avatar';
 import { ImageCropperModal } from '../common/ImageCropperModal';
+import { Input } from '../common/Input';
+import { Button } from '../common/Button';
 import { requireSupabase } from '../../services/supabaseClient';
 
 type CropTarget = 'avatar' | 'cover';
@@ -64,16 +66,14 @@ export const ProfileOnboarding: React.FC = () => {
     setSaving(false);
   };
 
-  return <div className="auth-experience auth-onboarding-overlay">
-    <main className="auth-card auth-onboarding-card" role="dialog" aria-modal="true" aria-labelledby="profile-onboarding-title">
-      <div className="auth-brand-mark" aria-hidden="true"><UserRound /></div>
-      <p className="auth-eyebrow">SEU PERFIL</p>
-      <h1 id="profile-onboarding-title">Personalize seu perfil</h1>
+  return <div className="auth-layout">
+    <div className="auth-card" role="dialog" aria-modal="true" aria-labelledby="profile-onboarding-title">
+      <div className="auth-logo"><UserRound className="w-10 h-10 mx-auto text-primary" /></div>
+      <h1 id="profile-onboarding-title" className="auth-title">Personalize seu perfil</h1>
       <p className="auth-description">Uma foto e uma capa ajudam sua comunidade a reconhecer você. Você pode trocar depois.</p>
 
-      <label className="mt-4 block text-sm font-medium text-white" htmlFor="onboarding-username">Seu @username</label>
-      <div className="mt-1 flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3"><AtSign className="h-4 w-4 text-slate-400"/><input id="onboarding-username" required minLength={3} maxLength={20} pattern="[A-Za-z0-9_]{3,20}" value={handle} onChange={(event) => setHandle(event.target.value.replace(/^@/, ''))} className="w-full bg-transparent py-2 text-sm text-white outline-none" placeholder="seunome"/></div>
-      <p className={`mt-1 text-xs ${handleAvailable === true ? 'text-emerald-400' : handleAvailable === false ? 'text-rose-400' : 'text-slate-400'}`}>{checkingHandle ? 'Verificando @…' : handleAvailable === true ? '✅ @ disponível' : handleAvailable === false ? '❌ @ já em uso' : 'Escolha um @ único (3–20 letras, números ou _).'}</p>
+      <Input id="onboarding-username" label="Seu @username" variant="auth" startAdornment={<AtSign />} required minLength={3} maxLength={20} pattern="[A-Za-z0-9_]{3,20}" value={handle} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setHandle(event.target.value.replace(/^@/, ''))} aria-describedby="handle-help" aria-invalid={!!handle && (!validHandle || handleAvailable === false)} />
+      <p id="handle-help" className={`auth-field-hint ${handleAvailable === true ? 'is-success' : handleAvailable === false ? '' : ''}`}>{checkingHandle ? 'Verificando @…' : handleAvailable === true ? '✅ @ disponível' : handleAvailable === false ? '❌ @ já em uso' : 'Escolha um @ único (3–20 letras, números ou _).'}</p>
 
       <section className="profile-onboarding-preview" aria-label="Prévia do perfil">
         <div className="profile-onboarding-cover" role="img" aria-label={cover ? 'Prévia da capa do perfil escolhida' : 'Espaço opcional para capa do perfil'} style={cover ? { backgroundImage: `url("${cover}")` } : undefined}>
@@ -95,10 +95,8 @@ export const ProfileOnboarding: React.FC = () => {
         </section>
       </div>
 
-      <div className="profile-onboarding-footer">
-        <button type="button" className="auth-primary-button auth-submit-button" disabled={saving || checkingHandle || !validHandle || handleAvailable !== true} onClick={finish}>{saving ? 'Salvando…' : 'Concluir'}<Check aria-hidden="true" /></button>
-      </div>
-    </main>
+      <Button type="button" variant="auth-primary" disabled={saving || checkingHandle || !validHandle || handleAvailable !== true} onClick={finish}>{saving ? 'Salvando…' : 'Concluir'}<Check aria-hidden="true" /></Button>
+    </div>
     <ImageCropperModal
       open={!!cropTarget && !!cropImage}
       imageSrc={cropImage}
