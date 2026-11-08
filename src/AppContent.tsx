@@ -1,9 +1,10 @@
 ﻿import React from 'react';
 import { useApp } from './context/AppContext';
 import { TopBar } from './components/layout/TopBar';
-import { SidebarLeft } from './components/layout/SidebarLeft';
-import { ChatArea } from './components/layout/ChatArea';
-import { SidebarRight } from './components/layout/SidebarRight';
+import ServerRail from './components/layout/ServerRail';
+import ChannelSidebar from './components/layout/ChannelSidebar';
+import ChatArea from './components/layout/ChatArea';
+import MemberList from './components/layout/MemberList';
 import { DirectMessageView } from './components/chat/DirectMessageView';
 import { ScreenSharePiP } from './components/call/ScreenSharePiP';
 import { Toast } from './components/common/Toast';
@@ -43,10 +44,6 @@ export const AppContent: React.FC = () => {
     isThemeCustomizerOpen,
     isCreateChannelModalOpen,
     activeUserMenu,
-    isLeftSidebarOpen,
-    setIsLeftSidebarOpen,
-    isRightSidebarOpen,
-    setIsRightSidebarOpen,
     dms,
   } = useApp();
 
@@ -126,16 +123,19 @@ export const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-[var(--bg)] text-slate-200">
+    <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-[var(--discord-bg)] text-slate-200">
       <IncomingCallCard />
       <TopBar />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {!isNotFound && (
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            {/* Left Sidebar - 280px fixed */}
-            <SidebarLeft onOpenAdmin={openAdminPanel} />
+            {/* Server Rail - 72px fixed */}
+            <ServerRail />
 
-            {/* Center Column - Chat Area - flex-1 */}
+            {/* Channel Sidebar - 240px fixed */}
+            <ChannelSidebar />
+
+            {/* Chat Area - flex-1 */}
             <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative min-w-0">
               {isDirectMessages ? (
                 <DirectMessageView />
@@ -180,9 +180,9 @@ export const AppContent: React.FC = () => {
               {activeCall?.isMinimized && activeCall.isScreenSharing && <ScreenSharePiP />}
             </main>
 
-            {/* Right Sidebar - 300px, only rendered when open */}
-            {isRightSidebarOpen && (
-              <SidebarRight />
+            {/* Member List - 280px, only rendered when open */}
+            {isContextPanelOpen && (
+              <MemberList />
             )}
           </div>
         )}
