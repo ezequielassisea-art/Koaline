@@ -800,7 +800,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // UI Panels
   const [isColumn1Collapsed, setIsColumn1Collapsed] = useState(false);
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
-  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
   const [isContextPanelOpen, setIsContextPanelOpen] = useState(false);
   const [contextPanelUser, setContextPanelUser] = useState<User | null>(null);
 

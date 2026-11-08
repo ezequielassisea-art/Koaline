@@ -7,7 +7,10 @@ import {
   Users,
   Phone,
   Video,
-  Archive
+  Archive,
+  LayoutDashboard,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface ChatHeaderProps {
@@ -30,6 +33,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
     startDirectCall,
     openUserProfile,
     toggleArchiveDm,
+    isRightSidebarOpen,
+    setIsRightSidebarOpen,
   } = useApp();
 
   const activeCommunity = communities.find((c) => c && c.id === currentCommunityId) || communities[0] || null;
@@ -135,6 +140,18 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
             <Pin className="w-4 h-4" />
           </button>
         )}
+
+        {/* Right Sidebar Toggle */}
+        <button
+          onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+          title={isRightSidebarOpen ? 'Recolher painel direito' : 'Expandir painel direito'}
+          aria-label={isRightSidebarOpen ? 'Recolher painel direito' : 'Expandir painel direito'}
+          className={`p-2 rounded-lg transition-colors ${
+            isRightSidebarOpen ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          {isRightSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+        </button>
 
         <button
           onClick={onToggleSearch}

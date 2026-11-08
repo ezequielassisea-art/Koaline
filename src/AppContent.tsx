@@ -136,14 +136,14 @@ export const AppContent: React.FC = () => {
             {/* Left Sidebar - Conversations */}
             {(communities.length > 0 || dms.length > 0) && (
               <div className={`flex flex-col transition-all duration-300 overflow-hidden ${
-                isLeftSidebarOpen ? 'w-80' : 'w-16'
+                isLeftSidebarOpen ? 'w-64' : 'w-16'
               }`}>
                 <ChannelList onOpenAdmin={openAdminPanel} isCollapsed={!isLeftSidebarOpen} />
               </div>
             )}
 
             {/* Center Column - Active Chat */}
-            <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative">
+            <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative min-w-0">
               {isDirectMessages ? (
                 <DirectMessageView />
               ) : communities.length === 0 ? (
@@ -189,38 +189,9 @@ export const AppContent: React.FC = () => {
 
             {/* Right Sidebar - Context Panel */}
             <div className={`flex flex-col transition-all duration-300 overflow-hidden ${
-              isRightSidebarOpen ? 'w-72' : 'w-12'
+              isRightSidebarOpen ? 'w-72' : 'w-0'
             }`}>
               {isRightSidebarOpen && isContextPanelOpen && <ContextPanel />}
-              {!isRightSidebarOpen && (
-                <div className="flex flex-col h-full bg-slate-900 border-l border-slate-800/60">
-                  <button
-                    onClick={() => setIsRightSidebarOpen(true)}
-                    className="flex h-12 items-center justify-center p-2 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                    title="Expandir painel lateral"
-                    aria-label="Expandir painel lateral"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
-                  </button>
-                  <div className="flex-1" />
-                  <div className="p-2 border-t border-slate-800/60">
-                    <div className="relative w-8 h-8 mx-auto">
-                      {currentUser.avatar ? (
-                        <img src={currentUser.avatar} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover ring-1 ring-border" />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-slate-700 ring-1 ring-border grid place-items-center text-xs text-white">
-                          {currentUser.name.trim().charAt(0).toUpperCase() || '◇'}
-                        </div>
-                      )}
-                      <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-slate-900 ${
-                        currentUser.status === 'online' ? 'bg-emerald-500' :
-                        currentUser.status === 'idle' ? 'bg-amber-500' :
-                        currentUser.status === 'dnd' ? 'bg-rose-500' : 'bg-zinc-400'
-                      }`} />
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}
