@@ -187,14 +187,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
   return (
     <div
       id={`message-${message.id}`}
-      className={`koaline-message relative flex gap-3 px-4 py-2 transition-colors rounded-nest-sm items-start ${isSelf ? 'flex-row-reverse' : 'flex-row'} ${isSystemInvite ? 'justify-center' : ''} ${isGrouped ? 'is-grouped mt-0.5' : 'mt-0.5'} ${
-        message.pinned ? 'bg-indigo-950 border-l-2 border-indigo-500' : ''
-      }`}
+      className={`flex w-full mb-4 gap-3 ${isSelf ? 'flex-row-reverse justify-end' : 'flex-row justify-start'} ${isGrouped ? 'mt-0.5' : 'mt-0.5'}`}
       onMouseEnter={() => setShowHoverMenu(true)}
       onMouseLeave={() => setShowHoverMenu(false)}
     >
       {/* Sender Avatar */}
-      <div className="koaline-message-avatar flex-shrink-0 mt-1" data-grouped={isGrouped} data-self={isSelf}>
+      <div className="flex-shrink-0 mt-1" data-grouped={isGrouped} data-self={isSelf}>
         {!isGrouped && !isSystemInvite && (
           <button type="button" aria-label={`Abrir opções de ${sender.name}`} onClick={(event) => openUserMenu(sender, event)} className="block rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
             {sender.avatar
@@ -205,32 +203,34 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
       </div>
 
       {/* Message Body */}
-      <div className={`flex-1 min-w-0 ${isSelf ? 'message-body-self' : ''}`}>
-        {/* Sender Name, Time, Badges */}
-        <div className="flex items-center gap-2">
-          {isSelf && !isGrouped && sender.avatar && <img src={sender.avatar} alt="" className="h-6 w-6 rounded-full object-cover" />}
-          {!isGrouped && !isSystemInvite && <button type="button" onClick={(e) => openUserMenu(sender, e)} className={`koaline-message-author font-title hover:text-indigo-400 hover:underline cursor-pointer transition-colors ${isSelf ? 'self-message-author' : ''}`}>
-            {sender.name}
-          </button>}
+      <div className="flex-1 min-w-0 max-w-[70%] max-w-[500px]">
+        {/* Sender Name, Time, Badges (only for non-grouped) */}
+        {!isGrouped && !isSystemInvite && (
+          <div className="flex items-center gap-2 mb-1">
+            {!isSelf && sender.avatar && <img src={sender.avatar} alt="" className="h-6 w-6 rounded-full object-cover" />}
+            <button type="button" onClick={(e) => openUserMenu(sender, e)} className={`font-title hover:text-indigo-400 hover:underline cursor-pointer transition-colors ${isSelf ? 'text-right' : ''}`}>
+              {sender.name}
+            </button>
 
-          {isUnread && <span className="message-unread-dot" title="Mensagem não lida" aria-label="Mensagem não lida" />}
+            {isUnread && <span className="message-unread-dot" title="Mensagem não lida" aria-label="Mensagem não lida" />}
 
-          {message.edited && (
-            <span className="text-[10px] text-slate-500 italic">(editado)</span>
-          )}
+            {message.edited && (
+              <span className="text-[10px] text-slate-500 italic">(editado)</span>
+            )}
 
-          {message.pinned && (
-            <span className="text-[10px] text-indigo-400 flex items-center gap-0.5">
-              <Pin className="w-2.5 h-2.5" /> Fixada
-            </span>
-          )}
-        </div>
+            {message.pinned && (
+              <span className="text-[10px] text-indigo-400 flex items-center gap-0.5">
+                <Pin className="w-2.5 h-2.5" /> Fixada
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Message Bubble */}
         <div
-          className={`koaline-message-bubble group relative ${isSelf ? 'message-bubble-self' : 'message-bubble-other'}`}
+          className={`group relative w-fit px-4 py-2 rounded-2xl ${isSelf ? 'bg-primary text-white rounded-br-md' : 'bg-slate-800 text-slate-100 rounded-bl-md'}`}
         >
-          <div className={`koaline-message-copy leading-relaxed break-words ${isSelf ? 'is-self' : 'is-other'}`}>
+          <div className="break-words text-sm leading-relaxed">
             {message.replyTo && (
               <div className="koaline-reply-quote">
                 <Reply className="h-3 w-3 shrink-0" />
@@ -266,10 +266,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                 </button>
               </>
             ) : content.trim() ? (
-              <p className={`message-content-text whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{renderLinkedText(content, isSelf)}</p>
+              <p className={`whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{renderLinkedText(content, isSelf)}</p>
             ) : null}
-            <div className="flex items-center gap-1.5">
-              <time className="koaline-message-time" dateTime={message.timestamp} title={formatRelativeTime(message.timestamp)}>{timeLabel || ''}</time>
+            {/* Time and read status - bottom right inside bubble */}
+            <div className="flex items-center justify-end gap-1.5 mt-1.5">
+              <time className="text-[10px] opacity-70" dateTime={message.timestamp} title={formatRelativeTime(message.timestamp)}>{timeLabel || ''}</time>
               {isSelf && readStatus && (
                 <span className="flex items-center gap-0.5" aria-label={readStatus === 'read' ? 'Lida' : readStatus === 'delivered' ? 'Entregue' : 'Enviada'}>
                   {readStatus === 'read' ? (
@@ -280,7 +281,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                 </span>
               )}
             </div>
-            {!imageSource && !audioSource && !videoSource && content.length > 400 && <button type="button" className="message-expand-button" onClick={() => setIsExpanded((expanded) => !expanded)}>{isExpanded ? 'Ver menos' : 'Ver mais'}</button>}
+            {!imageSource && !audioSource && !videoSource && content.length > 400 && <button type="button" className="text-[10px] text-indigo-400 hover:underline mt-1" onClick={() => setIsExpanded((expanded) => !expanded)}>{isExpanded ? 'Ver menos' : 'Ver mais'}</button>}
           </div>
 
           {/* Floating Hover Actions Menu - positioned above bubble top-right */}
