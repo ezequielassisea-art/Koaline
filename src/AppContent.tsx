@@ -1,10 +1,10 @@
 ﻿import React from 'react';
 import { useApp } from './context/AppContext';
 import { TopBar } from './components/layout/TopBar';
-import { ChannelList } from './components/layout/ChannelList';
-import { ChatView } from './components/chat/ChatView';
+import { SidebarLeft } from './components/layout/SidebarLeft';
+import { ChatArea } from './components/layout/ChatArea';
+import { SidebarRight } from './components/layout/SidebarRight';
 import { DirectMessageView } from './components/chat/DirectMessageView';
-import { ContextPanel } from './components/layout/ContextPanel';
 import { ScreenSharePiP } from './components/call/ScreenSharePiP';
 import { Toast } from './components/common/Toast';
 import { UserContextMenu } from './components/chat/UserContextMenu';
@@ -126,21 +126,17 @@ export const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-200">
+    <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-[var(--bg)] text-slate-200">
       <IncomingCallCard />
       <TopBar />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {!isNotFound && (
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            {/* Left Sidebar - Fixed 260px */}
-            <aside className="flex flex-col w-[260px] h-full bg-[#0C2130] border-r border-slate-800/60 shrink-0 overflow-hidden">
-              {(communities.length > 0 || dms.length > 0) && (
-                <ChannelList onOpenAdmin={openAdminPanel} isCollapsed={false} />
-              )}
-            </aside>
+            {/* Left Sidebar - 280px fixed */}
+            <SidebarLeft onOpenAdmin={openAdminPanel} />
 
-            {/* Center Column - Chat View - flex-1 */}
-            <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative min-w-0 bg-slate-950">
+            {/* Center Column - Chat Area - flex-1 */}
+            <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative min-w-0">
               {isDirectMessages ? (
                 <DirectMessageView />
               ) : communities.length === 0 ? (
@@ -179,16 +175,14 @@ export const AppContent: React.FC = () => {
                   <VoiceRoom />
                 </React.Suspense>
               ) : (
-                <ChatView />
+                <ChatArea />
               )}
               {activeCall?.isMinimized && activeCall.isScreenSharing && <ScreenSharePiP />}
             </main>
 
-            {/* Right Sidebar - Fixed 260px, only rendered when open */}
+            {/* Right Sidebar - 300px, only rendered when open */}
             {isRightSidebarOpen && (
-              <aside className="flex flex-col w-[260px] h-full bg-[#0C2130] border-l border-slate-800/60 shrink-0 overflow-hidden">
-                {isContextPanelOpen && <ContextPanel />}
-              </aside>
+              <SidebarRight />
             )}
           </div>
         )}
