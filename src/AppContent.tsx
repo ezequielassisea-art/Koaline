@@ -125,7 +125,7 @@ export const AppContent: React.FC = () => {
   return (
     <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-[var(--discord-bg)] text-slate-200">
       <IncomingCallCard />
-      <TopBar />
+      <TopBar className="flex-shrink-0" />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {!isNotFound && (
           <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -182,7 +182,7 @@ export const AppContent: React.FC = () => {
 
             {/* Member List - 280px, only rendered when open */}
             {isContextPanelOpen && (
-              <MemberList />
+              <MemberList className="flex-shrink-0 w-[280px]" />
             )}
           </div>
         )}

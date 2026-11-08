@@ -52,7 +52,7 @@ type CommunityInviteNotification = {
   created_at: string
 };
 
-export const TopBar: React.FC = () => {
+export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => {
   const {
     currentUser,
     communities,
@@ -297,7 +297,7 @@ export const TopBar: React.FC = () => {
   const sectionName = getSectionName();
 
   return (
-    <header className="h-14 px-3 md:px-4 bg-[var(--discord-bg)]/80 backdrop-blur-sm border-b border-[var(--discord-border)] flex items-center justify-between sticky top-0 z-30 transition-colors">
+    <header className={`h-14 px-3 md:px-4 bg-[var(--discord-bg)]/80 backdrop-blur-sm border-b border-[var(--discord-border)] flex items-center justify-between sticky top-0 z-30 transition-colors ${className}`}>
       {/* LEFT: Section/Channel Name */}
       <div className="flex items-center justify-start min-w-0 pr-4">
         <span className="text-sm font-semibold text-slate-200 truncate max-w-xs md:max-w-md lg:max-w-lg">

@@ -22,7 +22,7 @@ import {
 
 const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'offline', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
 
-const MemberList: React.FC = () => {
+const MemberList: React.FC<{ className?: string }> = ({ className = '' }) => {
   const {
     isContextPanelOpen,
     closeContextPanel,
@@ -206,7 +206,7 @@ const MemberList: React.FC = () => {
   // User Profile View (when clicking on a specific user)
   if (contextPanelUser) {
     return (
-      <aside className="member-list flex flex-col h-full animate-in slide-in-from-right duration-200">
+      <aside className={`member-list flex flex-col h-full animate-in slide-in-from-right duration-200 ${className}`}>
         {/* Top Banner with Close button */}
         <div className="relative h-28 flex-shrink-0 bg-gradient-to-br from-indigo-900/50 to-violet-900/50">
           {user.banner && (
@@ -441,7 +441,7 @@ const MemberList: React.FC = () => {
 
   // Member List View
   return (
-    <aside className="member-list flex flex-col h-full animate-in slide-in-from-right duration-200">
+    <aside className={`member-list flex flex-col h-full animate-in slide-in-from-right duration-200 ${className}`}>
       {/* Header */}
       <header className="member-list-header">
         <div className="member-list-title">
