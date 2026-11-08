@@ -2752,7 +2752,14 @@ to {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  overflow: hidden;
+}
+
+.server-rail-community-list {
+  flex: 1;
   overflow-y: auto;
+  min-height: 0;
+  padding: 8px 16px 0;
 }
 
 .server-rail-item {
@@ -2856,6 +2863,8 @@ to {
   justify-content: space-between;
   border-bottom: 1px solid var(--discord-border);
   flex-shrink: 0;
+  z-index: 10;
+  background: var(--discord-bg-secondary);
 }
 
 .channel-sidebar-header h3 {
@@ -2900,6 +2909,7 @@ to {
 .channel-list {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
   padding: 8px 8px 16px;
 }
 

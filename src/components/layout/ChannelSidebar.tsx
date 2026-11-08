@@ -238,9 +238,9 @@ const ChannelSidebar: React.FC = () => {
                       aria-label={dm.user?.name || 'Conversa'}
                       aria-pressed={activeDmId === dm.id}
                     >
-                      <div className="channel-icon" style={{ width: '36px', height: '36px', borderRadius: '50%', position: 'relative' }}>
+                      <div className="channel-icon w-12 h-12 flex-shrink-0 rounded-full overflow-hidden relative">
                         {dm.user?.avatar ? (
-                          <img src={dm.user.avatar} alt={dm.user.name} className="w-full h-full rounded-full object-cover" />
+                          <img src={dm.user.avatar} alt={dm.user.name} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full rounded-full bg-slate-700 flex items-center justify-center text-white font-bold">
                             {(dm.user?.name || '?').charAt(0).toUpperCase()}

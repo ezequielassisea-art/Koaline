@@ -52,7 +52,7 @@ const ServerRail: React.FC = () => {
       </button>
 
       {/* Community List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="server-rail-community-list">
         {communities.map((community) => (
           <button
             key={community.id}
@@ -63,13 +63,15 @@ const ServerRail: React.FC = () => {
             aria-pressed={currentCommunityId === community.id}
           >
             {community.icon ? (
-              <img
-                src={community.icon}
-                alt={community.name}
-                className="w-full h-full rounded-full object-cover"
-              />
+              <div className="w-10 h-10 flex-shrink-0 rounded-full overflow-hidden">
+                <img
+                  src={community.icon}
+                  alt={community.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
             ) : (
-              <div className="w-full h-full rounded-full flex items-center justify-center bg-slate-700 text-white font-bold text-lg">
+              <div className="w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center bg-slate-700 text-white font-bold text-lg">
                 {community.name.charAt(0).toUpperCase()}
               </div>
             )}
