@@ -10,14 +10,14 @@ import {
   User,
   Settings,
   LogOut,
-  MessageSquare,
-  AtSign,
   Search,
   UserPlus,
   Volume2,
   VolumeX,
   ChevronLeft,
   ChevronRight,
+  MessageSquare,
+  AtSign,
 } from 'lucide-react';
 import { parseAppDate } from '../../utils/time';
 import { audioManager } from '../../services/AudioManager';
@@ -80,9 +80,11 @@ export const TopBar: React.FC = () => {
     leaveCommunity,
     isLeftSidebarOpen,
     setIsLeftSidebarOpen,
+    currentChannelId,
+    activeDmId,
   } = useApp();
 
-const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
+  const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [openingNotificationId, setOpeningNotificationId] = useState<string | null>(null);
@@ -102,8 +104,11 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
 
   const commDropdownRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
+  const activeChannel = activeCommunity?.channels?.find((c) => c.id === currentChannelId);
+
   const unreadDirectMessages = dms.filter((dm) => dm.unread && !dm.isArchived).length;
   const inviteNotifications = notifications.filter((notification) => notification.type === 'community_invite');
   const dmMessageNotifications = notifications.filter((notification) => notification.type === 'dm_message' && !notification.read_at);
@@ -133,27 +138,21 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
     if (!client || openingNotificationId) return;
     setOpeningNotificationId(notification.id);
     try {
-      // Log the payload to verify community data is present
       console.log("PAYLOAD DO CONVITE:", notification.payload);
 
-      // Validate required fields from payload
       const payload = notification.payload as Record<string, unknown> | undefined;
       if (!payload || typeof payload.community_id !== 'string') {
         throw new Error('Payload do convite inválido ou ausente');
       }
 
-      // Fetch the inviter profile using actor_id (DB column is actor_id)
       const inviterId = notification.actor_id || (typeof payload.inviter_id === 'string' ? payload.inviter_id : '');
       if (inviterId) {
         const { data: profile, error } = await client.from('profiles').select('id,username,full_name,avatar_url').eq('id', inviterId).maybeSingle();
         if (error) {
           console.error("ERRO AO BUSCAR PERFIL DO CONVIDADOR:", error);
-          // Don't throw - continue with payload data
         }
       }
 
-      // The payload already has all community data needed for the modal
-      // Cast to CommunityInviteNotification using actor_id
       const inviteNotification: CommunityInviteNotification = {
         ...notification,
         actor_id: inviterId,
@@ -167,16 +166,13 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
     } finally { setOpeningNotificationId(null); }
   };
 
-  // Handler para clicar na notificação - marca como lida e redireciona
   const handleNotificationClick = async (notification: AppNotification) => {
     const payload = notification.payload as Record<string, unknown> | undefined;
 
-    // 1. Marcar como lida se não estiver lida
     if (!notification.read_at) {
       await markNotificationRead(notification.id);
     }
 
-    // 2. Redirecionar baseado no tipo
     try {
       let targetMessageId: string | null = null;
       let targetChannelId: string | null = null;
@@ -186,7 +182,6 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           if (payload?.channel_id) {
             targetChannelId = String(payload.channel_id);
             targetMessageId = payload?.message_id as string | null;
-            // Encontrar a comunidade desse canal
             const targetCommunity = communities.find((c) => c.channels.some((ch) => ch.id === targetChannelId));
             if (targetCommunity) {
               setCurrentCommunityId(targetCommunity.id);
@@ -200,7 +195,6 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           if (payload?.conversation_id) {
             targetChannelId = String(payload.conversation_id);
             targetMessageId = payload?.message_id as string | null;
-            // Encontrar a DM
             const dm = dms.find((d) => d.id === targetChannelId);
             if (dm) {
               await openDirectMessage(dm.user);
@@ -209,9 +203,8 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           break;
         }
         case 'community_invite': {
-          // O modal de convite já é aberto via openInviteNotification
           await openInviteNotification(notification);
-          return; // Não fechar o painel aqui pois o openInviteNotification já faz isso
+          return;
         }
         case 'mention': {
           if (payload?.channel_id) {
@@ -228,15 +221,12 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
         }
       }
 
-      // 3. Scroll to message and apply highlight effect
       if (targetMessageId && targetChannelId) {
-        // Wait for the channel to be set and messages to load, then scroll
         setTimeout(() => {
           const messageElement = document.getElementById(`message-${targetMessageId}`);
           if (messageElement) {
             messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
             messageElement.classList.add('highlight-message');
-            // Remove highlight after animation completes (2s)
             setTimeout(() => {
               messageElement.classList.remove('highlight-message');
             }, 2000);
@@ -247,19 +237,16 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
       console.error('Erro ao redirecionar notificação:', error);
     }
 
-    // Fechar o painel de notificações (exceto para convites que já fecham)
     if (notification.type !== 'community_invite') {
       setIsNotificationsOpen(false);
     }
   };
 
-  // Handler para apagar notificação individual
   const handleDeleteNotification = async (e: React.MouseEvent, notificationId: string) => {
-    e.stopPropagation(); // Impedir que o clique na notificação seja disparado
+    e.stopPropagation();
     await deleteNotification(notificationId);
   };
 
-  // Handler para limpar todas as notificações
   const handleClearAllNotifications = async () => {
     await clearAllNotifications();
     setIsNotificationsOpen(false);
@@ -272,6 +259,9 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
       }
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setIsUserMenuOpen(false);
+      }
+      if (notificationsRef.current && !notificationsRef.current.contains(e.target as Node)) {
+        setIsNotificationsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -288,22 +278,31 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
     }
   };
 
+  // Build section name: Community > Channel or DM name
+  const getSectionName = () => {
+    if (isDirectMessages) {
+      if (activeDmId && dms.length > 0) {
+        const dm = dms.find(d => d.id === activeDmId);
+        return dm?.user?.name || 'Mensagens Diretas';
+      }
+      return 'Mensagens Diretas';
+    }
+    if (!activeCommunity) return 'Koaline';
+    if (activeChannel) {
+      return `${activeCommunity.name} / #${activeChannel.name}`;
+    }
+    return activeCommunity.name;
+  };
+
+  const sectionName = getSectionName();
+
   return (
-    <header className="h-16 px-4 md:px-6 bg-slate-900/80 backdrop-blur-sm border-b border-border flex items-center justify-between sticky top-0 z-30 transition-colors">
-      {/* LEFT: Collapse left sidebar button */}
-      <div className="flex items-center justify-start w-16">
-        <button
-          onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)}
-          title={isLeftSidebarOpen ? 'Recolher barra lateral' : 'Expandir barra lateral'}
-          aria-label={isLeftSidebarOpen ? 'Recolher barra lateral' : 'Expandir barra lateral'}
-          className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors flex items-center justify-center"
-        >
-          {isLeftSidebarOpen ? (
-            <ChevronLeft className="w-5 h-5" />
-          ) : (
-            <ChevronRight className="w-5 h-5" />
-          )}
-        </button>
+    <header className="h-14 px-3 md:px-4 bg-[var(--discord-bg)]/80 backdrop-blur-sm border-b border-[var(--discord-border)] flex items-center justify-between sticky top-0 z-30 transition-colors">
+      {/* LEFT: Section/Channel Name */}
+      <div className="flex items-center justify-start min-w-0 pr-4">
+        <span className="text-sm font-semibold text-slate-200 truncate max-w-xs md:max-w-md lg:max-w-lg">
+          {sectionName}
+        </span>
       </div>
 
       {/* CENTER: Unified Search Bar */}
@@ -315,7 +314,7 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
             placeholder="Buscar mensagens, amigos, grupos..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-800/50 border border-slate-700/50 rounded-nest-pill px-10 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all backdrop-blur-sm"
+            className="w-full bg-slate-800/50 border border-slate-700/50 rounded-full px-10 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all backdrop-blur-sm"
             aria-label="Buscar mensagens, amigos e grupos"
           />
           {searchQuery && (
@@ -330,27 +329,14 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
         </div>
       </div>
 
-      {/* RIGHT: Add Friend + Notifications + Theme Toggle */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleDarkMode}
-          title="Alternar tema"
-          className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
-        >
-          {theme.mode === 'light' ? (
-            <Moon className="w-4 h-4" />
-          ) : (
-            <Sun className="w-4 h-4 text-amber-400" />
-          )}
-        </button>
-
+      {/* RIGHT: Notifications + Theme + Profile */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
         {/* Notifications */}
-        <div className="relative">
+        <div className="relative" ref={notificationsRef}>
         <button
           onClick={() => { setIsNotificationsOpen((value) => !value); markNotificationsRead(); }}
-          title={notificationCount ? `${notificationCount} notificações não lidas. Marcar como lidas` : 'Nenhuma notificação não lida'}
-          aria-label={notificationCount ? `${notificationCount} notificações não lidas. Marcar como lidas` : 'Nenhuma notificação não lida'}
+          title={notificationCount ? `${notificationCount} notificações não lidas` : 'Nenhuma notificação não lida'}
+          aria-label={notificationCount ? `${notificationCount} notificações não lidas` : 'Nenhuma notificação não lida'}
           className={`relative p-2 rounded-full hover:bg-slate-800 transition-colors ${notificationCount ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
         >
           <Bell className="w-4 h-4" />
@@ -360,7 +346,6 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
             const relevantNotifications = [...inviteNotifications, ...notifications.filter(n => n.type === 'dm_message' || n.type === 'mention' || n.type === 'channel_message')]
               .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-            // Group notifications by actor_id + type
             const groupedNotifications = new Map<string, AppNotification[]>();
             relevantNotifications.forEach((notification) => {
               const key = `${notification.actor_id}:${notification.type}`;
@@ -462,9 +447,8 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
                     Array.from(groupedNotifications.values()).map(renderNotificationGroup)
                   )}
                 </div>
-                {/* Botão "Limpar todas" fixo no rodapé */}
                 <div className="border-t border-slate-800 p-3 flex-shrink-0">
-                  <button onClick={handleClearAllNotifications} className="w-full py-2 text-sm font-medium text-rose-400 hover:text-rose-300 transition-colors rounded-nest-sm hover:bg-rose-500/10">
+                  <button onClick={handleClearAllNotifications} className="w-full py-2 text-sm font-medium text-rose-400 hover:text-rose-300 transition-colors rounded-sm hover:bg-rose-500/10">
                     Limpar todas
                   </button>
                 </div>
@@ -473,15 +457,66 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           })()}
         </div>
 
-        {/* Add Friend Button */}
+        {/* Theme Toggle */}
         <button
-          onClick={() => setIsCommunityDropdownOpen(true)} // Reusing the community dropdown for now, but we'll add friend logic
-          title="Adicionar amizade"
-          aria-label="Adicionar amizade"
-          className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-indigo-400 transition-colors"
+          onClick={toggleDarkMode}
+          title="Alternar tema"
+          className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
         >
-          <UserPlus className="w-4 h-4" />
+          {theme.mode === 'light' ? (
+            <Moon className="w-4 h-4" />
+          ) : (
+            <Sun className="w-4 h-4 text-amber-400" />
+          )}
         </button>
+
+        {/* Profile / User Menu */}
+        <div className="relative" ref={userMenuRef}>
+          <button
+            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+            className="flex items-center gap-2 p-1.5 rounded-full hover:bg-slate-800 transition-colors"
+            aria-label="Menu do usuário"
+            aria-expanded={isUserMenuOpen}
+          >
+            {currentUser.avatar ? (
+              <img src={currentUser.avatar} alt={currentUser.name} className="w-7 h-7 rounded-full" />
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">
+                {currentUser.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <ChevronDown className="w-4 h-4 text-slate-400" />
+          </button>
+          {isUserMenuOpen && (
+            <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl py-1 overflow-hidden">
+              <div className="px-3 py-2 border-b border-slate-800">
+                <p className="text-sm font-semibold text-white truncate">{currentUser.name}</p>
+                <p className="text-xs text-slate-400 truncate">@{currentUser.handle}</p>
+              </div>
+              <button
+                onClick={() => { setIsProfileEditorOpen(true); setIsUserMenuOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 hover:text-white transition-colors"
+              >
+                <User className="w-4 h-4" />
+                Meu Perfil
+              </button>
+              <button
+                onClick={() => setIsThemeCustomizerOpen(true)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 hover:text-white transition-colors"
+              >
+                <Moon className="w-4 h-4" />
+                Tema e Aparência
+              </button>
+              <button
+                onClick={() => { setIsLoggedIn(false); setIsUserMenuOpen(false); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Sair
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <InviteModal
         isOpen={!!inviteModal}
@@ -491,7 +526,3 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
     </header>
   );
 };
-
-
-
-
