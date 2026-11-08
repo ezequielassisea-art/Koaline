@@ -16,6 +16,7 @@ import { AdminPanel } from './components/admin/AdminPanel';
 import { ConfirmModal } from './components/common/ConfirmModal';
 import { UpdatePasswordPage } from './components/auth/UpdatePasswordPage';
 import { IncomingCallCard } from './components/call/IncomingCallCard';
+import { TooltipProvider } from './components/ui/tooltip';
 
 const VoiceRoom = React.lazy(() => import('./components/call/VoiceRoom').then((module) => ({ default: module.VoiceRoom })));
 const isHomePath = (pathname: string) => pathname === '/' || pathname === '/chat' || pathname === '/home' || pathname === '/profile';
@@ -120,8 +121,9 @@ export const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-[#F3F4F6] text-gray-900">
-      <IncomingCallCard />
+    <TooltipProvider>
+      <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-[#F3F4F6] text-gray-900">
+        <IncomingCallCard />
       <TopBar className="flex-shrink-0" />
       <div className="flex min-h-0 flex-1 overflow-hidden p-4 md:p-6">
         {!isNotFound && (
@@ -220,5 +222,6 @@ export const AppContent: React.FC = () => {
       />
       <Toast />
     </div>
+    </TooltipProvider>
   );
 };

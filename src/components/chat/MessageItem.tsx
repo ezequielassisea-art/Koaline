@@ -3,7 +3,25 @@ import { useApp } from '../../context/AppContext';
 import { Message } from '../../types';
 import { formatRelativeTime } from '../../utils/time';
 import { canModerateCommunity } from '../admin/adminAccess';
-import { ConfirmModal } from '../common/ConfirmModal';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Button,
+} from '@/components/ui/button';
 import {
   Smile,
   Reply,
@@ -12,12 +30,12 @@ import {
   Pin,
   Check,
   CheckCheck,
-  Clock,
   X,
   FileText,
   Play,
   Pause,
-  Volume2
+  Volume2,
+  MoreHorizontal,
 } from 'lucide-react';
 
 interface MessageItemProps {
@@ -27,7 +45,7 @@ interface MessageItemProps {
   timeLabel?: string;
   onReply: (message: Message) => void;
   onEdit?: (message: Message) => void;
-  readStatus?: 'sent' | 'delivered' | 'read'; // 'sent' = 1 check, 'delivered' = 1 check, 'read' = 2 checks
+  readStatus?: 'sent' | 'delivered' | 'read';
 }
 
 const COMMON_EMOJIS = ['🔥', '⚡', '✨', '🚀', '👍', '❤️', '👀'];
@@ -125,10 +143,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
   } = useApp();
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showHoverMenu, setShowHoverMenu] = useState(false);
 
   const isSelf = message.senderId === currentUser.id;
   const activeCommunity = communities.find((community) => community.id === currentCommunityId);
@@ -172,7 +189,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
 
   const handleDelete = () => {
     deleteMessage(message.id);
-    setShowDeleteModal(false);
+    setShowDeleteDialog(false);
   };
 
   if (message.isDeleted) {
@@ -186,13 +203,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
     );
   }
 
-  // ===== NOVA ESTRUTURA FLEXBOX =====
   return (
     <div
       id={`message-${message.id}`}
       className={`flex w-full mb-4 ${isSelf ? 'justify-end' : 'justify-start'}`}
-      onMouseEnter={() => setShowHoverMenu(true)}
-      onMouseLeave={() => setShowHoverMenu(false)}
     >
       {/* AVATAR DO OUTRO (Esquerda) - apenas se não for minha mensagem e não agrupado */}
       {!isSelf && !isGrouped && !isSystemInvite && (
@@ -219,61 +233,55 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
         {/* BALÃO DA MENSAGEM */}
         <div className={`relative group w-fit px-4 py-2 rounded-2xl ${isSelf ? 'bg-[#3B82F6] text-white rounded-tr-sm' : 'bg-[#F1F5F9] text-[#0F172A] rounded-tl-sm'}`}>
 
-          {/* MENU DE AÇÕES (Hover) - Posicionado ACIMA do balão, não sobrepõe texto */}
-          {showHoverMenu && isSelf && !isSystemInvite && (
-            <div className="absolute -top-10 right-0 flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg rounded-lg p-1 z-10 animate-in fade-in zoom-in-95">
-              {/* Responder */}
-              <button
-                onClick={() => onReply(message)}
-                title="Responder"
-                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md transition-colors"
-              >
-                <Reply className="w-4 h-4" />
-              </button>
-
-              {/* Editar */}
-              {onEdit && (
+          {/* MENU DE AÇÕES (DropdownMenu do shadcn) - Botão de três pontinhos no canto superior direito do balão */}
+          <div className="absolute -top-8 right-0 -translate-y-1/2">
+            <DropdownMenu>
+              <DropdownMenuTrigger>
                 <button
-                  onClick={() => onEdit(message)}
-                  title="Editar mensagem"
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md transition-colors"
+                  className="p-1.5 rounded-md text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                  aria-label="Ações da mensagem"
                 >
-                  <Edit2 className="w-4 h-4" />
+                  <MoreHorizontal className="w-4 h-4" />
                 </button>
-              )}
-
-              {/* Apagar */}
-              <button
-                onClick={() => setShowDeleteModal(true)}
-                title="Apagar mensagem"
-                className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 rounded-md transition-colors"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-
-              {/* Fixar */}
-              {canManagePins && (
-                <button
-                  onClick={() => togglePinMessage(message.id)}
-                  title={message.pinned ? 'Desafixar mensagem' : 'Fixar mensagem'}
-                  className={`p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors ${message.pinned ? 'text-indigo-500' : 'text-slate-600 dark:text-slate-300'}`}
-                >
-                  <Pin className="w-4 h-4" />
-                </button>
-              )}
-
-              {/* Reagir (Emoji Picker) */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  title="Adicionar reação"
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md transition-colors"
-                >
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" sideOffset={5} className="min-w-[160px] z-50">
+                <DropdownMenuItem onClick={() => onReply(message)} className="flex items-center gap-2">
+                  <Reply className="w-4 h-4" />
+                  Responder
+                </DropdownMenuItem>
+                {onEdit && isSelf && (
+                  <DropdownMenuItem onClick={() => onEdit(message)} className="flex items-center gap-2">
+                    <Edit2 className="w-4 h-4" />
+                    Editar
+                  </DropdownMenuItem>
+                )}
+                {isSelf && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setShowDeleteDialog(true)} className="flex items-center gap-2 text-red-600 focus:text-red-600">
+                      <Trash2 className="w-4 h-4" />
+                      Apagar
+                    </DropdownMenuItem>
+                  </>
+                )}
+                {canManagePins && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => togglePinMessage(message.id)} className="flex items-center gap-2">
+                      <Pin className="w-4 h-4" />
+                      {message.pinned ? 'Desafixar' : 'Fixar'}
+                    </DropdownMenuItem>
+                  </>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="flex items-center gap-2">
                   <Smile className="w-4 h-4" />
-                </button>
+                  Reagir
+                </DropdownMenuItem>
 
+                {/* Emoji Picker dentro do DropdownMenu */}
                 {showEmojiPicker && (
-                  <div className="absolute bottom-full right-0 mb-1 flex gap-1 p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 animate-in fade-in">
+                  <div className="p-2 flex gap-1 border-t border-slate-200 dark:border-slate-700">
                     {COMMON_EMOJIS.map((emoji) => (
                       <button
                         key={emoji}
@@ -288,51 +296,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                     ))}
                   </div>
                 )}
-              </div>
-            </div>
-          )}
-
-          {/* Hover menu para mensagens de outros (apenas Responder + Reagir) */}
-          {showHoverMenu && !isSelf && !isSystemInvite && (
-            <div className="absolute -top-10 right-0 flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-lg rounded-lg p-1 z-10 animate-in fade-in zoom-in-95">
-              {/* Responder */}
-              <button
-                onClick={() => onReply(message)}
-                title="Responder"
-                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md transition-colors"
-              >
-                <Reply className="w-4 h-4" />
-              </button>
-
-              {/* Reagir (Emoji Picker) */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                  title="Adicionar reação"
-                  className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md transition-colors"
-                >
-                  <Smile className="w-4 h-4" />
-                </button>
-
-                {showEmojiPicker && (
-                  <div className="absolute bottom-full right-0 mb-1 flex gap-1 p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 animate-in fade-in">
-                    {COMMON_EMOJIS.map((emoji) => (
-                      <button
-                        key={emoji}
-                        onClick={() => {
-                          toggleReaction(message.id, emoji);
-                          setShowEmojiPicker(false);
-                        }}
-                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors text-xl"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
           {/* CONTEÚDO DA MENSAGEM */}
           <div className="break-words text-base leading-relaxed">
@@ -485,17 +451,25 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
-      <ConfirmModal
-        isOpen={showDeleteModal}
-        title="Apagar mensagem"
-        description="Tem certeza que deseja apagar esta mensagem? Ela será removida para todos os participantes da conversa."
-        confirmLabel="Apagar para todos"
-        cancelLabel="Cancelar"
-        isDestructive
-        onConfirm={handleDelete}
-        onCancel={() => setShowDeleteModal(false)}
-      />
+      {/* Delete Confirmation Dialog (shadcn Dialog) */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Apagar mensagem</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja apagar esta mensagem? Ela será removida para todos os participantes da conversa.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={handleDelete}>
+              Apagar para todos
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
