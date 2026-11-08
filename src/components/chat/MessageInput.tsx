@@ -48,7 +48,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     dms,
     setTypingStatus,
     addToast,
-    theme,
   } = useApp();
 
   const [text, setText] = useState('');
@@ -388,7 +387,7 @@ const insertEmoji = (emoji: string) => {
       )}
 
       {/* Emoji Picker */}
-      {showEmojiPicker && <React.Suspense fallback={<div className="absolute bottom-full right-2 z-40 mb-2 rounded-xl border border-slate-700 bg-slate-900 p-4 text-xs text-slate-300">Carregando emojis…</div>}><EmojiPickerPopover theme={theme.mode} onSelect={insertEmoji} onClose={() => setShowEmojiPicker(false)} className="absolute bottom-full right-2 z-40 mb-2 w-[min(22rem,calc(100vw-2rem))] animate-in zoom-in-95" /></React.Suspense>}
+      {showEmojiPicker && <React.Suspense fallback={<div className="absolute bottom-full right-2 z-40 mb-2 rounded-xl border border-slate-700 bg-slate-900 p-4 text-xs text-slate-300">Carregando emojis…</div>}><EmojiPickerPopover onSelect={insertEmoji} onClose={() => setShowEmojiPicker(false)} className="absolute bottom-full right-2 z-40 mb-2 w-[min(22rem,calc(100vw-2rem))] animate-in zoom-in-95" /></React.Suspense>}
 
       {showGifPicker && (
         <div className="absolute bottom-full right-4 z-30 mb-2 w-[min(24rem,calc(100vw-2rem))] rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl animate-in fade-in zoom-in-95" role="dialog" aria-label="Escolher GIF">

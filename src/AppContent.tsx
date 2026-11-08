@@ -6,12 +6,10 @@ import ChannelSidebar from './components/layout/ChannelSidebar';
 import ChatArea from './components/layout/ChatArea';
 import MemberList from './components/layout/MemberList';
 import { DirectMessageView } from './components/chat/DirectMessageView';
-import { ScreenSharePiP } from './components/call/ScreenSharePiP';
 import { Toast } from './components/common/Toast';
 import { UserContextMenu } from './components/chat/UserContextMenu';
 import { ProfileEditor } from './components/profile/ProfileEditor';
 import { ProfileOnboarding } from './components/profile/ProfileOnboarding';
-import { ThemeCustomizer } from './components/theme/ThemeCustomizer';
 import { CreateChannelModal } from './components/channels/CreateChannelModal';
 import { AuthOnboardingModal } from './components/auth/AuthOnboardingModal';
 import { AdminPanel } from './components/admin/AdminPanel';
@@ -41,7 +39,6 @@ export const AppContent: React.FC = () => {
     isDirectMessages,
     isContextPanelOpen,
     isProfileEditorOpen,
-    isThemeCustomizerOpen,
     isCreateChannelModalOpen,
     activeUserMenu,
     dms,
@@ -123,12 +120,12 @@ export const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-[var(--discord-bg)] text-slate-200">
+    <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-[#F3F4F6] text-gray-900">
       <IncomingCallCard />
       <TopBar className="flex-shrink-0" />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden p-4 md:p-6">
         {!isNotFound && (
-          <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl bg-white shadow-sm border border-gray-100">
             {/* Server Rail - 72px fixed */}
             <ServerRail />
 
@@ -136,29 +133,29 @@ export const AppContent: React.FC = () => {
             <ChannelSidebar />
 
             {/* Chat Area - flex-1 */}
-            <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative min-w-0">
+            <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative min-w-0 rounded-r-2xl">
               {isDirectMessages ? (
                 <DirectMessageView />
               ) : communities.length === 0 ? (
                 <div className="m-auto w-full max-w-lg p-8 text-center">
-                  <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-slate-700 bg-slate-900 text-2xl">
+                  <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-gray-200 bg-gray-100 text-2xl text-gray-600">
                     ◇
                   </div>
-                  <h1 className="mb-2 text-2xl font-bold">Sua conta está pronta</h1>
-                  <p className="mb-6 text-sm text-slate-400">
+                  <h1 className="mb-2 text-2xl font-bold text-gray-900">Sua conta está pronta</h1>
+                  <p className="mb-6 text-sm text-gray-500">
                     Crie sua comunidade ou entre em uma existente usando um código de convite para começar a conversar.
                   </p>
                   <div className="flex flex-col gap-3">
                     <button
                       type="button"
-                      className="rounded-lg bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
+                      className="rounded-lg bg-[#00BFFF] px-5 py-3 text-sm font-semibold text-white hover:bg-[#009FD6] transition-colors"
                       onClick={handleCreateCommunityPrompt}
                     >
                       Criar Comunidade
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-5 py-3 text-sm font-semibold text-slate-200 hover:bg-slate-700 transition-colors"
+                      className="rounded-lg border border-gray-200 bg-white px-5 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
                       onClick={() => {
                         const code = window.prompt('Cole o código do convite:');
                         if (code && !joinCommunityByInvite(code)) {
@@ -171,13 +168,12 @@ export const AppContent: React.FC = () => {
                   </div>
                 </div>
               ) : isCallFullscreen ? (
-                <React.Suspense fallback={<div className="flex h-full items-center justify-center bg-slate-950 text-sm text-slate-400">Carregando sala de voz…</div>}>
+                <React.Suspense fallback={<div className="flex h-full items-center justify-center bg-gray-50 text-sm text-gray-500">Carregando sala de voz…</div>}>
                   <VoiceRoom />
                 </React.Suspense>
               ) : (
                 <ChatArea />
               )}
-              {activeCall?.isMinimized && activeCall.isScreenSharing && <ScreenSharePiP />}
             </main>
 
             {/* Member List - 280px, only rendered when open */}
@@ -188,13 +184,14 @@ export const AppContent: React.FC = () => {
         )}
 
         {isNotFound && (
-          <main className="koaline-not-found flex-1 flex items-center justify-center">
-            <div>
-              <span>404</span>
-              <h1>Esta página não foi encontrada</h1>
-              <p>Confira o endereço ou volte para suas conversas.</p>
+          <main className="koaline-not-found flex-1 flex items-center justify-center rounded-2xl bg-white shadow-sm border border-gray-100">
+            <div className="text-center p-8">
+              <span className="text-6xl font-bold text-gray-200">404</span>
+              <h1 className="mt-4 text-2xl font-bold text-gray-900">Esta página não foi encontrada</h1>
+              <p className="mt-2 text-gray-500">Confira o endereço ou volte para suas conversas.</p>
               <button
                 type="button"
+                className="mt-6 rounded-lg bg-[#00BFFF] px-5 py-3 text-sm font-semibold text-white hover:bg-[#009FD6] transition-colors"
                 onClick={() => {
                   window.history.pushState({}, '', '/');
                   window.dispatchEvent(new PopStateEvent('popstate'));
@@ -208,7 +205,6 @@ export const AppContent: React.FC = () => {
       </div>
       {activeUserMenu && <UserContextMenu />}
       {isProfileEditorOpen && <ProfileEditor />}
-      {isThemeCustomizerOpen && <ThemeCustomizer />}
       {isCreateChannelModalOpen && <CreateChannelModal />}
       {!isLoggedIn && <AuthOnboardingModal />}
       {isLoggedIn && !currentUser.onboarding_completed && <ProfileOnboarding />}

@@ -5,7 +5,6 @@ import {
   Channel,
   Message,
   ActiveCall,
-  ThemeSettings,
   DirectMessageConversation,
   ToastMessage,
   IncomingCall,
@@ -185,8 +184,6 @@ interface AppContextType {
   // Modals
   isProfileEditorOpen: boolean;
   setIsProfileEditorOpen: (val: boolean) => void;
-  isThemeCustomizerOpen: boolean;
-  setIsThemeCustomizerOpen: (val: boolean) => void;
   isCreateChannelModalOpen: boolean;
   setIsCreateChannelModalOpen: (val: boolean) => void;
 
@@ -218,11 +215,6 @@ interface AppContextType {
   acceptIncomingCall: () => void;
   rejectIncomingCall: (callId?: string) => void;
 
-  // Themes
-  theme: ThemeSettings;
-  updateTheme: (updates: Partial<ThemeSettings>) => void;
-  resetTheme: () => void;
-
   // Notifications / Toasts
   toasts: ToastMessage[];
   addToast: (title: string, message: string, type?: ToastMessage['type']) => void;
@@ -243,28 +235,6 @@ interface AppContextType {
   openUserMenu: (user: User, e: React.MouseEvent) => void;
   closeUserMenu: () => void;
 }
-
-const DEFAULT_THEME: ThemeSettings = {
-  mode: typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
-  fontScale: 100,
-  reduceMotion: false,
-};
-
-const loadThemeSettings = (): ThemeSettings => {
-  try {
-    const saved = JSON.parse(localStorage.getItem('koaline_theme') || '{}') as Partial<ThemeSettings>;
-    const storedFontScale = typeof saved.fontScale === 'number' && Number.isFinite(saved.fontScale)
-      ? saved.fontScale <= 1.5 ? saved.fontScale * 100 : saved.fontScale
-      : DEFAULT_THEME.fontScale;
-    return {
-      mode: saved.mode === 'dark' || saved.mode === 'light' ? saved.mode : DEFAULT_THEME.mode,
-      fontScale: Math.min(150, Math.max(80, storedFontScale)),
-      reduceMotion: typeof saved.reduceMotion === 'boolean' ? saved.reduceMotion : DEFAULT_THEME.reduceMotion,
-    };
-  } catch {
-    return DEFAULT_THEME;
-  }
-};
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -806,7 +776,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Modals
   const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
-  const [isThemeCustomizerOpen, setIsThemeCustomizerOpen] = useState(false);
   const [isCreateChannelModalOpen, setIsCreateChannelModalOpen] = useState(false);
 
   // Active Call
@@ -1060,13 +1029,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [isLoggedIn, isAuthLoading, currentUser.id, incomingCall]);
 
-  // Theme
-  const [theme, setTheme] = useState<ThemeSettings>(() => {
-    const savedTheme = loadThemeSettings();
-    document.documentElement.setAttribute('data-theme', savedTheme.mode);
-    return savedTheme;
-  });
-
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const toastTimerRef = useRef<number | null>(null);
@@ -1079,48 +1041,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // User Actions Dropdown Menu
   const [activeUserMenu, setActiveUserMenu] = useState<{ user: User; position: { x: number; y: number } } | null>(null);
-
-  // Apply Theme to DOM
-  useEffect(() => {
-    const root = document.documentElement;
-    [
-      '--bg-primary', '--bg-secondary', '--bg-elevated', '--text-primary', '--text-secondary',
-      '--text-muted', '--border', '--border-strong', '--accent', '--accent-hover', '--color-primary',
-      '--color-primary-hover', '--color-accent', '--color-bg-app', '--color-surface',
-      '--color-surface-elevated', '--color-surface-sunken', '--color-text-main', '--color-text-muted',
-      '--color-border', '--accent-muted', '--density-padding',
-      '--app-background-image', '--background-opacity', '--radius-sm', '--radius-md', '--radius-lg',
-      '--radius-xl', '--shadow-sm', '--shadow-md', '--shadow-lg',
-    ].forEach((property) => root.style.removeProperty(property));
-    root.removeAttribute('data-density');
-    root.classList.remove('high-contrast');
-    root.setAttribute('data-theme', theme.mode);
-    root.style.setProperty('--font-scale', String(theme.fontScale / 100));
-    root.style.fontSize = `${theme.fontScale}%`;
-
-    try {
-      localStorage.setItem('koaline_theme', JSON.stringify({
-        mode: theme.mode,
-        fontScale: theme.fontScale,
-        reduceMotion: theme.reduceMotion,
-      }));
-    } catch { /* O tema segue aplicado mesmo se o armazenamento local estiver indisponível. */ }
-
-    if (theme.mode === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-
-    if (theme.reduceMotion) {
-      root.classList.add('reduced-motion');
-      root.setAttribute('data-reduce-motion', 'true');
-    } else {
-      root.classList.remove('reduced-motion');
-      root.removeAttribute('data-reduce-motion');
-    }
-
-  }, [theme]);
 
   // Simulated speaking glow
   useEffect(() => {
@@ -1574,14 +1494,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     })));
   };
 
-  const updateTheme = (updates: Partial<ThemeSettings>) => {
-    setTheme((prev) => ({ ...prev, ...updates }));
-  };
-
-  const resetTheme = () => {
-    setTheme(DEFAULT_THEME);
-    addToast('Tema Restaurado', 'Configurações visuais redefinidas.');
-  };
 
   const openUserProfile = (user: User) => {
     setContextPanelUser(user);
@@ -2974,8 +2886,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         closeContextPanel,
         isProfileEditorOpen,
         setIsProfileEditorOpen,
-        isThemeCustomizerOpen,
-        setIsThemeCustomizerOpen,
         isCreateChannelModalOpen,
         setIsCreateChannelModalOpen,
         activeCall,
@@ -3002,9 +2912,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         outgoingCall,
         acceptIncomingCall,
         rejectIncomingCall,
-        theme,
-        updateTheme,
-        resetTheme,
         toasts,
         addToast,
         removeToast,

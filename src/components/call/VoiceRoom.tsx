@@ -12,7 +12,6 @@ import {
   Volume2,
   VolumeX,
   Maximize2,
-  Music,
   Play,
   X,
 } from 'lucide-react';
@@ -20,8 +19,6 @@ import { audioManager } from '../../services/AudioManager';
 import { EmptyState } from '../common/EmptyState';
 import { AudioTrack, LiveKitRoom, useIsSpeaking, useLocalParticipant, useParticipants, useRoomContext, useTracks, useConnectionState } from '@livekit/components-react';
 import { ConnectionState, DisconnectReason, Participant, RoomEvent, TokenSource, Track } from 'livekit-client';
-import { SoundDraft } from './SoundEditorModal';
-import { getGroupSounds } from '../../services/GroupSoundStore';
 import { supabase } from '../../services/supabaseClient';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Avatar } from '../common/Avatar';
@@ -377,11 +374,6 @@ const VoiceRoomConnected: React.FC = () => {
           } catch {
             audioManager.playCustom(audioUrl);
           }
-          const soundId = typeof payload?.soundId === 'string' ? payload.soundId : '';
-          if (soundId) {
-            soundAnimationNonce.current += 1;
-            setSoundAnimation({ id: soundId, nonce: soundAnimationNonce.current });
-          }
         })
         .on('broadcast', { event: 'microphone_state' }, ({ payload }) => {
           const userId = typeof payload?.userId === 'string' ? payload.userId : '';
@@ -515,10 +507,6 @@ const VoiceRoomConnected: React.FC = () => {
 
   const [controlsVisible, setControlsVisible] = useState(true);
   const [showChannelDropdown, setShowChannelDropdown] = useState(false);
-  const [soundboardOpen, setSoundboardOpen] = useState(false);
-  const [mySounds, setMySounds] = useState<SoundDraft[]>([]);
-  const [soundAnimation, setSoundAnimation] = useState<{ id: string; nonce: number } | null>(null);
-  const soundAnimationNonce = useRef(0);
   const [contextUser, setContextUser] = useState<{ id: string; name: string; handle: string; avatar: string } | null>(null);
   const [remoteVolumes, setRemoteVolumes] = useState<Record<string, number>>({});
   const [locallyMuted, setLocallyMuted] = useState<Record<string, boolean>>({});
@@ -526,7 +514,6 @@ const VoiceRoomConnected: React.FC = () => {
 
   const currentCommunity = communities.find((item) => item.id === currentCommunityId) || communities[0];
   const callCommunity = communities.find((item) => item.channels.some((channel) => channel.id === activeCall?.channelId));
-  const soundCommunityId = activeCall?.channelId.startsWith('dm-call-') ? '' : callCommunity?.id || currentCommunityId;
   const mayKick = !!currentCommunity && canModerateCommunity(currentCommunity.id, currentUser, currentCommunity.ownerId || currentCommunity.creatorId);
 
   const latestLeaveCallRef = useRef(leaveCall);
@@ -583,34 +570,6 @@ const VoiceRoomConnected: React.FC = () => {
     try { localStorage.setItem(`koaline:volume_${id}`, String(volume)); } catch { /* Volume na sessão */ }
   };
 
-  // Disparo do Soundboard para tocar no próprio navegador e broadcast para todos
-  const playSoundInCall = async (sound: SoundDraft) => {
-    soundAnimationNonce.current += 1;
-    setSoundAnimation({ id: sound.id, nonce: soundAnimationNonce.current });
-
-    // Toca no próprio navegador imediatamente
-    try {
-      const audio = new Audio(sound.url);
-      audio.play().catch(() => audioManager.playCustom(sound.url));
-    } catch {
-      audioManager.playCustom(sound.url);
-    }
-
-    // Dispara Supabase Broadcast para todos na sala
-    try {
-      const channel = presenceChannelRef.current;
-      if (!channel) throw new Error('A conexão de presença da sala ainda não está pronta.');
-      const result = await channel.send({
-        type: 'broadcast',
-        event: 'play_sound',
-        payload: { url: sound.url, audioUrl: sound.url, soundId: sound.id, emoji: sound.emoji },
-      });
-      if (result !== 'ok') throw new Error('O Supabase não confirmou o envio do som para a sala.');
-    } catch (reason) {
-      addToast('Não foi possível tocar na call', reason instanceof Error ? reason.message : 'Tente novamente.', 'warning');
-    }
-  };
-
   const kickParticipant = async () => {
     if (!kickTarget || !mayKick) return;
     try {
@@ -627,31 +586,6 @@ const VoiceRoomConnected: React.FC = () => {
   };
 
   const screenVideoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (!soundCommunityId) { setMySounds([]); return; }
-    let mounted = true;
-    const loadSounds = () => {
-      void getGroupSounds(soundCommunityId).then((saved) => {
-        if (mounted) setMySounds(saved);
-      }).catch(() => {
-        if (mounted) setMySounds([]);
-      });
-    };
-    const handleGroupSoundsUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ communityId?: string; sounds?: SoundDraft[] }>).detail;
-      if (detail?.communityId === soundCommunityId && Array.isArray(detail.sounds)) setMySounds(detail.sounds);
-    };
-    const handleStorage = () => loadSounds();
-    loadSounds();
-    window.addEventListener('koaline:community-sounds-updated', handleGroupSoundsUpdated);
-    window.addEventListener('storage', handleStorage);
-    return () => {
-      window.removeEventListener('koaline:community-sounds-updated', handleGroupSoundsUpdated);
-      window.removeEventListener('storage', handleStorage);
-      mounted = false;
-    };
-  }, [soundCommunityId]);
 
   useEffect(() => {
     if (screenVideoRef.current) screenVideoRef.current.srcObject = activeCall?.screenStream || null;
@@ -897,17 +831,6 @@ const VoiceRoomConnected: React.FC = () => {
         </button>
 
         <button
-          type="button"
-          onClick={() => setSoundboardOpen((open) => !open)}
-          title="Meus Sons"
-          aria-label="Abrir Soundboard"
-          aria-expanded={soundboardOpen}
-          className="p-3 rounded-full bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors"
-        >
-          <Music className="w-5 h-5" />
-        </button>
-
-        <button
           onClick={() => {
             if (activeCall) leaveCall(activeCall.channelId);
             void room.disconnect();
@@ -919,43 +842,6 @@ const VoiceRoomConnected: React.FC = () => {
           <span>Sair</span>
         </button>
       </div>
-
-      {soundboardOpen && (
-        <div className="absolute bottom-24 left-1/2 z-40 w-72 -translate-x-1/2 rounded-2xl border border-slate-700 bg-slate-900 p-4 text-white shadow-2xl" role="dialog" aria-label="Sons do grupo">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Sons do grupo</h2>
-            <button type="button" onClick={() => setSoundboardOpen(false)} className="text-xs text-slate-400 hover:text-white">
-              Fechar
-            </button>
-          </div>
-          {mySounds.length ? (
-            <div className="grid grid-cols-2 gap-2">
-              {mySounds.map((sound) => (
-                <div key={sound.id || sound.url} className="relative min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => void playSoundInCall(sound)}
-                    className="flex w-full items-center justify-center gap-1.5 truncate rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white hover:border-cyan-500"
-                    title={sound.name}
-                  >
-                    <span>{sound.emoji || '🔊'}</span>
-                    <span className="truncate">{sound.name}</span>
-                  </button>
-                  {soundAnimation?.id === sound.id && (
-                    <span key={soundAnimation.nonce} className="soundboard-float-emoji" aria-hidden="true">
-                      {sound.emoji || '🔊'}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs leading-relaxed text-slate-400">
-              {soundCommunityId ? 'Este grupo ainda não tem sons. Eles podem ser adicionados em Configurações do grupo › Áudios.' : 'Sons de grupo não estão disponíveis em chamadas diretas.'}
-            </p>
-          )}
-        </div>
-      )}
 
       {contextUser && (
         <div className="absolute inset-0 z-50 grid place-items-center bg-black/55 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setContextUser(null); }}>

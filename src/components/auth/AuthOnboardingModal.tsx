@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, AtSign, Check, Eye, EyeOff, LockKeyhole, Mail, UserRound } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { AuthThemeToggle } from './AuthThemeToggle';
 import { AuthLayout } from './AuthLayout';
 import { KoalineLogo } from './KoalineLogo';
 import { Button } from '../common/Button';
@@ -168,7 +167,6 @@ export const AuthOnboardingModal: React.FC = () => {
   };
 
   return <AuthLayout>
-    <AuthThemeToggle />
     <SolidCard className="auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
       <KoalineLogo className="auth-logo" />
       <h1 id="auth-title">{mode === 'home' ? 'Converse do seu jeito.' : mode === 'login' ? 'Que bom ter você de volta.' : 'Crie sua conta.'}</h1>

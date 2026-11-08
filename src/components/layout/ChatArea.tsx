@@ -216,21 +216,23 @@ const ChatArea: React.FC = () => {
   // Render empty state
   if (!activeChannelKey && !isDirectMessages) {
     return (
-      <div className="chat-area flex flex-col h-full">
-        <header className="chat-area-header">
-          <div className="chat-area-header-left">
-            <div className="chat-area-channel-info">
-              <span className="chat-area-channel-icon"><Hash className="w-5 h-5" /></span>
-              <span className="chat-area-channel-name">Selecione um canal</span>
+      <div className="flex flex-col h-full">
+        <header className="h-14 px-4 border-b border-gray-100 flex items-center justify-between bg-white">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
+              <Hash className="w-5 h-5 text-gray-500" />
             </div>
+            <span className="font-semibold text-gray-900">Selecione um canal</span>
           </div>
         </header>
-        <div className="chat-area-empty flex-1">
-          <div className="chat-area-empty-icon">
-            <Hash className="w-8 h-8" />
+        <div className="flex-1 flex items-center justify-center p-8 text-center">
+          <div className="max-w-md">
+            <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-gray-200 bg-gray-100 text-2xl">
+              <Hash className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-900">Nenhum canal selecionado</h3>
+            <p className="text-sm text-gray-500">Selecione um canal na barra lateral ou crie um novo para começar a conversar.</p>
           </div>
-          <h3>Nenhum canal selecionado</h3>
-          <p>Selecione um canal na barra lateral ou crie um novo para começar a conversar.</p>
         </div>
       </div>
     );
@@ -238,83 +240,87 @@ const ChatArea: React.FC = () => {
 
   if (isDirectMessages && !activeDmId) {
     return (
-      <div className="chat-area flex flex-col h-full">
-        <header className="chat-area-header">
-          <div className="chat-area-header-left">
-            <div className="chat-area-channel-info">
-              <span className="chat-area-channel-icon"><MessageSquare className="w-5 h-5" /></span>
-              <span className="chat-area-channel-name">Mensagens Diretas</span>
+      <div className="flex flex-col h-full">
+        <header className="h-14 px-4 border-b border-gray-100 flex items-center justify-between bg-white">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
+              <MessageSquare className="w-5 h-5 text-gray-500" />
             </div>
+            <span className="font-semibold text-gray-900">Mensagens Diretas</span>
           </div>
         </header>
-        <div className="chat-area-empty flex-1">
-          <div className="chat-area-empty-icon">
-            <MessageSquare className="w-8 h-8" />
+        <div className="flex-1 flex items-center justify-center p-8 text-center">
+          <div className="max-w-md">
+            <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-gray-200 bg-gray-100 text-2xl">
+              <MessageSquare className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-gray-900">Mensagens Diretas</h3>
+            <p className="text-sm text-gray-500">Selecione uma conversa na barra lateral ou inicie uma nova clicando no botão +.</p>
           </div>
-          <h3>Mensagens Diretas</h3>
-          <p>Selecione uma conversa na barra lateral ou inicie uma nova clicando no botão +.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="chat-area flex flex-col h-full">
+    <div className="flex flex-col h-full bg-white">
       {/* ========================================
          HEADER: Channel/DM name, status, action icons
          ======================================== */}
-      <header className="chat-area-header">
+      <header className="h-14 px-4 border-b border-gray-100 flex items-center justify-between bg-white">
         {/* Left: Channel / DM Info */}
-        <div className="chat-area-header-left">
+        <div className="flex items-center gap-3 min-w-0">
           {isDirectMessages ? (
             activeDm && activeDm.user ? (
               <div
                 onClick={() => openUserProfile(activeDm.user)}
-                className="chat-area-channel-info cursor-pointer group"
+                className="flex items-center gap-3 min-w-0 cursor-pointer group"
               >
-                <div className="relative" style={{ width: '32px', height: '32px' }}>
+                <div className="relative w-9 h-9 flex-shrink-0">
                   {activeDm.user.avatar ? (
                     <img
                       src={activeDm.user.avatar}
                       alt={activeDm.user.name || 'Usuário'}
-                      className="w-full h-full rounded-full object-cover group-hover:ring-2 group-hover:ring-indigo-500 transition-all"
+                      className="w-full h-full rounded-full object-cover group-hover:ring-2 group-hover:ring-[#00BFFF] transition-all"
                     />
                   ) : (
-                    <div className="w-full h-full rounded-full bg-slate-700 flex items-center justify-center text-sm font-bold text-white group-hover:ring-2 group-hover:ring-indigo-500 transition-all">
+                    <div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600 group-hover:ring-2 group-hover:ring-[#00BFFF] transition-all">
                       {(activeDm.user.name || '?').slice(0, 1).toUpperCase()}
                     </div>
                   )}
-                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-[var(--discord-bg-secondary)] ${
-                    activeDm.user.status === 'online' ? 'bg-emerald-500' : activeDm.user.status === 'idle' ? 'bg-amber-500' : 'bg-zinc-400'
+                  <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white ${
+                    activeDm.user.status === 'online' ? 'bg-emerald-500' : activeDm.user.status === 'idle' ? 'bg-amber-500' : 'bg-gray-400'
                   }`} />
                 </div>
-                <div className="flex flex-col ml-2 min-w-0">
+                <div className="flex flex-col min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="chat-area-channel-name truncate group-hover:text-indigo-400 transition-colors">
+                    <span className="font-semibold text-gray-900 truncate group-hover:text-[#00BFFF] transition-colors">
                       {activeDm.user.name || 'Membro Koaline'}
                     </span>
                   </div>
-                  <div className="text-xs text-slate-400 truncate">
+                  <div className="text-xs text-gray-500 truncate">
                     {activeDm.user.status === 'online' ? '● Online' : activeDm.user.status === 'idle' ? '● Ausente' : '○ Offline'}
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="chat-area-channel-info min-w-0">
-                <span className="chat-area-channel-icon"><MessageSquare className="w-5 h-5" /></span>
-                <span className="chat-area-channel-name truncate">Mensagem Direta</span>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
+                  <MessageSquare className="w-5 h-5 text-gray-500" />
+                </div>
+                <span className="font-semibold text-gray-900 truncate">Mensagem Direta</span>
               </div>
             )
           ) : (
-            <div className="chat-area-channel-info min-w-0">
-              <span className="chat-area-channel-icon">
-                {activeChannel?.type === 'voice' ? <Volume2 className="w-5 h-5" /> : <Hash className="w-5 h-5" />}
-              </span>
-              <span className="chat-area-channel-name truncate">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-gray-100 flex items-center justify-center">
+                {activeChannel?.type === 'voice' ? <Volume2 className="w-5 h-5 text-gray-500" /> : <Hash className="w-5 h-5 text-gray-500" />}
+              </div>
+              <span className="font-semibold text-gray-900 truncate">
                 {activeChannel?.name ? `#${activeChannel.name}` : 'chat-geral'}
               </span>
               {activeChannel?.topic && (
-                <span className="chat-area-channel-topic truncate hidden md:inline-block">
+                <span className="text-xs text-gray-500 truncate hidden md:inline-block max-w-xs">
                   {activeChannel.topic}
                 </span>
               )}
@@ -323,27 +329,27 @@ const ChatArea: React.FC = () => {
         </div>
 
         {/* Right: Actions */}
-        <div className="chat-area-header-right">
+        <div className="flex items-center gap-1">
           {isDirectMessages && activeDm && activeDm.user && (
             <>
               <button
                 onClick={() => startDirectCall(activeDm.user, 'voice')}
                 title="Chamada de voz"
-                className="chat-area-icon-btn"
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
               >
                 <Phone className="w-4 h-4" />
               </button>
               <button
                 onClick={() => startDirectCall(activeDm.user, 'video')}
                 title="Chamada de vídeo"
-                className="chat-area-icon-btn"
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
               >
                 <Video className="w-4 h-4" />
               </button>
               <button
                 onClick={() => toggleArchiveDm(activeDm.id)}
                 title="Arquivar conversa"
-                className="chat-area-icon-btn"
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
               >
                 <Archive className="w-4 h-4" />
               </button>
@@ -354,7 +360,7 @@ const ChatArea: React.FC = () => {
             <button
               onClick={() => document.querySelector('.chat-area-pinned-bar')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
               title="Mensagens fixadas"
-              className="chat-area-icon-btn"
+              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
             >
               <Pin className="w-4 h-4" />
             </button>
@@ -363,7 +369,7 @@ const ChatArea: React.FC = () => {
           <button
             onClick={() => isContextPanelOpen ? closeContextPanel() : openMembersPanel()}
             title="Painel de membros"
-            className={`chat-area-icon-btn ${isContextPanelOpen ? 'text-indigo-400 bg-indigo-600/20' : ''}`}
+            className={`p-2 rounded-lg transition-colors ${isContextPanelOpen ? 'text-[#00BFFF] bg-[#00BFFF]/10' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
           >
             <Users className="w-4 h-4" />
           </button>
@@ -371,7 +377,7 @@ const ChatArea: React.FC = () => {
           <button
             onClick={() => setIsSearching(!isSearching)}
             title="Buscar no canal"
-            className={`chat-area-icon-btn ${isSearching ? 'text-indigo-400 bg-indigo-600/20' : ''}`}
+            className={`p-2 rounded-lg transition-colors ${isSearching ? 'text-[#00BFFF] bg-[#00BFFF]/10' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'}`}
           >
             <Search className="w-4 h-4" />
           </button>
@@ -379,7 +385,7 @@ const ChatArea: React.FC = () => {
           <button
             onClick={() => {}}
             title="Mais opções"
-            className="chat-area-icon-btn"
+            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
           >
             <MoreHorizontal className="w-4 h-4" />
           </button>
@@ -388,16 +394,16 @@ const ChatArea: React.FC = () => {
 
       {/* In-channel Search */}
       {isSearching && (
-        <div className="chat-area-search">
-          <div className="chat-area-search-wrapper">
-            <Search />
+        <div className="px-4 py-3 border-b border-gray-100 bg-white">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               ref={searchInputRef}
               type="text"
               placeholder="Pesquisar neste canal..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="chat-area-search-input"
+              className="w-full h-10 pl-10 pr-4 rounded-full bg-gray-100 text-gray-900 placeholder-gray-500 text-sm border-0 focus:outline-none focus:ring-2 focus:ring-[#00BFFF]/20"
             />
           </div>
         </div>
@@ -405,17 +411,17 @@ const ChatArea: React.FC = () => {
 
       {/* Pinned Messages Bar */}
       {pinnedMessages.length > 0 && (
-        <div className="chat-area-pinned-bar">
-          <div className="chat-area-pinned-header">
-            <Pin className="w-3.5 h-3.5" />
+        <div className="chat-area-pinned-bar px-4 py-2 border-b border-gray-100 bg-white">
+          <div className="chat-area-pinned-header flex items-center gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+            <Pin className="w-3.5 h-3.5 text-[#00BFFF]" />
             Fixadas
           </div>
-          <div className="chat-area-pinned-list">
+          <div className="chat-area-pinned-list flex flex-wrap gap-2">
             {pinnedMessages.map((message) => (
               <button
                 key={message.id}
                 type="button"
-                className="chat-area-pinned-item"
+                className="chat-area-pinned-item flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 text-sm cursor-pointer hover:border-[#00BFFF] transition-colors"
                 title="Ir para mensagem fixada"
                 onClick={() => document.getElementById(`message-${message.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
               >
@@ -426,10 +432,10 @@ const ChatArea: React.FC = () => {
               <button
                 key={`unpin-${message.id}`}
                 type="button"
-                className="chat-area-pinned-item text-rose-400 hover:text-rose-300"
+                className="chat-area-pinned-item flex items-center gap-2 px-3 py-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                 onClick={() => { togglePinMessage(message.id); addToast('Mensagem desfixada', 'A mensagem foi removida das fixadas.', 'success'); }}
               >
-                <X className="w-3.5 h-3.5 mr-1" />
+                <X className="w-3.5 h-3.5" />
                 Desfixar {message.sender.name}
               </button>
             ))}
@@ -439,15 +445,15 @@ const ChatArea: React.FC = () => {
 
       {/* Reply Preview */}
       {replyTarget && (
-        <div className="chat-area-reply-preview">
-          <div className="chat-area-reply-content">
-            <div className="chat-area-reply-text">
-              <div className="chat-area-reply-author">Respondendo a {replyTarget.sender.name}</div>
-              <div className="chat-area-reply-message">{replyTarget.content || 'Anexo'}</div>
+        <div className="chat-area-reply-preview px-4 py-2 border-b border-gray-100 bg-[#00BFFF]/5 flex items-center justify-between gap-4">
+          <div className="chat-area-reply-content flex items-center gap-3 flex-1 min-w-0">
+            <div className="chat-area-reply-text flex-1 min-w-0">
+              <div className="text-xs font-semibold text-[#00BFFF]">Respondendo a {replyTarget.sender.name}</div>
+              <div className="text-sm text-gray-700 truncate">{replyTarget.content || 'Anexo'}</div>
             </div>
             <button
               onClick={() => setReplyTarget(null)}
-              className="chat-area-reply-close"
+              className="chat-area-reply-close p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-200 transition-colors flex-shrink-0"
               aria-label="Cancelar resposta"
             >
               <X className="w-3.5 h-3.5" />
@@ -459,14 +465,14 @@ const ChatArea: React.FC = () => {
       {/* ========================================
          MIDDLE: Messages List
          ======================================== */}
-      <div className="chat-area-messages" role="log" aria-live="polite" aria-label="Mensagens">
+      <div className="chat-area-messages flex-1 overflow-y-auto p-4" role="log" aria-live="polite" aria-label="Mensagens">
         {filteredMessages.length === 0 ? (
-          <div className="chat-area-empty flex-1">
+          <div className="chat-area-empty flex-1 flex flex-col items-center justify-center text-center text-gray-500 gap-3">
             <div className="chat-area-empty-icon">
-              {isDirectMessages ? <MessageSquare className="w-8 h-8" /> : <Hash className="w-8 h-8" />}
+              {isDirectMessages ? <MessageSquare className="w-10 h-10 text-gray-300" /> : <Hash className="w-10 h-10 text-gray-300" />}
             </div>
-            <h3>{isDirectMessages ? 'Nenhuma mensagem ainda' : 'Canal vazio'}</h3>
-            <p>{isDirectMessages ? 'Inicie a conversa enviando a primeira mensagem.' : 'Seja o primeiro a enviar uma mensagem neste canal!'}</p>
+            <h3 className="text-lg font-semibold text-gray-900">{isDirectMessages ? 'Nenhuma mensagem ainda' : 'Canal vazio'}</h3>
+            <p className="text-sm">{isDirectMessages ? 'Inicie a conversa enviando a primeira mensagem.' : 'Seja o primeiro a enviar uma mensagem neste canal!'}</p>
           </div>
         ) : (
           <>
@@ -489,53 +495,57 @@ const ChatArea: React.FC = () => {
               return (
                 <React.Fragment key={msg.id}>
                   {startsNewDay && (
-                    <div className="chat-area-date-divider">
-                      <span>{formatDateHeading(msg.timestamp)}</span>
+                    <div className="chat-area-date-divider flex items-center justify-center gap-3 my-4">
+                      <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{formatDateHeading(msg.timestamp)}</span>
                     </div>
                   )}
                   {msg.id === firstUnreadId && (
-                    <div className="chat-area-unread-divider"><span>Não lidas</span></div>
+                    <div className="chat-area-unread-divider flex items-center justify-center gap-3 my-3">
+                      <span className="text-xs font-bold text-[#00BFFF] uppercase tracking-wider">Não lidas</span>
+                    </div>
                   )}
                   <div
                     id={`message-${msg.id}`}
-                    className={`message-bubble ${isSelf ? 'self' : ''} ${isGrouped ? 'is-grouped' : ''}`}
+                    className={`message-bubble flex gap-3 px-1 py-1 ${isSelf ? 'self' : ''} ${isGrouped ? 'is-grouped' : ''}`}
                     data-message-id={msg.id}
                   >
                     {!isGrouped && (
-                      <div className="message-avatar">
+                      <div className="message-avatar flex-shrink-0">
                         {msg.sender.avatar ? (
-                          <img src={msg.sender.avatar} alt={msg.sender.name} className="message-avatar" />
+                          <img src={msg.sender.avatar} alt={msg.sender.name} className="w-9 h-9 rounded-full object-cover" />
                         ) : (
-                          <div className="message-avatar-fallback">
+                          <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-bold text-base">
                             {msg.sender.name.charAt(0).toUpperCase()}
                           </div>
                         )}
                       </div>
                     )}
-                    <div className="message-content">
+                    <div className="message-content flex-1 min-w-0 flex flex-col gap-1.5">
                       {!isSelf && !isGrouped && (
-                        <div className="message-header">
-                          <span className="message-author">{msg.sender.name}</span>
-                          <span className="message-timestamp">{formatRelativeTime(msg.timestamp)}</span>
-                          {msg.pinned && <Pin className="w-3.5 h-3.5 text-yellow-400" />}
+                        <div className="message-header flex items-center gap-2">
+                          <span className="message-author text-sm font-semibold text-gray-900">{msg.sender.name}</span>
+                          <span className="message-timestamp text-xs text-gray-500">{formatRelativeTime(msg.timestamp)}</span>
+                          {msg.pinned && <Pin className="w-3.5 h-3.5 text-amber-400" />}
                         </div>
                       )}
                       <div className={`message-text ${isSelf ? 'self' : ''}`}>
-                        {msg.content}
+                        <div className={`message-bubble ${isSelf ? 'message-bubble-self' : 'message-bubble-other'} max-w-[85%] rounded-2xl px-4 py-2 ${isSelf ? 'bg-[#00BFFF] text-white' : 'bg-gray-100 text-gray-800'} ${isSelf ? 'rounded-tr-xl' : 'rounded-tl-xl'}`}>
+                          <div className="message-copy text-sm leading-relaxed">{msg.content}</div>
+                        </div>
                       </div>
                       {isSelf && (
-                        <div className="message-timestamp" style={{ alignSelf: 'flex-end', marginRight: '12px' }}>
+                        <div className="message-timestamp text-xs text-white/70 text-right mr-1 flex items-center justify-end gap-1">
                           {formatRelativeTime(msg.timestamp)}
-                          {msg.pinned && <Pin className="w-3.5 h-3.5 text-yellow-300 ml-1 inline" />}
+                          {msg.pinned && <Pin className="w-3.5 h-3.5 text-amber-300" />}
                         </div>
                       )}
                     </div>
 
                     {/* Hover Actions */}
-                    <div className="message-hover-actions">
+                    <div className="message-hover-actions flex items-center gap-1 opacity-0 transition-opacity hover:opacity-100 self-start -ml-2">
                       {!isSelf && (
                         <button
-                          className="message-hover-btn"
+                          className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
                           onClick={(e) => {
                             e.stopPropagation();
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -550,7 +560,7 @@ const ChatArea: React.FC = () => {
                       {isSelf && !editingMessageId && (
                         <>
                           <button
-                            className="message-hover-btn"
+                            className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleStartEdit(msg);
@@ -561,7 +571,7 @@ const ChatArea: React.FC = () => {
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button
-                            className="message-hover-btn text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+                            className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-rose-400 hover:text-rose-500 hover:bg-rose-50 transition-colors shadow-sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleDeleteMessage(msg.id);
@@ -576,7 +586,7 @@ const ChatArea: React.FC = () => {
                       {!isSelf && (
                         <>
                           <button
-                            className="message-hover-btn"
+                            className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleReply(msg);
@@ -587,7 +597,7 @@ const ChatArea: React.FC = () => {
                             <Reply className="w-4 h-4" />
                           </button>
                           <button
-                            className="message-hover-btn"
+                            className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleCopyMessage(msg.content || '');
@@ -598,7 +608,7 @@ const ChatArea: React.FC = () => {
                             <Copy className="w-4 h-4" />
                           </button>
                           <button
-                            className="message-hover-btn text-amber-400 hover:text-amber-300 hover:bg-amber-500/10"
+                            className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-amber-400 hover:text-amber-500 hover:bg-amber-50 transition-colors shadow-sm"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleFlagMessage();
@@ -612,7 +622,7 @@ const ChatArea: React.FC = () => {
                       )}
                       {canModerate && !msg.pinned && (
                         <button
-                          className="message-hover-btn"
+                          className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleTogglePin(msg.id);
@@ -627,7 +637,7 @@ const ChatArea: React.FC = () => {
 
                     {/* Emoji Picker Popover */}
                     {showEmojiPicker?.messageId === msg.id && (
-                      <div className="emoji-picker-popover" style={{ right: '0', bottom: '100%', marginBottom: '4px' }}>
+                      <div className="emoji-picker-popover absolute right-0 bottom-full mb-2 flex gap-2 p-2 rounded-xl border border-gray-200 bg-white shadow-lg z-10" style={{ right: '0', bottom: '100%', marginBottom: '4px' }}>
                         {['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '👀', '👏', '🙏'].map((emoji) => (
                           <button
                             key={emoji}
@@ -635,8 +645,8 @@ const ChatArea: React.FC = () => {
                               e.stopPropagation();
                               handleEmojiPick(emoji);
                             }}
-                            className="message-hover-btn text-2xl"
-                            style={{ width: '36px', height: '36px', borderRadius: '8px', fontSize: '18px' }}
+                            className="p-2 rounded-lg text-2xl hover:bg-gray-100 transition-colors"
+                            style={{ width: '40px', height: '40px', borderRadius: '8px', fontSize: '18px' }}
                           >
                             {emoji}
                           </button>
@@ -650,13 +660,13 @@ const ChatArea: React.FC = () => {
 
             {/* Typing Indicator */}
             {isTyping && (
-              <div className="chat-area-typing animate-in fade-in">
-                <span className="font-semibold text-indigo-400">{typingUser || 'Alguém'}</span>
+              <div className="chat-area-typing flex items-center gap-2 px-4 py-2 text-sm text-gray-500 animate-in fade-in">
+                <span className="font-semibold text-[#00BFFF]">{typingUser || 'Alguém'}</span>
                 <span>está digitando</span>
-                <span className="chat-area-typing-dots">
-                  <span />
-                  <span />
-                  <span />
+                <span className="chat-area-typing-dots flex gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00BFFF] animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00BFFF] animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00BFFF] animate-bounce" style={{ animationDelay: '300ms' }} />
                 </span>
               </div>
             )}
@@ -669,16 +679,16 @@ const ChatArea: React.FC = () => {
       {/* ========================================
          BOTTOM: Floating Message Input
          ======================================== */}
-      <div className="chat-area-input-container">
-        <div className="chat-area-input-wrapper">
-          <div className="chat-area-input-actions">
-            <button className="chat-area-input-btn" title="Anexar arquivo" aria-label="Anexar arquivo">
+      <div className="chat-area-input-container p-4 border-t border-gray-100 bg-white">
+        <div className="chat-area-input-wrapper flex items-end gap-2 rounded-2xl bg-gray-50 border border-gray-200 p-2 shadow-sm focus-within:border-[#00BFFF] focus-within:ring-2 focus-within:ring-[#00BFFF]/20 transition-all">
+          <div className="chat-area-input-actions flex gap-1">
+            <button className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors" title="Anexar arquivo" aria-label="Anexar arquivo">
               <Paperclip className="w-5 h-5" />
             </button>
-            <button className="chat-area-input-btn" title="Gravar áudio" aria-label="Gravar áudio">
+            <button className="p-2 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors" title="Gravar áudio" aria-label="Gravar áudio">
               <Mic className="w-5 h-5" />
             </button>
-            <button className="chat-area-input-btn" title="Emojis" aria-label="Emojis" onClick={() => {}}>
+            <button className="p-2 rounded-xl text-gray-400 hover:text-amber-400 hover:bg-amber-50 transition-colors" title="Emojis" aria-label="Emojis" onClick={() => {}}>
               <Smile className="w-5 h-5" />
             </button>
           </div>
@@ -691,14 +701,14 @@ const ChatArea: React.FC = () => {
             }}
             onKeyDown={handleKeyDown}
             placeholder={editingMessageId ? `Editando...` : isDirectMessages ? 'Mensagem...' : `#${activeChannel?.name || 'chat'}...`}
-            className="chat-area-input"
+            className="chat-area-input flex-1 bg-transparent border-0 resize-none py-1.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none max-h-32 min-h-[20px]"
             rows={1}
             aria-label={editingMessageId ? 'Editar mensagem' : 'Digite sua mensagem'}
           />
           <button
             onClick={handleSendMessage}
             disabled={!editingMessageId ? !messageInputRef.current?.value.trim() : !editContent.trim()}
-            className="chat-area-input-send"
+            className="chat-area-input-send p-2.5 rounded-xl bg-[#00BFFF] hover:bg-[#009FD6] text-white transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
             aria-label={editingMessageId ? 'Salvar edição' : 'Enviar mensagem'}
           >
             <Send className="w-5 h-5" />

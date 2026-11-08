@@ -8,7 +8,6 @@ import {
   MessageSquare,
   ExternalLink,
   Edit3,
-  Palette,
   Award,
   Users,
   Plus,
@@ -33,7 +32,6 @@ export const ContextPanel: React.FC = () => {
     isDmLoading,
     openUserProfile,
     setIsProfileEditorOpen,
-    setIsThemeCustomizerOpen,
     startDirectCall,
     leaveCommunity,
     members,
@@ -297,13 +295,6 @@ export const ContextPanel: React.FC = () => {
             >
               <Edit3 className="w-3.5 h-3.5" />
               <span>Editar Perfil</span>
-            </button>
-            <button
-              onClick={() => setIsThemeCustomizerOpen(true)}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-nest-pill bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs border border-slate-700 transition-all"
-            >
-              <Palette className="w-3.5 h-3.5 text-sky-400" />
-              <span>Tema</span>
             </button>
           </div>
         ) : (

@@ -3,7 +3,6 @@ import { AtSign, Camera, Check, ImagePlus, UserRound } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Avatar } from '../common/Avatar';
 import { ImageCropperModal } from '../common/ImageCropperModal';
-import { AuthThemeToggle } from '../auth/AuthThemeToggle';
 import { requireSupabase } from '../../services/supabaseClient';
 
 type CropTarget = 'avatar' | 'cover';
@@ -66,7 +65,6 @@ export const ProfileOnboarding: React.FC = () => {
   };
 
   return <div className="auth-experience auth-onboarding-overlay">
-    <AuthThemeToggle />
     <main className="auth-card auth-onboarding-card" role="dialog" aria-modal="true" aria-labelledby="profile-onboarding-title">
       <div className="auth-brand-mark" aria-hidden="true"><UserRound /></div>
       <p className="auth-eyebrow">SEU PERFIL</p>

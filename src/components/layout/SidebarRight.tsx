@@ -8,7 +8,6 @@ import {
   MessageSquare,
   ExternalLink,
   Edit3,
-  Palette,
   Award,
   Users,
   Plus,
@@ -33,7 +32,6 @@ const SidebarRightComponent: React.FC = () => {
     isDmLoading,
     openUserProfile,
     setIsProfileEditorOpen,
-    setIsThemeCustomizerOpen,
     startDirectCall,
     leaveCommunity,
     members,
@@ -287,20 +285,13 @@ const SidebarRightComponent: React.FC = () => {
 
         {/* Action Buttons */}
         {isSelf ? (
-          <div className="grid grid-cols-2 gap-2 mb-5">
+          <div className="grid grid-cols-1 gap-2 mb-5">
             <button
               onClick={() => setIsProfileEditorOpen(true)}
               className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-md transition-all"
             >
               <Edit3 className="w-3.5 h-3.5" />
               <span>Editar Perfil</span>
-            </button>
-            <button
-              onClick={() => setIsThemeCustomizerOpen(true)}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs border border-slate-700 transition-all"
-            >
-              <Palette className="w-3.5 h-3.5 text-sky-400" />
-              <span>Tema</span>
             </button>
           </div>
         ) : (

@@ -5,8 +5,6 @@ import {
   Bell,
   X,
   ChevronDown,
-  Moon,
-  Sun,
   User,
   Settings,
   LogOut,
@@ -65,10 +63,7 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
     setCurrentChannelId,
     isDirectMessages,
     setIsDirectMessages,
-    theme,
-    updateTheme,
     openUserProfile,
-    setIsThemeCustomizerOpen,
     setIsProfileEditorOpen,
     setIsLoggedIn,
     addToast,
@@ -268,16 +263,6 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const toggleDarkMode = () => {
-    if (theme.mode === 'light') {
-      updateTheme({ mode: 'dark' });
-      addToast('Tema Escuro', 'Modo escuro ativado.');
-    } else {
-      updateTheme({ mode: 'light' });
-      addToast('Tema Claro', 'Modo claro ativado.');
-    }
-  };
-
   // Build section name: Community > Channel or DM name
   const getSectionName = () => {
     if (isDirectMessages) {
@@ -297,10 +282,10 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
   const sectionName = getSectionName();
 
   return (
-    <header className={`h-14 px-3 md:px-4 bg-[var(--discord-bg)]/80 backdrop-blur-sm border-b border-[var(--discord-border)] flex items-center justify-between sticky top-0 z-30 transition-colors ${className}`}>
+    <header className={`h-14 px-3 md:px-4 bg-white border-b border-gray-100 flex items-center justify-between sticky top-0 z-30 ${className}`}>
       {/* LEFT: Section/Channel Name */}
       <div className="flex items-center justify-start min-w-0 pr-4">
-        <span className="text-sm font-semibold text-slate-200 truncate max-w-xs md:max-w-md lg:max-w-lg">
+        <span className="text-sm font-semibold text-gray-900 truncate max-w-xs md:max-w-md lg:max-w-lg">
           {sectionName}
         </span>
       </div>
@@ -308,19 +293,19 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
       {/* CENTER: Unified Search Bar */}
       <div className="flex-1 flex items-center justify-center px-4 md:px-8 max-w-2xl">
         <div className="relative w-full max-w-xl">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" aria-hidden="true" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" aria-hidden="true" />
           <input
             type="text"
             placeholder="Buscar mensagens, amigos, grupos..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-800/50 border border-slate-700/50 rounded-full px-10 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all backdrop-blur-sm"
+            className="w-full bg-gray-100 border-0 rounded-full px-10 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#00BFFF]/20 transition-all"
             aria-label="Buscar mensagens, amigos e grupos"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
               aria-label="Limpar pesquisa"
             >
               <X className="w-4 h-4" />
@@ -329,7 +314,7 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
         </div>
       </div>
 
-      {/* RIGHT: Notifications + Theme + Profile */}
+      {/* RIGHT: Notifications + Profile */}
       <div className="flex items-center gap-1.5 sm:gap-2">
         {/* Notifications */}
         <div className="relative" ref={notificationsRef}>
@@ -337,10 +322,10 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
           onClick={() => { setIsNotificationsOpen((value) => !value); markNotificationsRead(); }}
           title={notificationCount ? `${notificationCount} notificações não lidas` : 'Nenhuma notificação não lida'}
           aria-label={notificationCount ? `${notificationCount} notificações não lidas` : 'Nenhuma notificação não lida'}
-          className={`relative p-2 rounded-full hover:bg-slate-800 transition-colors ${notificationCount ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
+          className={`relative p-2 rounded-full hover:bg-gray-100 transition-colors ${notificationCount ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
         >
           <Bell className="w-4 h-4" />
-          {notificationCount > 0 && <span className="notification-badge !bg-red-500 !text-white" aria-hidden="true">{notificationCount}</span>}
+          {notificationCount > 0 && <span className="notification-badge bg-[#00BFFF] text-white" aria-hidden="true">{notificationCount}</span>}
         </button>
         {isNotificationsOpen && (() => {
             const relevantNotifications = [...inviteNotifications, ...notifications.filter(n => n.type === 'dm_message' || n.type === 'mention' || n.type === 'channel_message')]
@@ -361,22 +346,22 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
               const isUnread = group.some(n => !n.read_at);
               const latestDate = group.reduce((latest, n) => new Date(n.created_at) > new Date(latest) ? n.created_at : latest, first.created_at);
 
-              const baseClasses = 'w-full border-b border-slate-800 px-4 py-3 text-left transition-colors relative group';
-              const unreadBg = isUnread ? 'bg-slate-900/50' : 'opacity-60';
-              const unreadIndicator = isUnread ? <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-sky-400" aria-hidden="true" /> : null;
-              const count = group.length > 1 ? <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-slate-800 text-slate-400">{group.length}</span> : null;
+              const baseClasses = 'w-full border-b border-gray-100 px-4 py-3 text-left transition-colors relative group';
+              const unreadBg = isUnread ? 'bg-[#00BFFF]/5' : 'bg-white';
+              const unreadIndicator = isUnread ? <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-[#00BFFF]" aria-hidden="true" /> : null;
+              const count = group.length > 1 ? <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-gray-100 text-gray-500">{group.length}</span> : null;
 
               if (first.type === 'community_invite') {
                 const inviterName = typeof payload?.inviter_name === 'string' ? payload.inviter_name : '@membro';
                 const communityName = typeof payload?.community_name === 'string' ? payload.community_name : 'uma comunidade';
                 return (
-                  <div key={`${first.actor_id}:community_invite`} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
+                  <div key={`${first.actor_id}:community_invite`} className={`${baseClasses} ${unreadBg} hover:bg-gray-50`}>
                     {unreadIndicator}
                     <button onClick={() => handleNotificationClick(first)} className="w-full text-left flex items-center justify-between">
-                      <span className="block text-sm text-slate-200">{inviterName} te convidou para {communityName}</span>
+                      <span className="block text-sm text-gray-900">{inviterName} te convidou para {communityName}</span>
                       {count}
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
                   </div>
                 );
               }
@@ -384,15 +369,15 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
                 const senderName = typeof payload?.sender_name === 'string' ? payload.sender_name : 'Alguém';
                 const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Nova mensagem';
                 return (
-                  <div key={`${first.actor_id}:dm_message`} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
+                  <div key={`${first.actor_id}:dm_message`} className={`${baseClasses} ${unreadBg} hover:bg-gray-50`}>
                     {unreadIndicator}
                     <button onClick={() => handleNotificationClick(first)} className="w-full text-left flex items-center justify-between">
-                      <span className="block text-sm text-slate-200 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-sky-400" /> {senderName}</span>
+                      <span className="block text-sm text-gray-900 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-[#00BFFF]" /> {senderName}</span>
                       {count}
                     </button>
-                    <span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span>
-                    <span className="mt-1 block text-[10px] text-slate-500">{new Date(latestDate).toLocaleString('pt-BR')}</span>
-                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                    <span className="mt-1 block text-xs text-gray-500 truncate">{messagePreview}</span>
+                    <span className="mt-1 block text-[10px] text-gray-400">{new Date(latestDate).toLocaleString('pt-BR')}</span>
+                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
                   </div>
                 );
               }
@@ -400,17 +385,17 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
                 const channelName = typeof payload?.channel_name === 'string' ? payload.channel_name : 'canal';
                 const mentionType = typeof payload?.mention_type === 'string' ? payload.mention_type : 'user';
                 const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Menção';
-                const icon = mentionType === 'todos' ? <span className="text-amber-400">@todos</span> : <span className="text-indigo-400">@{typeof payload?.mentioned_handle === 'string' ? payload.mentioned_handle : 'usuário'}</span>;
+                const icon = mentionType === 'todos' ? <span className="text-amber-400">@todos</span> : <span className="text-[#00BFFF]">@{typeof payload?.mentioned_handle === 'string' ? payload.mentioned_handle : 'usuário'}</span>;
                 return (
-                  <div key={`${first.actor_id}:mention`} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
+                  <div key={`${first.actor_id}:mention`} className={`${baseClasses} ${unreadBg} hover:bg-gray-50`}>
                     {unreadIndicator}
                     <button onClick={() => handleNotificationClick(first)} className="w-full text-left flex items-center justify-between">
-                      <span className="block text-sm text-slate-200 flex items-center gap-1.5"><AtSign className="w-3.5 h-3.5 text-indigo-400" /> Menção em #{channelName} {icon}</span>
+                      <span className="block text-sm text-gray-900 flex items-center gap-1.5"><AtSign className="w-3.5 h-3.5 text-[#00BFFF]" /> Menção em #{channelName} {icon}</span>
                       {count}
                     </button>
-                    <span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span>
-                    <span className="mt-1 block text-[10px] text-slate-500">{new Date(latestDate).toLocaleString('pt-BR')}</span>
-                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                    <span className="mt-1 block text-xs text-gray-500 truncate">{messagePreview}</span>
+                    <span className="mt-1 block text-[10px] text-gray-400">{new Date(latestDate).toLocaleString('pt-BR')}</span>
+                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
                   </div>
                 );
               }
@@ -419,15 +404,15 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
                 const senderName = typeof payload?.sender_name === 'string' ? payload.sender_name : 'Alguém';
                 const messagePreview = typeof payload?.message === 'string' ? payload.message.slice(0, 50) : 'Nova mensagem';
                 return (
-                  <div key={`${first.actor_id}:channel_message`} className={`${baseClasses} ${unreadBg} hover:bg-slate-900`}>
+                  <div key={`${first.actor_id}:channel_message`} className={`${baseClasses} ${unreadBg} hover:bg-gray-50`}>
                     {unreadIndicator}
                     <button onClick={() => handleNotificationClick(first)} className="w-full text-left flex items-center justify-between">
-                      <span className="block text-sm text-slate-200 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-emerald-400" /> {senderName} em #{channelName}</span>
+                      <span className="block text-sm text-gray-900 flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-emerald-500" /> {senderName} em #{channelName}</span>
                       {count}
                     </button>
-                    <span className="mt-1 block text-xs text-slate-400 truncate">{messagePreview}</span>
-                    <span className="mt-1 block text-[10px] text-slate-500">{new Date(latestDate).toLocaleString('pt-BR')}</span>
-                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                    <span className="mt-1 block text-xs text-gray-500 truncate">{messagePreview}</span>
+                    <span className="mt-1 block text-[10px] text-gray-400">{new Date(latestDate).toLocaleString('pt-BR')}</span>
+                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
                   </div>
                 );
               }
@@ -435,20 +420,20 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
             };
 
             return (
-              <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl flex flex-col overflow-hidden">
-                <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 flex-shrink-0">
-                  <strong className="text-sm text-white">Notificações</strong>
-                  <button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" className="text-slate-400 hover:text-white"><X className="h-4 w-4" /></button>
+              <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-2xl border border-gray-200 bg-white shadow-2xl flex flex-col overflow-hidden">
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 flex-shrink-0">
+                  <strong className="text-sm text-gray-900">Notificações</strong>
+                  <button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
                 </div>
                 <div className="flex-1 max-h-80 overflow-y-auto">
                   {relevantNotifications.length === 0 ? (
-                    <p className="p-4 text-sm text-slate-400">Nenhuma notificação por enquanto.</p>
+                    <p className="p-4 text-sm text-gray-500">Nenhuma notificação por enquanto.</p>
                   ) : (
                     Array.from(groupedNotifications.values()).map(renderNotificationGroup)
                   )}
                 </div>
-                <div className="border-t border-slate-800 p-3 flex-shrink-0">
-                  <button onClick={handleClearAllNotifications} className="w-full py-2 text-sm font-medium text-rose-400 hover:text-rose-300 transition-colors rounded-sm hover:bg-rose-500/10">
+                <div className="border-t border-gray-100 p-3 flex-shrink-0">
+                  <button onClick={handleClearAllNotifications} className="w-full py-2 text-sm font-medium text-rose-500 hover:text-rose-600 transition-colors rounded-sm hover:bg-rose-50">
                     Limpar todas
                   </button>
                 </div>
@@ -457,59 +442,39 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
           })()}
         </div>
 
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleDarkMode}
-          title="Alternar tema"
-          className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
-        >
-          {theme.mode === 'light' ? (
-            <Moon className="w-4 h-4" />
-          ) : (
-            <Sun className="w-4 h-4 text-amber-400" />
-          )}
-        </button>
-
         {/* Profile / User Menu */}
         <div className="relative" ref={userMenuRef}>
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className="flex items-center gap-2 p-1.5 rounded-full hover:bg-slate-800 transition-colors"
+            className="flex items-center gap-2 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
             aria-label="Menu do usuário"
             aria-expanded={isUserMenuOpen}
           >
             {currentUser.avatar ? (
               <img src={currentUser.avatar} alt={currentUser.name} className="w-7 h-7 rounded-full" />
             ) : (
-              <div className="w-7 h-7 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">
+              <div className="w-7 h-7 rounded-full bg-[#00BFFF] flex items-center justify-center text-white font-bold text-sm">
                 {currentUser.name.charAt(0).toUpperCase()}
               </div>
             )}
-            <ChevronDown className="w-4 h-4 text-slate-400" />
+            <ChevronDown className="w-4 h-4 text-gray-400" />
           </button>
           {isUserMenuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl py-1 overflow-hidden">
-              <div className="px-3 py-2 border-b border-slate-800">
-                <p className="text-sm font-semibold text-white truncate">{currentUser.name}</p>
-                <p className="text-xs text-slate-400 truncate">@{currentUser.handle}</p>
+            <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-gray-200 bg-white shadow-2xl py-1 overflow-hidden">
+              <div className="px-3 py-2 border-b border-gray-100">
+                <p className="text-sm font-semibold text-gray-900 truncate">{currentUser.name}</p>
+                <p className="text-xs text-gray-500 truncate">@{currentUser.handle}</p>
               </div>
               <button
                 onClick={() => { setIsProfileEditorOpen(true); setIsUserMenuOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 hover:text-white transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
               >
-                <User className="w-4 h-4" />
+                <User className="w-4 h-4 text-gray-400" />
                 Meu Perfil
               </button>
               <button
-                onClick={() => setIsThemeCustomizerOpen(true)}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 hover:text-white transition-colors"
-              >
-                <Moon className="w-4 h-4" />
-                Tema e Aparência
-              </button>
-              <button
                 onClick={() => { setIsLoggedIn(false); setIsUserMenuOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-rose-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
               >
                 <LogOut className="w-4 h-4" />
                 Sair
