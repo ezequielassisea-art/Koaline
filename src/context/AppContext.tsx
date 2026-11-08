@@ -2398,6 +2398,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notify.error('A mensagem não pode ficar vazia.');
       return;
     }
+
+    // TAREFA 2: Dupla checagem - verifica se a mensagem pertence ao usuário atual antes de enviar
+    const channelMsgs = messages[activeChannelKey] || [];
+    const message = channelMsgs.find((m) => m.id === messageId);
+    if (!message || message.senderId !== currentUser.id) {
+      notify.error('Acesso negado.');
+      return;
+    }
+
     console.log('[editMessage] ID da mensagem a ser editada:', messageId, '| Conteúdo:', trimmedContent);
     const editedAt = new Date().toISOString();
     const { data, error } = await client
@@ -2407,7 +2416,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .select();
     if (error) {
       console.error('[editMessage] Erro no banco ao editar:', error);
-      notify.error('Erro ao editar no banco: ' + error.message);
+
+      // TAREFA 1: Tratamento específico para erro de permissão/RLS
+      const isPermissionError = error.code === '42501' ||
+        error.message?.includes('row-level security policy') ||
+        error.message?.includes('permission denied') ||
+        error.message?.includes('policy');
+
+      if (isPermissionError) {
+        notify.error('Você não tem permissão para alterar esta mensagem.');
+      } else {
+        notify.error('Erro ao editar no banco: ' + error.message);
+      }
       return;
     }
     if (!data || data.length === 0) {
@@ -2434,10 +2454,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       notify.error('A conexão com o Supabase não está configurada.');
       return;
     }
+
+    // TAREFA 2: Dupla checagem - verifica se a mensagem pertence ao usuário atual antes de enviar
+    const channelMsgs = messages[activeChannelKey] || [];
+    const message = channelMsgs.find((m) => m.id === messageId);
+    if (!message || message.senderId !== currentUser.id) {
+      notify.error('Acesso negado.');
+      return;
+    }
+
     const { error } = await client.from('messages').delete().eq('id', messageId);
     if (error) {
       console.error('[deleteMessage] Erro ao apagar mensagem:', error);
-      notify.error('Não foi possível apagar a mensagem: ' + error.message);
+
+      // TAREFA 1: Tratamento específico para erro de permissão/RLS
+      const isPermissionError = error.code === '42501' ||
+        error.message?.includes('row-level security policy') ||
+        error.message?.includes('permission denied') ||
+        error.message?.includes('policy');
+
+      if (isPermissionError) {
+        notify.error('Você não tem permissão para alterar esta mensagem.');
+      } else {
+        notify.error('Não foi possível apagar a mensagem: ' + error.message);
+      }
       return;
     }
     // Sucesso no banco - atualiza estado local
