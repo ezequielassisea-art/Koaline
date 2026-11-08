@@ -5,15 +5,8 @@ import {
   Bell,
   X,
   ChevronDown,
-  User,
-  Settings,
-  LogOut,
   Search,
   UserPlus,
-  Volume2,
-  VolumeX,
-  ChevronLeft,
-  ChevronRight,
   MessageSquare,
   AtSign,
 } from 'lucide-react';
@@ -80,7 +73,6 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
   } = useApp();
 
   const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [openingNotificationId, setOpeningNotificationId] = useState<string | null>(null);
   const [inviteModal, setInviteModal] = useState<CommunityInviteNotification | null>(null);
@@ -98,7 +90,6 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
   const [searchQuery, setSearchQuery] = useState('');
 
   const commDropdownRef = useRef<HTMLDivElement>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
 
   const activeCommunity = communities.find((c) => c.id === currentCommunityId) || communities[0];
@@ -252,9 +243,6 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
       if (commDropdownRef.current && !commDropdownRef.current.contains(e.target as Node)) {
         setIsCommunityDropdownOpen(false);
       }
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setIsUserMenuOpen(false);
-      }
       if (notificationsRef.current && !notificationsRef.current.contains(e.target as Node)) {
         setIsNotificationsOpen(false);
       }
@@ -314,7 +302,7 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
         </div>
       </div>
 
-      {/* RIGHT: Notifications + Profile */}
+      {/* RIGHT: Notifications */}
       <div className="flex items-center gap-1.5 sm:gap-2">
         {/* Notifications */}
         <div className="relative" ref={notificationsRef}>
@@ -440,47 +428,6 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
               </div>
             );
           })()}
-        </div>
-
-        {/* Profile / User Menu */}
-        <div className="relative" ref={userMenuRef}>
-          <button
-            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-            className="flex items-center gap-2 p-1.5 rounded-full hover:bg-gray-100 transition-colors"
-            aria-label="Menu do usuário"
-            aria-expanded={isUserMenuOpen}
-          >
-            {currentUser.avatar ? (
-              <img src={currentUser.avatar} alt={currentUser.name} className="w-7 h-7 rounded-full" />
-            ) : (
-              <div className="w-7 h-7 rounded-full bg-[#00BFFF] flex items-center justify-center text-white font-bold text-sm">
-                {currentUser.name.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <ChevronDown className="w-4 h-4 text-gray-400" />
-          </button>
-          {isUserMenuOpen && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-gray-200 bg-white shadow-2xl py-1 overflow-hidden">
-              <div className="px-3 py-2 border-b border-gray-100">
-                <p className="text-sm font-semibold text-gray-900 truncate">{currentUser.name}</p>
-                <p className="text-xs text-gray-500 truncate">@{currentUser.handle}</p>
-              </div>
-              <button
-                onClick={() => { setIsProfileEditorOpen(true); setIsUserMenuOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-              >
-                <User className="w-4 h-4 text-gray-400" />
-                Meu Perfil
-              </button>
-              <button
-                onClick={() => { setIsLoggedIn(false); setIsUserMenuOpen(false); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-rose-500 hover:bg-rose-50 hover:text-rose-600 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                Sair
-              </button>
-            </div>
-          )}
         </div>
       </div>
       <InviteModal

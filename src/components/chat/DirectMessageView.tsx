@@ -19,6 +19,8 @@ export const DirectMessageView: React.FC = () => {
     isDmLoading,
     currentUser,
     markChannelRead,
+    markMessageRead,
+    getMessageReadStatus,
     lastReadAtByChannel,
     isTyping,
     typingUser,
@@ -26,6 +28,7 @@ export const DirectMessageView: React.FC = () => {
   } = useApp();
 
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
+  const [editTarget, setEditTarget] = useState<Message | null>(null);
   const [localDmMessages, setLocalDmMessages] = useState<Message[]>([]);
   const [loadingMessages, setLoadingMessages] = useState<boolean>(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -246,7 +249,7 @@ export const DirectMessageView: React.FC = () => {
   // Exibe um estado de "Carregando..." enquanto a conversa é criada/buscada no Supabase
   if ((isDmLoading || loadingMessages) && messagesList.length === 0) {
     return (
-      <div className="flex-1 flex flex-col h-full bg-surface-sunken relative min-w-0">
+      <div className="flex-1 flex flex-col h-full bg-white relative min-w-0">
         <ChatHeader onToggleSearch={() => {}} isSearching={false} />
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400">
           <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
@@ -259,7 +262,7 @@ export const DirectMessageView: React.FC = () => {
   // Se a conversa for nula e não tiver DM ativa selecionada
   if (!conversation && !conversationId) {
     return (
-      <div className="flex-1 flex flex-col h-full bg-surface-sunken relative min-w-0">
+      <div className="flex-1 flex flex-col h-full bg-white relative min-w-0">
         <ChatHeader onToggleSearch={() => {}} isSearching={false} />
         <div className="flex-1 flex items-center justify-center p-6 text-center">
           <EmptyState
@@ -273,7 +276,7 @@ export const DirectMessageView: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-surface-sunken relative min-w-0">
+    <div className="flex-1 flex flex-col h-full bg-white relative min-w-0">
       <ChatHeader onToggleSearch={() => {}} isSearching={false} />
 
       {/* Messages Scroll Area */}
@@ -340,7 +343,9 @@ export const DirectMessageView: React.FC = () => {
                       hour: '2-digit',
                       minute: '2-digit',
                     }).format(parseAppDate(msg.timestamp))}
+                    readStatus={getMessageReadStatus(msg.id, conversationId || '', true)}
                     onReply={(target) => setReplyTarget(target)}
+                    onEdit={(target) => setEditTarget(target)}
                   />
                 </React.Fragment>
               );
@@ -366,7 +371,12 @@ export const DirectMessageView: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      <MessageInput replyTarget={replyTarget} onClearReply={() => setReplyTarget(null)} />
+      <MessageInput
+        replyTarget={replyTarget}
+        onClearReply={() => setReplyTarget(null)}
+        editTarget={editTarget}
+        onCancelEdit={() => setEditTarget(null)}
+      />
     </div>
   );
 };

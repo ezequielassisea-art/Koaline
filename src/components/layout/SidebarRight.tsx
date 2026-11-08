@@ -111,7 +111,7 @@ const SidebarRightComponent: React.FC = () => {
     const getRoleIcon = (role?: string) => {
       if (!role) return null;
       if (role === 'owner') return <Shield className="w-3.5 h-3.5 text-amber-400" aria-label="Owner" />;
-      if (role === 'admin') return <Shield className="w-3.5 h-3.5 text-indigo-400" aria-label="Admin" />;
+      if (role === 'admin') return <Shield className="w-3.5 h-3.5 text-[#00BFFF]" aria-label="Admin" />;
       if (role === 'moderator') return <Shield className="w-3.5 h-3.5 text-sky-400" aria-label="Moderator" />;
       return null;
     };
@@ -119,23 +119,23 @@ const SidebarRightComponent: React.FC = () => {
     const renderMember = (member: typeof currentUser) => (
       <button
         key={member.id}
-        className="group flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 transition-colors w-full text-left"
+        className="group flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors w-full text-left"
         onClick={() => openUserProfile(member)}
       >
         {/* Avatar 32px */}
         <div className="relative flex-shrink-0">
           {member.avatar ? (
-            <img src={member.avatar} alt="" className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700" />
+            <img src={member.avatar} alt="" className="w-8 h-8 rounded-full object-cover ring-1 ring-gray-200" />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-slate-700 ring-1 ring-slate-700 grid place-items-center text-sm font-bold text-white">
+            <div className="w-8 h-8 rounded-full bg-gray-100 ring-1 ring-gray-200 grid place-items-center text-sm font-bold text-gray-600">
               {member.name.trim().charAt(0).toUpperCase() || '◇'}
             </div>
           )}
           <span
-            className={`absolute bottom-0 right-0 w-2 h-2 rounded-full ring-2 ring-slate-900 ${
+            className={`absolute bottom-0 right-0 w-2 h-2 rounded-full ring-2 ring-white ${
               member.status === 'online' ? 'bg-emerald-500' :
               member.status === 'idle' ? 'bg-amber-500' :
-              member.status === 'dnd' ? 'bg-rose-500' : 'bg-zinc-400'
+              member.status === 'dnd' ? 'bg-rose-500' : 'bg-gray-400'
             }`}
             aria-label={member.status === 'online' ? 'Online' : 'Offline'}
           />
@@ -144,35 +144,35 @@ const SidebarRightComponent: React.FC = () => {
         {/* Name & Handle */}
         <div className="flex-1 min-w-0 flex flex-col justify-center">
           <div className="flex items-center gap-1.5">
-            <span className="truncate font-semibold text-sm text-white">{member.name || 'Membro'}</span>
+            <span className="truncate font-semibold text-sm text-gray-900">{member.name || 'Membro'}</span>
             {getRoleIcon(member.communityRole)}
           </div>
-          <span className="truncate text-xs text-slate-400">@{member.handle || 'usuario'}</span>
+          <span className="truncate text-xs text-gray-500">@{member.handle || 'usuario'}</span>
         </div>
       </button>
     );
 
     return (
-      <aside className="w-[300px] flex-shrink-0 flex flex-col h-full bg-[var(--surface)] border-l border-[var(--border)] overflow-y-auto animate-in slide-in-from-right duration-200 select-none">
-        <header className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+      <aside className="w-[280px] flex-shrink-0 flex flex-col h-full bg-white border-l border-gray-100 overflow-y-auto animate-in slide-in-from-right duration-200 select-none">
+        <header className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              Membros - <span className="text-slate-400 font-normal">{totalCount}</span>
+            <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+              <Users className="w-4 h-4 text-[#00BFFF]" />
+              Membros - <span className="text-gray-500 font-normal">{totalCount}</span>
             </h2>
           </div>
           <div className="flex items-center gap-1.5">
-            <button className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors" onClick={handleInviteClick} title="Copiar um convite ativo" aria-label="Copiar convite ativo"><Plus className="w-4 h-4" /></button>
-            <button className="p-2 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-slate-800 transition-colors" onClick={async () => { const confirmed = window.confirm('Tem certeza que deseja sair desta comunidade?'); if (confirmed) { await leaveCommunity(currentCommunityId); closeContextPanel(); } }} title="Sair da Comunidade" aria-label="Sair da Comunidade"><LogOut className="w-4 h-4" /></button>
-            <button className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors" onClick={closeContextPanel} title="Fechar painel" aria-label="Fechar painel"><X className="w-4 h-4" /></button>
+            <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" onClick={handleInviteClick} title="Copiar um convite ativo" aria-label="Copiar convite ativo"><Plus className="w-4 h-4" /></button>
+            <button className="p-2 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 transition-colors" onClick={async () => { const confirmed = window.confirm('Tem certeza que deseja sair desta comunidade?'); if (confirmed) { await leaveCommunity(currentCommunityId); closeContextPanel(); } }} title="Sair da Comunidade" aria-label="Sair da Comunidade"><LogOut className="w-4 h-4" /></button>
+            <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" onClick={closeContextPanel} title="Fechar painel" aria-label="Fechar painel"><X className="w-4 h-4" /></button>
           </div>
         </header>
         <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4">
           {adminMembers.length > 0 && (
             <section>
-              <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 px-1">
+              <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 px-1">
                 <Shield className="w-3.5 h-3.5 text-amber-400" />
-                Administradores <small className="font-normal text-slate-400">{adminMembers.length}</small>
+                Administradores <small className="font-normal text-gray-400">{adminMembers.length}</small>
               </h3>
               <div className="space-y-1">
                 {adminMembers.map(renderMember)}
@@ -180,23 +180,23 @@ const SidebarRightComponent: React.FC = () => {
             </section>
           )}
           <section>
-            <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 px-1">
+            <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 px-1">
               <span className="w-3.5 h-3.5 rounded-full bg-emerald-500" />
-              Online <small className="font-normal text-slate-400">{onlineMembers.length}</small>
+              Online <small className="font-normal text-gray-400">{onlineMembers.length}</small>
             </h3>
             <div className="space-y-1">
               {onlineMembers.map(renderMember)}
-              {onlineMembers.length === 0 && <p className="text-sm text-slate-500 px-1 py-2">Ninguém online agora.</p>}
+              {onlineMembers.length === 0 && <p className="text-sm text-gray-500 px-1 py-2">Ninguém online agora.</p>}
             </div>
           </section>
           <section>
-            <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 px-1">
-              <span className="w-3.5 h-3.5 rounded-full bg-zinc-500" />
-              Offline <small className="font-normal text-slate-400">{offlineMembers.length}</small>
+            <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 px-1">
+              <span className="w-3.5 h-3.5 rounded-full bg-gray-400" />
+              Offline <small className="font-normal text-gray-400">{offlineMembers.length}</small>
             </h3>
             <div className="space-y-1">
               {offlineMembers.map(renderMember)}
-              {offlineMembers.length === 0 && <p className="text-sm text-slate-500 px-1 py-2">Todos estão online.</p>}
+              {offlineMembers.length === 0 && <p className="text-sm text-gray-500 px-1 py-2">Todos estão online.</p>}
             </div>
           </section>
         </div>
@@ -205,19 +205,19 @@ const SidebarRightComponent: React.FC = () => {
   }
 
   return (
-    <aside className="w-[300px] flex-shrink-0 flex flex-col h-full bg-[var(--surface)] border-l border-[var(--border)] overflow-y-auto animate-in slide-in-from-right duration-200 select-none">
+    <aside className="w-[280px] flex-shrink-0 flex flex-col h-full bg-white border-l border-gray-100 overflow-y-auto animate-in slide-in-from-right duration-200 select-none">
       {/* Top Banner with Close button */}
-      <div className="relative h-28 flex-shrink-0 bg-gradient-to-br from-indigo-900/50 to-violet-900/50">
+      <div className="relative h-28 flex-shrink-0 rounded-t-2xl bg-gradient-to-br from-[#00BFFF]/20 to-sky-500/20">
         {user.banner && (
           <img
             src={user.banner}
             alt="Banner"
-            className="w-full h-full object-cover opacity-80"
+            className="w-full h-full object-cover opacity-80 rounded-t-2xl"
           />
         )}
         <button
           onClick={closeContextPanel}
-          className="absolute top-3 right-3 p-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors"
+          className="absolute top-3 right-3 p-1.5 rounded-full bg-gray-100/80 text-gray-700 hover:bg-gray-200 backdrop-blur-sm transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
@@ -227,16 +227,16 @@ const SidebarRightComponent: React.FC = () => {
       <div className="px-5 pb-5 -mt-12 flex-1">
         <div className="flex items-end justify-between mb-3">
           <div className="relative">
-            {user.avatar ? <img src={user.avatar} alt={user.name} className="w-20 h-20 rounded-full object-cover ring-4 ring-[var(--bg)] shadow-xl" /> : <div aria-label={user.name || 'Avatar padrão'} className="w-20 h-20 rounded-full bg-slate-700 ring-4 ring-[var(--bg)] shadow-xl grid place-items-center text-xl text-white">{user.name.trim().charAt(0).toUpperCase() || '◇'}</div>}
+            {user.avatar ? <img src={user.avatar} alt={user.name} className="w-20 h-20 rounded-full object-cover ring-4 ring-white shadow-xl" /> : <div aria-label={user.name || 'Avatar padrão'} className="w-20 h-20 rounded-full bg-gray-100 ring-4 ring-white shadow-xl grid place-items-center text-xl text-gray-600">{user.name.trim().charAt(0).toUpperCase() || '◇'}</div>}
             <span
-              className={`status-presence absolute bottom-1 right-1 w-4 h-4 rounded-full ring-2 ring-[var(--bg)] ${
+              className={`status-presence absolute bottom-1 right-1 w-4 h-4 rounded-full ring-2 ring-white ${
                 user.status === 'online'
                   ? 'bg-emerald-500 is-online'
                   : user.status === 'idle'
                   ? 'bg-amber-500'
                   : user.status === 'dnd'
                   ? 'bg-rose-500'
-                  : 'bg-zinc-400'
+                  : 'bg-gray-400'
               }`}
             />
           </div>
@@ -246,14 +246,14 @@ const SidebarRightComponent: React.FC = () => {
               <button
                 onClick={() => startDirectCall(user, 'voice')}
                 title="Chamada de voz"
-                className="p-2 rounded-full bg-slate-800 hover:bg-indigo-600/30 text-indigo-400 transition-colors"
+                className="p-2 rounded-full bg-gray-100 hover:bg-[#00BFFF]/20 text-[#00BFFF] transition-colors"
               >
                 <Phone className="w-4 h-4" />
               </button>
               <button
                 onClick={() => startDirectCall(user, 'video')}
                 title="Chamada de vídeo"
-                className="p-2 rounded-full bg-slate-800 hover:bg-sky-500/30 text-sky-400 transition-colors"
+                className="p-2 rounded-full bg-gray-100 hover:bg-sky-100 text-sky-500 transition-colors"
               >
                 <Video className="w-4 h-4" />
               </button>
@@ -264,21 +264,21 @@ const SidebarRightComponent: React.FC = () => {
         {/* Identity & Status */}
         <div className="mb-4">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-base text-white truncate">
+            <h3 className="font-semibold text-base text-gray-900 truncate">
               {user.name}
             </h3>
             {user.pronouns && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 font-medium">
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
                 {user.pronouns}
               </span>
             )}
           </div>
-          <div className="text-xs text-slate-400">@{user.handle}</div>
+          <div className="text-xs text-gray-500">@{user.handle}</div>
 
           {user.customStatus && (
-            <div className="mt-2.5 p-2 rounded-lg bg-slate-950 border border-slate-800 flex items-center gap-2 text-xs">
+            <div className="mt-2.5 p-2 rounded-lg bg-gray-50 border border-gray-200 flex items-center gap-2 text-xs">
               <span className="text-base">{user.customStatus.emoji}</span>
-              <span className="text-slate-200 italic truncate">{user.customStatus.text}</span>
+              <span className="text-gray-700 italic truncate">{user.customStatus.text}</span>
             </div>
           )}
         </div>
@@ -288,7 +288,7 @@ const SidebarRightComponent: React.FC = () => {
           <div className="grid grid-cols-1 gap-2 mb-5">
             <button
               onClick={() => setIsProfileEditorOpen(true)}
-              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-md transition-all"
+              className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-full bg-[#00BFFF] hover:bg-[#009FD6] text-white font-medium text-xs shadow-md transition-all"
             >
               <Edit3 className="w-3.5 h-3.5" />
               <span>Editar Perfil</span>
@@ -300,7 +300,7 @@ const SidebarRightComponent: React.FC = () => {
             onClick={async () => {
               if (await openDirectMessage(user)) closeContextPanel();
             }}
-            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-70 disabled:cursor-wait text-white font-medium text-xs shadow-lg shadow-indigo-600/30 mb-5 transition-all"
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-full bg-[#00BFFF] hover:bg-[#009FD6] disabled:opacity-70 disabled:cursor-wait text-white font-medium text-xs shadow-lg shadow-[#00BFFF]/30 mb-5 transition-all"
           >
             {isDmLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
             <span>{isDmLoading ? 'Carregando conversa…' : 'Enviar Mensagem Direta'}</span>
@@ -308,18 +308,18 @@ const SidebarRightComponent: React.FC = () => {
         )}
 
         {/* Level & XP */}
-        <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 mb-4">
+        <div className="p-3 rounded-lg bg-gray-50 border border-gray-200 mb-4">
           <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="font-semibold text-slate-200 flex items-center gap-1">
-              <Award className="w-3.5 h-3.5 text-indigo-400" /> Nível {user.level}
+            <span className="font-semibold text-gray-900 flex items-center gap-1">
+              <Award className="w-3.5 h-3.5 text-[#00BFFF]" /> Nível {user.level}
             </span>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[11px] text-gray-500">
               {user.xp} / {user.xpMax} XP
             </span>
           </div>
-          <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+          <div className="w-full h-1.5 rounded-full bg-gray-200 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-violet-500 to-violet-400 rounded-full transition-all duration-500"
+              className="h-full bg-gradient-to-r from-[#00BFFF] to-sky-400 rounded-full transition-all duration-500"
               style={{ width: `${Math.min(100, (user.xp / user.xpMax) * 100)}%` }}
             />
           </div>
@@ -328,17 +328,17 @@ const SidebarRightComponent: React.FC = () => {
         {/* Bio */}
         {user.bio && (
           <div className="mb-4">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-1">
               Sobre
             </h4>
-            <p className="text-xs text-slate-300 leading-relaxed">{user.bio}</p>
+            <p className="text-xs text-gray-600 leading-relaxed">{user.bio}</p>
           </div>
         )}
 
         {/* Badges */}
         {user.badges && user.badges.length > 0 && (
           <div className="mb-4">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
               Conquistas
             </h4>
             <div className="flex flex-wrap gap-2">
@@ -346,10 +346,10 @@ const SidebarRightComponent: React.FC = () => {
                 <div
                   key={b.id}
                   title={`${b.name} — ${b.description}`}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 text-xs border border-slate-700/80 hover:border-indigo-500/50 transition-colors cursor-help"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100 text-xs border border-gray-200 hover:border-[#00BFFF]/50 transition-colors cursor-help"
                 >
                   <span>{b.icon}</span>
-                  <span className="text-[11px] font-medium text-slate-200">{b.name}</span>
+                  <span className="text-[11px] font-medium text-gray-700">{b.name}</span>
                 </div>
               ))}
             </div>
@@ -359,14 +359,14 @@ const SidebarRightComponent: React.FC = () => {
         {/* Interests */}
         {user.interests && user.interests.length > 0 && (
           <div className="mb-4">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
               Habilidades & Interesses
             </h4>
             <div className="flex flex-wrap gap-1.5">
               {user.interests.map((interest, i) => (
                 <span
                   key={i}
-                  className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 font-medium border border-indigo-500/20"
+                  className="text-[11px] px-2 py-0.5 rounded-full bg-[#00BFFF]/10 text-[#00BFFF] font-medium border border-[#00BFFF]/20"
                 >
                   {interest}
                 </span>
@@ -378,7 +378,7 @@ const SidebarRightComponent: React.FC = () => {
         {/* Social Links */}
         {user.socials && user.socials.some((s) => s.visible) && (
           <div>
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
               Links
             </h4>
             <div className="space-y-1.5">
@@ -390,10 +390,10 @@ const SidebarRightComponent: React.FC = () => {
                     href={social.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-between p-2 rounded-lg bg-slate-950 hover:bg-slate-800 text-xs text-slate-200 transition-colors border border-slate-800"
+                    className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100 text-xs text-gray-700 transition-colors border border-gray-200"
                   >
                     <span>{social.platform}</span>
-                    <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                    <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
                   </a>
                 ))}
             </div>
@@ -401,29 +401,29 @@ const SidebarRightComponent: React.FC = () => {
         )}
 
         {/* User Profile Block at bottom - mt-auto */}
-        <div className="mt-auto pt-4 border-t border-slate-800">
+        <div className="mt-auto pt-4 border-t border-gray-100">
           <button
             onClick={() => setIsProfileEditorOpen(true)}
-            className="group w-full flex items-center gap-3 p-2 rounded-lg bg-slate-950 hover:bg-slate-800 transition-colors border border-slate-800 text-left"
+            className="group w-full flex items-center gap-3 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors border border-gray-200 text-left"
             title="Editar perfil"
             aria-label="Editar perfil"
           >
             {currentUser.avatar ? (
-              <img src={currentUser.avatar} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover ring-1 ring-border flex-shrink-0" />
+              <img src={currentUser.avatar} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover ring-1 ring-gray-200 flex-shrink-0" />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-slate-700 ring-1 ring-border flex-shrink-0 grid place-items-center text-xs font-semibold text-white">
+              <div className="w-8 h-8 rounded-full bg-gray-100 ring-1 ring-gray-200 flex-shrink-0 grid place-items-center text-xs font-semibold text-gray-600">
                 {currentUser.name.trim().charAt(0).toUpperCase() || '◇'}
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <div className="truncate font-semibold text-sm text-white">
+              <div className="truncate font-semibold text-sm text-gray-900">
                 {currentUser.name.split(' ')[0]}
               </div>
-              <div className="truncate text-[11px] text-slate-400">
+              <div className="truncate text-[11px] text-gray-500">
                 @{currentUser.handle}
               </div>
             </div>
-            <Settings className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition-colors flex-shrink-0" />
+            <Settings className="w-4 h-4 text-gray-400 group-hover:text-[#00BFFF] transition-colors flex-shrink-0" />
           </button>
         </div>
       </div>

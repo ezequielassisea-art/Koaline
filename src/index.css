@@ -7,19 +7,21 @@
    ======================================== */
 
 :root {
-  /* Core Palette - Light Theme Only */
-  --bg-main: #F3F4F6;
+  /* Core Palette - Light Theme Only (Slate/Blue Design System) */
+  --bg-main: #F8FAFC;
   --bg-surface: #FFFFFF;
-  --text-main: #111827;
-  --text-muted: #6B7280;
-  --primary: #00BFFF;
-  --border: #E5E7EB;
+  --text-main: #0F172A;
+  --text-muted: #64748B;
+  --border: #E2E8F0;
+  --primary: #3B82F6;
+  --primary-hover: #2563EB;
+  --primary-light: rgba(59, 130, 246, 0.1);
+  --error-bg: #FEE2E2;
+  --error-text: #B91C1C;
 
   /* Derived / Semantic Tokens */
-  --bg-hover: #F3F4F6;
-  --bg-active: #E5E7EB;
-  --primary-hover: #009FD6;
-  --primary-light: rgba(0, 191, 255, 0.1);
+  --bg-hover: #F1F5F9;
+  --bg-active: #E2E8F0;
   --success: #10B981;
   --success-light: rgba(16, 185, 129, 0.1);
   --warning: #F59E0B;
@@ -1442,30 +1444,42 @@ textarea:focus-visible {
   color: var(--text-muted);
 }
 
-/* Message Hover Actions */
-.message-hover-actions {
-  position: absolute;
-  right: -8px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--transition-fast);
-  z-index: 10;
+/* Links inside message bubbles */
+.message-bubble-self a {
+  color: white;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.koaline-message:hover .message-hover-actions {
-  opacity: 1;
+.message-bubble-self a:hover {
+  opacity: 0.8;
+}
+
+.message-bubble-other a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.message-bubble-other a:hover {
+  color: var(--primary-hover);
+}
+
+/* Floating Hover Menu (positioned above bubble top-right) */
+.koaline-message-hover-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 4px;
+  z-index: 10;
   pointer-events: auto;
 }
 
-.message-hover-btn {
+.koaline-message-hover-menu .koaline-message-hover-btn {
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-full);
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -1475,23 +1489,34 @@ textarea:focus-visible {
   box-shadow: var(--shadow-sm);
 }
 
-.message-hover-btn:hover {
+.koaline-message-hover-menu .koaline-message-hover-btn:hover {
   background: var(--bg-hover);
   color: var(--text-main);
   border-color: var(--border);
 }
 
-.message-hover-btn svg {
+.koaline-message-hover-menu .koaline-message-hover-btn.text-rose-400:hover {
+  background: var(--rose-500);
+  color: white;
+  border-color: var(--rose-500);
+}
+
+.koaline-message-hover-menu .koaline-message-hover-btn.text-indigo-400,
+.koaline-message-hover-menu .koaline-message-hover-btn.text-indigo-400:hover {
+  color: var(--primary);
+}
+
+.koaline-message-hover-menu .koaline-message-hover-btn svg {
   width: 16px;
   height: 16px;
 }
 
-/* Emoji Picker Popover */
-.emoji-picker-popover {
+/* Emoji Picker Popover in hover menu */
+.koaline-message-hover-menu .emoji-picker-popover {
   position: absolute;
   right: 0;
   bottom: 100%;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
   display: flex;
   gap: 4px;
   padding: 8px;
@@ -1502,7 +1527,7 @@ textarea:focus-visible {
   z-index: 20;
 }
 
-.emoji-picker-popover button {
+.koaline-message-hover-menu .emoji-picker-popover button {
   display: grid;
   place-items: center;
   width: 36px;
@@ -1515,7 +1540,7 @@ textarea:focus-visible {
   transition: background var(--transition-fast);
 }
 
-.emoji-picker-popover button:hover {
+.koaline-message-hover-menu .emoji-picker-popover button:hover {
   background: var(--bg-hover);
 }
 
@@ -2263,12 +2288,13 @@ textarea:focus-visible {
 }
 
 .btn-danger {
-  background: var(--error);
-  color: white;
+  background: var(--error-bg);
+  color: var(--error-text);
+  border: 1px solid var(--border);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #DC2626;
+  background: #FECACA;
 }
 
 .btn-icon {
@@ -2470,7 +2496,13 @@ textarea:focus-visible {
 }
 
 .toast-success { border-left: 3px solid var(--success); }
-.toast-error { border-left: 3px solid var(--error); }
+.toast-error {
+  background: var(--bg-surface);
+  border: 1px solid var(--error);
+  color: var(--error-text);
+}
+.toast-error .toast-title { color: var(--error-text); }
+.toast-error .toast-message { color: var(--error-text); }
 .toast-warning { border-left: 3px solid var(--warning); }
 .toast-info { border-left: 3px solid var(--primary); }
 

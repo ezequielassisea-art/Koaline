@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Message } from '../../types';
+import { MessageItem } from '../chat/MessageItem';
 import {
   Search,
   Calendar,
@@ -38,6 +39,8 @@ const ChatArea: React.FC = () => {
     sendMessage,
     lastReadAtByChannel,
     markChannelRead,
+    markMessageRead,
+    getMessageReadStatus,
     communities,
     currentCommunityId,
     currentUser,
@@ -61,6 +64,7 @@ const ChatArea: React.FC = () => {
   const [showEmojiPicker, setShowEmojiPicker] = useState<{ messageId: string; x: number; y: number } | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [messageText, setMessageText] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -121,25 +125,24 @@ const ChatArea: React.FC = () => {
 
   // Handle message send
   const handleSendMessage = useCallback(() => {
-    if (messageInputRef.current && messageInputRef.current.value.trim()) {
-      const content = messageInputRef.current.value.trim();
-      if (editingMessageId) {
-        editMessage(editingMessageId, content);
+    if (editingMessageId) {
+      if (editContent.trim()) {
+        editMessage(editingMessageId, editContent.trim());
         setEditingMessageId(null);
         setEditContent('');
-      } else {
-        const replyTo = replyTarget ? {
-          id: replyTarget.id,
-          senderName: replyTarget.sender.name,
-          content: replyTarget.content || '',
-        } : undefined;
-        sendMessage(content, replyTo);
       }
-      messageInputRef.current.value = '';
-      messageInputRef.current.style.height = 'auto';
+    } else if (messageText.trim()) {
+      const replyTo = replyTarget ? {
+        id: replyTarget.id,
+        senderName: replyTarget.sender.name,
+        content: replyTarget.content || '',
+      } : undefined;
+      sendMessage(messageText.trim(), replyTo);
+      setMessageText('');
+      if (messageInputRef.current) messageInputRef.current.style.height = 'auto';
       setReplyTarget(null);
     }
-  }, [sendMessage, replyTarget, editingMessageId, editMessage]);
+  }, [sendMessage, replyTarget, editingMessageId, editContent, editMessage, messageText]);
 
   // Handle key down in message input
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -152,6 +155,12 @@ const ChatArea: React.FC = () => {
   // Auto-resize textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const textarea = e.target;
+    const value = textarea.value;
+    if (editingMessageId) {
+      setEditContent(value);
+    } else {
+      setMessageText(value);
+    }
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 180) + 'px';
   };
@@ -491,6 +500,8 @@ const ChatArea: React.FC = () => {
                 && elapsedMinutes <= 5;
               const isSelf = msg.senderId === currentUser.id;
               const isUnread = !!lastReadAt && msg.senderId !== currentUser.id && parseAppDate(msg.timestamp).getTime() > parseAppDate(lastReadAt).getTime();
+              const timeLabel = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(parseAppDate(msg.timestamp));
+              const readStatus = getMessageReadStatus(msg.id, activeChannelKey, isDirectMessages);
 
               return (
                 <React.Fragment key={msg.id}>
@@ -504,156 +515,14 @@ const ChatArea: React.FC = () => {
                       <span className="text-xs font-bold text-[#00BFFF] uppercase tracking-wider">Não lidas</span>
                     </div>
                   )}
-                  <div
-                    id={`message-${msg.id}`}
-                    className={`message-bubble flex gap-3 px-1 py-1 ${isSelf ? 'self' : ''} ${isGrouped ? 'is-grouped' : ''}`}
-                    data-message-id={msg.id}
-                  >
-                    {!isGrouped && (
-                      <div className="message-avatar flex-shrink-0">
-                        {msg.sender.avatar ? (
-                          <img src={msg.sender.avatar} alt={msg.sender.name} className="w-9 h-9 rounded-full object-cover" />
-                        ) : (
-                          <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-bold text-base">
-                            {msg.sender.name.charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <div className="message-content flex-1 min-w-0 flex flex-col gap-1.5">
-                      {!isSelf && !isGrouped && (
-                        <div className="message-header flex items-center gap-2">
-                          <span className="message-author text-sm font-semibold text-gray-900">{msg.sender.name}</span>
-                          <span className="message-timestamp text-xs text-gray-500">{formatRelativeTime(msg.timestamp)}</span>
-                          {msg.pinned && <Pin className="w-3.5 h-3.5 text-amber-400" />}
-                        </div>
-                      )}
-                      <div className={`message-text ${isSelf ? 'self' : ''}`}>
-                        <div className={`message-bubble ${isSelf ? 'message-bubble-self' : 'message-bubble-other'} max-w-[85%] rounded-2xl px-4 py-2 ${isSelf ? 'bg-[#00BFFF] text-white' : 'bg-gray-100 text-gray-800'} ${isSelf ? 'rounded-tr-xl' : 'rounded-tl-xl'}`}>
-                          <div className="message-copy text-sm leading-relaxed">{msg.content}</div>
-                        </div>
-                      </div>
-                      {isSelf && (
-                        <div className="message-timestamp text-xs text-white/70 text-right mr-1 flex items-center justify-end gap-1">
-                          {formatRelativeTime(msg.timestamp)}
-                          {msg.pinned && <Pin className="w-3.5 h-3.5 text-amber-300" />}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Hover Actions */}
-                    <div className="message-hover-actions flex items-center gap-1 opacity-0 transition-opacity hover:opacity-100 self-start -ml-2">
-                      {!isSelf && (
-                        <button
-                          className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setShowEmojiPicker({ messageId: msg.id, x: rect.left, y: rect.top });
-                          }}
-                          title="Adicionar reação"
-                          aria-label="Adicionar reação"
-                        >
-                          <Smile className="w-4 h-4" />
-                        </button>
-                      )}
-                      {isSelf && !editingMessageId && (
-                        <>
-                          <button
-                            className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleStartEdit(msg);
-                            }}
-                            title="Editar"
-                            aria-label="Editar mensagem"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-rose-400 hover:text-rose-500 hover:bg-rose-50 transition-colors shadow-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteMessage(msg.id);
-                            }}
-                            title="Excluir"
-                            aria-label="Excluir mensagem"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                      {!isSelf && (
-                        <>
-                          <button
-                            className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleReply(msg);
-                            }}
-                            title="Responder"
-                            aria-label="Responder"
-                          >
-                            <Reply className="w-4 h-4" />
-                          </button>
-                          <button
-                            className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleCopyMessage(msg.content || '');
-                            }}
-                            title="Copiar"
-                            aria-label="Copiar mensagem"
-                          >
-                            <Copy className="w-4 h-4" />
-                          </button>
-                          <button
-                            className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-amber-400 hover:text-amber-500 hover:bg-amber-50 transition-colors shadow-sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleFlagMessage();
-                            }}
-                            title="Denunciar"
-                            aria-label="Denunciar mensagem"
-                          >
-                            <Flag className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                      {canModerate && !msg.pinned && (
-                        <button
-                          className="message-hover-btn p-1.5 rounded-lg bg-white border border-gray-200 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors shadow-sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleTogglePin(msg.id);
-                          }}
-                          title="Fixar mensagem"
-                          aria-label="Fixar mensagem"
-                        >
-                          <Pin className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Emoji Picker Popover */}
-                    {showEmojiPicker?.messageId === msg.id && (
-                      <div className="emoji-picker-popover absolute right-0 bottom-full mb-2 flex gap-2 p-2 rounded-xl border border-gray-200 bg-white shadow-lg z-10" style={{ right: '0', bottom: '100%', marginBottom: '4px' }}>
-                        {['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '👀', '👏', '🙏'].map((emoji) => (
-                          <button
-                            key={emoji}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEmojiPick(emoji);
-                            }}
-                            className="p-2 rounded-lg text-2xl hover:bg-gray-100 transition-colors"
-                            style={{ width: '40px', height: '40px', borderRadius: '8px', fontSize: '18px' }}
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <MessageItem
+                    message={msg}
+                    isGrouped={isGrouped}
+                    isUnread={isUnread}
+                    timeLabel={timeLabel}
+                    readStatus={readStatus}
+                    onReply={handleReply}
+                  />
                 </React.Fragment>
               );
             })}
@@ -694,11 +563,8 @@ const ChatArea: React.FC = () => {
           </div>
           <textarea
             ref={messageInputRef}
-            value={editingMessageId ? editContent : ''}
-            onChange={(e) => {
-              if (editingMessageId) setEditContent(e.target.value);
-              handleInputChange(e);
-            }}
+            value={editingMessageId ? editContent : messageText}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder={editingMessageId ? `Editando...` : isDirectMessages ? 'Mensagem...' : `#${activeChannel?.name || 'chat'}...`}
             className="chat-area-input flex-1 bg-transparent border-0 resize-none py-1.5 text-sm text-gray-900 placeholder-gray-500 focus:outline-none max-h-32 min-h-[20px]"
@@ -707,7 +573,7 @@ const ChatArea: React.FC = () => {
           />
           <button
             onClick={handleSendMessage}
-            disabled={!editingMessageId ? !messageInputRef.current?.value.trim() : !editContent.trim()}
+            disabled={!editingMessageId ? !messageText.trim() : !editContent.trim()}
             className="chat-area-input-send p-2.5 rounded-xl bg-[#00BFFF] hover:bg-[#009FD6] text-white transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
             aria-label={editingMessageId ? 'Salvar edição' : 'Enviar mensagem'}
           >

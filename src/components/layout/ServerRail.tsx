@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { Plus, Hash, MessageSquare, Users, Settings, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Hash, MessageSquare, Users } from 'lucide-react';
 
 const ServerRail: React.FC = () => {
   const {
@@ -34,12 +34,8 @@ const ServerRail: React.FC = () => {
     setCurrentCommunityId('');
   };
 
-  const handleSettings = () => {
-    // TODO: Open settings
-  };
-
   return (
-    <nav className="server-rail" role="navigation" aria-label="Comunidades e mensagens diretas">
+    <nav className="h-full flex flex-col overflow-hidden py-4 gap-3 items-center" role="navigation" aria-label="Comunidades e mensagens diretas">
       {/* Direct Messages Button */}
       <button
         onClick={handleDirectMessages}
@@ -52,7 +48,7 @@ const ServerRail: React.FC = () => {
       </button>
 
       {/* Community List */}
-      <div className="server-rail-community-list">
+      <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-3 min-h-0">
         {communities.map((community) => (
           <button
             key={community.id}
@@ -82,24 +78,12 @@ const ServerRail: React.FC = () => {
       {/* Add Community Button */}
       <button
         onClick={handleCreateCommunity}
-        className="server-rail-add"
+        className="server-rail-add flex-shrink-0"
         title="Criar ou entrar em uma comunidade"
         aria-label="Criar ou entrar em uma comunidade"
       >
         <Plus />
       </button>
-
-      {/* Bottom: User Settings */}
-      <div className="flex-shrink-0 p-2 border-t border-[var(--discord-border)]">
-        <button
-          onClick={handleSettings}
-          className="server-rail-item mx-auto"
-          title="Configurações do usuário"
-          aria-label="Configurações do usuário"
-        >
-          <Settings />
-        </button>
-      </div>
     </nav>
   );
 };

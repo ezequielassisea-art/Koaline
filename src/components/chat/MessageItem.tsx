@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Message } from '../../types';
 import { formatRelativeTime } from '../../utils/time';
 import { canModerateCommunity } from '../admin/adminAccess';
+import { ConfirmModal } from '../common/ConfirmModal';
 import {
   Smile,
   Reply,
@@ -10,6 +11,8 @@ import {
   Trash2,
   Pin,
   Check,
+  CheckCheck,
+  Clock,
   X,
   FileText,
   Play,
@@ -23,10 +26,13 @@ interface MessageItemProps {
   isUnread?: boolean;
   timeLabel?: string;
   onReply: (message: Message) => void;
+  onEdit?: (message: Message) => void;
+  readStatus?: 'sent' | 'delivered' | 'read'; // 'sent' = 1 check, 'delivered' = 1 check, 'read' = 2 checks
 }
 
 const COMMON_EMOJIS = ['🔥', '⚡', '✨', '🚀', '👍', '❤️', '👀'];
 const YOUTUBE_URL_REGEX = /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
+
 const renderLinkedText = (value: string, isMine: boolean) => {
   const parts: React.ReactNode[] = [];
   const matcher = /https?:\/\/[^\s<>"']+/gi;
@@ -105,7 +111,7 @@ const AudioMessagePlayer: React.FC<{ src: string }> = ({ src }) => {
   );
 };
 
-export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = false, isUnread = false, timeLabel, onReply }) => {
+export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = false, isUnread = false, timeLabel, onReply, onEdit, readStatus }) => {
   const {
     currentUser,
     openUserMenu,
@@ -118,12 +124,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
     acceptCommunityInvite,
   } = useApp();
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [editContent, setEditContent] = useState(typeof message.content === 'string' ? message.content : '');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showHoverMenu, setShowHoverMenu] = useState(false);
 
   const isSelf = message.senderId === currentUser.id;
   const activeCommunity = communities.find((community) => community.id === currentCommunityId);
@@ -165,16 +170,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [isYouTubeModalOpen]);
 
-  const handleSaveEdit = () => {
-    if (editContent.trim()) {
-      editMessage(message.id, editContent);
-      setIsEditing(false);
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditContent(content);
-    setIsEditing(false);
+  const handleDelete = () => {
+    deleteMessage(message.id);
+    setShowDeleteModal(false);
   };
 
   if (message.isDeleted) {
@@ -189,12 +187,14 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
   return (
     <div
       id={`message-${message.id}`}
-      className={`koaline-message relative flex gap-3 px-4 py-2 transition-colors rounded-nest-sm ${isSystemInvite ? 'justify-center' : ''} ${isGrouped ? 'is-grouped mt-0.5' : 'mt-0.5'} ${
+      className={`koaline-message relative flex gap-3 px-4 py-2 transition-colors rounded-nest-sm items-start ${isSelf ? 'flex-row-reverse' : 'flex-row'} ${isSystemInvite ? 'justify-center' : ''} ${isGrouped ? 'is-grouped mt-0.5' : 'mt-0.5'} ${
         message.pinned ? 'bg-indigo-950 border-l-2 border-indigo-500' : ''
       }`}
+      onMouseEnter={() => setShowHoverMenu(true)}
+      onMouseLeave={() => setShowHoverMenu(false)}
     >
       {/* Sender Avatar */}
-      <div className="koaline-message-avatar flex-shrink-0 mt-0.5" data-grouped={isGrouped} data-self={isSelf}>
+      <div className="koaline-message-avatar flex-shrink-0 mt-1" data-grouped={isGrouped} data-self={isSelf}>
         {!isGrouped && !isSystemInvite && (
           <button type="button" aria-label={`Abrir opções de ${sender.name}`} onClick={(event) => openUserMenu(sender, event)} className="block rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400">
             {sender.avatar
@@ -216,7 +216,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
           {isUnread && <span className="message-unread-dot" title="Mensagem não lida" aria-label="Mensagem não lida" />}
 
           {message.edited && (
-            <span className="text-[10px] text-slate-500 italic">(editada)</span>
+            <span className="text-[10px] text-slate-500 italic">(editado)</span>
           )}
 
           {message.pinned && (
@@ -225,85 +225,109 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
             </span>
           )}
         </div>
-        {/* Content or Edit Input */}
-        {isEditing ? (
-          <div className="mt-1.5 space-y-2">
-            <input
-              type="text"
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveEdit();
-                if (e.key === 'Escape') handleCancelEdit();
-              }}
-              autoFocus
-              className="w-full px-3 py-1.5 text-xs rounded-nest-sm bg-slate-900 border border-indigo-500 focus:outline-none text-slate-100"
-            />
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleSaveEdit}
-                className="flex items-center gap-1 px-3 py-1 rounded-nest-pill bg-indigo-600 text-white text-[11px] font-medium hover:bg-indigo-500"
-              >
-                <Check className="w-3 h-3" /> Salvar
-              </button>
-              <button
-                onClick={handleCancelEdit}
-                className="flex items-center gap-1 px-3 py-1 rounded-nest-pill bg-slate-800 text-slate-400 text-[11px] font-medium hover:text-slate-200"
-              >
-                <X className="w-3 h-3" /> Cancelar
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div
-            className={`koaline-message-bubble group relative ${isSelf ? 'message-bubble-self' : 'message-bubble-other'}`}
-          >
-            <div className={`koaline-message-copy leading-relaxed break-words ${isSelf ? 'is-self' : 'is-other'}`}>
-              {message.replyTo && (
-                <div className="koaline-reply-quote">
-                  <Reply className="h-3 w-3 shrink-0" />
-                  <span className="truncate"><strong>{message.replyTo.senderName}</strong>: {message.replyTo.content}</span>
-                </div>
-              )}
-              {inviteCard ? (
-                <div className={`my-2 max-w-lg p-5 ${isSystemInvite ? 'w-full rounded-xl border-y border-dashed border-slate-700 bg-slate-900/40 text-center' : 'rounded-2xl border border-[var(--primary)]/60 bg-[var(--surface)] shadow-lg'}`}>
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--primary)]">{isSystemInvite ? `Convite personalizado de ${sender.name}` : 'Convite para comunidade'}</div>
-                  <h3 className="text-lg font-bold text-white">{inviteCard.communityName || communities.find((item) => item.id === inviteCard?.communityId)?.name || 'Comunidade Koaline'}</h3>
-                  {inviteCard.message && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{inviteCard.message}</p>}
-                  <button type="button" onClick={() => void acceptCommunityInvite(inviteCard!.communityId, inviteCard!.notificationId)} className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-110">Entrar na Comunidade</button>
-                </div>
-              ) : imageSource ? (
-                <a href={imageSource} target="_blank" rel="noreferrer" aria-label="Abrir imagem em nova aba" className="inline-block">
-                  <img src={imageSource} alt="Imagem enviada" className="max-w-[300px] max-h-[300px] rounded-xl object-cover cursor-pointer" />
-                </a>
-              ) : audioSource ? (
-                <AudioMessagePlayer src={audioSource} />
-              ) : videoSource ? (
-                <video src={videoSource} controls preload="metadata" className="max-h-[300px] max-w-[300px] rounded-xl object-cover" aria-label="Vídeo enviado" />
-              ) : youtubeVideoId ? (
-                <>
-                  {messageText && <p className="whitespace-pre-wrap">{messageText}</p>}
-                  <button type="button" onClick={() => setIsYouTubeModalOpen(true)} aria-label="Assistir no YouTube" className="relative mt-1 block w-[320px] max-w-full overflow-hidden rounded-xl bg-[var(--bg-elevated)] text-left transition-transform hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                    <img src={`https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg`} alt="Miniatura do vídeo do YouTube" className="block aspect-video w-full object-cover" />
-                    <span className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors hover:bg-black/35">
-                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/75 text-white shadow-lg">
-                        <Play className="ml-0.5 h-5 w-5 fill-current" />
-                      </span>
-                    </span>
-                    <span className="block px-3 py-2 text-xs font-medium text-primary">Assistir no YouTube</span>
-                  </button>
-                </>
-              ) : content.trim() ? (
-                <p className={`message-content-text whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{renderLinkedText(content, isSelf)}</p>
-              ) : null}
-              <time className="koaline-message-time" dateTime={message.timestamp} title={formatRelativeTime(message.timestamp)}>{timeLabel || ''}</time>
-              {!imageSource && !audioSource && !videoSource && content.length > 400 && <button type="button" className="message-expand-button" onClick={() => setIsExpanded((expanded) => !expanded)}>{isExpanded ? 'Ver menos' : 'Ver mais'}</button>}
-            </div>
 
-            {/* Hover Actions Bar - anchored to bubble top-right */}
-            {!isSystemInvite && (
-              <div className="koaline-message-hover-actions">
-                {/* Quick Emojis */}
+        {/* Message Bubble */}
+        <div
+          className={`koaline-message-bubble group relative ${isSelf ? 'message-bubble-self' : 'message-bubble-other'}`}
+        >
+          <div className={`koaline-message-copy leading-relaxed break-words ${isSelf ? 'is-self' : 'is-other'}`}>
+            {message.replyTo && (
+              <div className="koaline-reply-quote">
+                <Reply className="h-3 w-3 shrink-0" />
+                <span className="truncate"><strong>{message.replyTo.senderName}</strong>: {message.replyTo.content}</span>
+              </div>
+            )}
+            {inviteCard ? (
+              <div className={`my-2 max-w-lg p-5 ${isSystemInvite ? 'w-full rounded-xl border-y border-dashed border-slate-700 bg-slate-900/40 text-center' : 'rounded-2xl border border-[var(--primary)]/60 bg-[var(--surface)] shadow-lg'}`}>
+                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--primary)]">{isSystemInvite ? `Convite personalizado de ${sender.name}` : 'Convite para comunidade'}</div>
+                <h3 className="text-lg font-bold text-white">{inviteCard.communityName || communities.find((item) => item.id === inviteCard?.communityId)?.name || 'Comunidade Koaline'}</h3>
+                {inviteCard.message && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{inviteCard.message}</p>}
+                <button type="button" onClick={() => void acceptCommunityInvite(inviteCard!.communityId, inviteCard!.notificationId)} className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-110">Entrar na Comunidade</button>
+              </div>
+            ) : imageSource ? (
+              <a href={imageSource} target="_blank" rel="noreferrer" aria-label="Abrir imagem em nova aba" className="inline-block">
+                <img src={imageSource} alt="Imagem enviada" className="max-w-[300px] max-h-[300px] rounded-xl object-cover cursor-pointer" />
+              </a>
+            ) : audioSource ? (
+              <AudioMessagePlayer src={audioSource} />
+            ) : videoSource ? (
+              <video src={videoSource} controls preload="metadata" className="max-h-[300px] max-w-[300px] rounded-xl object-cover" aria-label="Vídeo enviado" />
+            ) : youtubeVideoId ? (
+              <>
+                {messageText && <p className="whitespace-pre-wrap">{messageText}</p>}
+                <button type="button" onClick={() => setIsYouTubeModalOpen(true)} aria-label="Assistir no YouTube" className="relative mt-1 block w-[320px] max-w-full overflow-hidden rounded-xl bg-[var(--bg-elevated)] text-left transition-transform hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                  <img src={`https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg`} alt="Miniatura do vídeo do YouTube" className="block aspect-video w-full object-cover" />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors hover:bg-black/35">
+                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/75 text-white shadow-lg">
+                      <Play className="ml-0.5 h-5 w-5 fill-current" />
+                    </span>
+                  </span>
+                  <span className="block px-3 py-2 text-xs font-medium text-primary">Assistir no YouTube</span>
+                </button>
+              </>
+            ) : content.trim() ? (
+              <p className={`message-content-text whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{renderLinkedText(content, isSelf)}</p>
+            ) : null}
+            <div className="flex items-center gap-1.5">
+              <time className="koaline-message-time" dateTime={message.timestamp} title={formatRelativeTime(message.timestamp)}>{timeLabel || ''}</time>
+              {isSelf && readStatus && (
+                <span className="flex items-center gap-0.5" aria-label={readStatus === 'read' ? 'Lida' : readStatus === 'delivered' ? 'Entregue' : 'Enviada'}>
+                  {readStatus === 'read' ? (
+                    <CheckCheck className="w-3.5 h-3.5 text-green-400" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5 text-blue-300" />
+                  )}
+                </span>
+              )}
+            </div>
+            {!imageSource && !audioSource && !videoSource && content.length > 400 && <button type="button" className="message-expand-button" onClick={() => setIsExpanded((expanded) => !expanded)}>{isExpanded ? 'Ver menos' : 'Ver mais'}</button>}
+          </div>
+
+          {/* Floating Hover Actions Menu - positioned above bubble top-right */}
+          {!isSystemInvite && showHoverMenu && isSelf && (
+            <div className="koaline-message-hover-menu animate-in fade-in zoom-in-95">
+              <div className="flex items-center gap-1 p-1.5 rounded-nest-sm bg-slate-900 border border-slate-700 shadow-xl">
+                {/* Reply */}
+                <button
+                  onClick={() => onReply(message)}
+                  title="Responder"
+                  className="koaline-message-hover-btn"
+                >
+                  <Reply className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Edit */}
+                {onEdit && (
+                  <button
+                    onClick={() => onEdit(message)}
+                    title="Editar mensagem"
+                    className="koaline-message-hover-btn"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {/* Delete */}
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  title="Apagar mensagem"
+                  className="koaline-message-hover-btn text-rose-400 hover:bg-rose-500/10"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Pin */}
+                {canManagePins && (
+                  <button
+                    onClick={() => togglePinMessage(message.id)}
+                    title={message.pinned ? 'Desafixar mensagem' : 'Fixar mensagem'}
+                    className={`koaline-message-hover-btn ${message.pinned ? 'text-indigo-400' : ''}`}
+                  >
+                    <Pin className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {/* Add Reaction */}
                 <div className="relative">
                   <button
                     onClick={() => setShowEmojiPicker(!showEmojiPicker)}
@@ -314,7 +338,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                   </button>
 
                   {showEmojiPicker && (
-                    <div className="emoji-picker-popover">
+                    <div className="emoji-picker-popover absolute bottom-full right-0 mb-1">
                       {COMMON_EMOJIS.map((emoji) => (
                         <button
                           key={emoji}
@@ -330,7 +354,16 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                     </div>
                   )}
                 </div>
+              </div>
+              {/* Triangle pointer */}
+              <div className="w-0 h-0 border-l-4 border-r-4 border-t-0 border-b-4 border-slate-900 border-transparent border-b-slate-900 mx-auto -mt-px" />
+            </div>
+          )}
 
+          {/* Hover indicator for other users' messages (just reaction button) */}
+          {!isSystemInvite && showHoverMenu && !isSelf && (
+            <div className="koaline-message-hover-menu animate-in fade-in zoom-in-95">
+              <div className="flex items-center gap-1 p-1.5 rounded-nest-sm bg-slate-900 border border-slate-700 shadow-xl">
                 {/* Reply */}
                 <button
                   onClick={() => onReply(message)}
@@ -340,40 +373,39 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
                   <Reply className="w-3.5 h-3.5" />
                 </button>
 
-                {/* Pin */}
-                {canManagePins && <button
-                  onClick={() => togglePinMessage(message.id)}
-                  title={message.pinned ? 'Desafixar mensagem' : 'Fixar mensagem'}
-                  className={`koaline-message-hover-btn ${message.pinned ? 'text-indigo-400' : ''}`}
-                >
-                  <Pin className="w-3.5 h-3.5" />
-                </button>}
-
-                {/* Edit */}
-                {isSelf && (
+                {/* Add Reaction */}
+                <div className="relative">
                   <button
-                    onClick={() => setIsEditing(true)}
-                    title="Editar mensagem"
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    title="Adicionar reação"
                     className="koaline-message-hover-btn"
                   >
-                    <Edit2 className="w-3.5 h-3.5" />
+                    <Smile className="w-3.5 h-3.5" />
                   </button>
-                )}
 
-                {/* Delete */}
-                {isSelf && (
-                  <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    title="Apagar mensagem"
-                    className="koaline-message-hover-btn"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                  {showEmojiPicker && (
+                    <div className="emoji-picker-popover absolute bottom-full right-0 mb-1">
+                      {COMMON_EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          onClick={() => {
+                            toggleReaction(message.id, emoji);
+                            setShowEmojiPicker(false);
+                          }}
+                          className="koaline-message-hover-btn p-0.5"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </div>
-        )}
+              {/* Triangle pointer */}
+              <div className="w-0 h-0 border-l-4 border-r-4 border-t-0 border-b-4 border-slate-900 border-transparent border-b-slate-900 mx-auto -mt-px" />
+            </div>
+          )}
+        </div>
 
         {isYouTubeModalOpen && youtubeVideoId && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4  animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Player do YouTube" onClick={() => setIsYouTubeModalOpen(false)}>
@@ -413,30 +445,6 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
           </div>
         )}
 
-        {/* Inline Delete Confirmation */}
-        {showDeleteConfirm && (
-          <div className="mt-2 p-2 rounded-nest-sm bg-rose-500/10 border border-rose-500/30 flex items-center justify-between text-xs animate-in fade-in">
-            <span className="text-rose-400 font-medium">Deseja apagar esta mensagem?</span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  deleteMessage(message.id);
-                  setShowDeleteConfirm(false);
-                }}
-                className="px-2.5 py-1 rounded-nest-pill bg-rose-600 text-white font-medium text-[11px] hover:bg-rose-500"
-              >
-                Apagar
-              </button>
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="px-2 py-1 rounded-nest-pill text-slate-400 hover:text-slate-200 text-[11px]"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Reactions List */}
         {message.reactions && message.reactions.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
@@ -460,8 +468,18 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteModal}
+        title="Apagar mensagem"
+        description="Tem certeza que deseja apagar esta mensagem? Ela será removida para todos os participantes da conversa."
+        confirmLabel="Apagar para todos"
+        cancelLabel="Cancelar"
+        isDestructive
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteModal(false)}
+      />
     </div>
   );
 };
-
-

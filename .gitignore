@@ -33,3 +33,4 @@ pnpm-debug.log*
 # Cache
 .cache/
 .vite/
+.vercel

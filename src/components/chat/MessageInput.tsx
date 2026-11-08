@@ -11,7 +11,8 @@ import {
   MicOff,
   StopCircle,
   Search,
-  Loader2
+  Loader2,
+  Edit2
 } from 'lucide-react';
 import { Message, User } from '../../types';
 import { supabase } from '../../services/supabaseClient';
@@ -20,6 +21,9 @@ const EmojiPickerPopover = React.lazy(() => import('../common/EmojiPickerPopover
 interface MessageInputProps {
   replyTarget: Message | null;
   onClearReply: () => void;
+  // Edit mode
+  editTarget?: Message | null;
+  onCancelEdit?: () => void;
 }
 
 const GIF_OPTIONS = [
@@ -37,9 +41,10 @@ const GIF_OPTIONS = [
   { label: 'Festa', url: 'https://media.giphy.com/media/g9582DNuQppxC/giphy.gif' },
 ];
 
-export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClearReply }) => {
+export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClearReply, editTarget, onCancelEdit }) => {
   const {
     sendMessage,
+    editMessage: editMessageContext,
     communities,
     currentCommunityId,
     currentChannelId,
@@ -50,8 +55,18 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
     addToast,
   } = useApp();
 
-  const [text, setText] = useState('');
+  const isEditing = !!editTarget;
+  const [text, setText] = useState(() => (isEditing ? editTarget.content : ''));
   const lastTypingSentAtRef = useRef(0);
+
+  // Populate text when editTarget changes
+  useEffect(() => {
+    if (editTarget) {
+      setText(editTarget.content);
+    } else {
+      setText('');
+    }
+  }, [editTarget]);
   const typingStopTimerRef = useRef<number | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showMentionAutocomplete, setShowMentionAutocomplete] = useState(false);
@@ -176,8 +191,15 @@ export const MessageInput: React.FC<MessageInputProps> = ({ replyTarget, onClear
       }
     }
 
-    const sent = await sendMessage(text, replyData, attachmentsList);
-    if (!sent) return;
+    if (isEditing && editTarget) {
+      // Edit mode: call editMessage
+      editMessageContext(editTarget.id, text);
+      if (onCancelEdit) onCancelEdit();
+    } else {
+      // Normal send mode
+      const sent = await sendMessage(text, replyData, attachmentsList);
+      if (!sent) return;
+    }
 
     stopTyping();
     setText('');
@@ -319,6 +341,22 @@ const insertEmoji = (emoji: string) => {
 
   return (
     <div className="p-3 border-t border-border relative select-none koaline-solid-panel">
+      {/* Edit Banner */}
+      {isEditing && editTarget && (
+        <div className="mb-2 px-3 py-1.5 rounded-nest-sm bg-amber-900/30 border border-amber-500/30 flex items-center justify-between text-xs animate-in slide-in-from-bottom-2">
+          <div className="flex items-center gap-2 truncate">
+            <Edit2 className="w-3.5 h-3.5 text-amber-400" />
+            <span className="font-semibold text-amber-300">Editando mensagem</span>
+          </div>
+          <button
+            onClick={() => onCancelEdit?.()}
+            className="p-1 rounded-full text-slate-400 hover:text-slate-200"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Reply Banner */}
       {replyTarget && (
         <div className="mb-2 px-3 py-1.5 rounded-nest-sm bg-slate-900 border border-border flex items-center justify-between text-xs animate-in slide-in-from-bottom-2">
@@ -486,15 +524,26 @@ const insertEmoji = (emoji: string) => {
           <button
             onClick={handleSend}
             disabled={isReadingAttachment || (!text.trim() && !attachment)}
-            title="Enviar mensagem"
-            className={`p-2 rounded-full transition-all active:scale-95 ${
+            title={isEditing ? 'Salvar edição' : 'Enviar mensagem'}
+            className={`flex items-center gap-1.5 px-3 rounded-full transition-all active:scale-95 ${
               (!isReadingAttachment && text.trim()) || attachment
                 ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30'
                 : 'bg-slate-800 text-slate-500 cursor-not-allowed'
             }`}
           >
             <Send className="w-3.5 h-3.5" />
+            {isEditing && <span className="text-xs font-medium">Salvar</span>}
           </button>
+          {isEditing && (
+            <button
+              type="button"
+              onClick={() => onCancelEdit?.()}
+              title="Cancelar edição"
+              className="p-2 rounded-full text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
     </div>

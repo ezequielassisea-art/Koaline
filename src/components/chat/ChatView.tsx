@@ -28,6 +28,7 @@ const ChatViewComponent: React.FC = () => {
   } = useApp();
 
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
+  const [editTarget, setEditTarget] = useState<Message | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [, setClock] = useState(Date.now());
@@ -147,6 +148,7 @@ const ChatViewComponent: React.FC = () => {
                   isUnread={!!lastReadAt && msg.senderId !== currentUser.id && parseAppDate(msg.timestamp).getTime() > parseAppDate(lastReadAt).getTime()}
                   timeLabel={new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(parseAppDate(msg.timestamp))}
                   onReply={(target) => setReplyTarget(target)}
+                  onEdit={(target) => setEditTarget(target)}
                 />
                 </React.Fragment>
               );
@@ -174,6 +176,8 @@ const ChatViewComponent: React.FC = () => {
       <MessageInput
         replyTarget={replyTarget}
         onClearReply={() => setReplyTarget(null)}
+        editTarget={editTarget}
+        onCancelEdit={() => setEditTarget(null)}
       />
     </div>
   );

@@ -230,6 +230,10 @@ interface AppContextType {
   lastReadAtByChannel: Record<string, string>;
   markChannelRead: (channelId: string) => void;
 
+  // Message Read Tracking
+  markMessageRead: (messageId: string, channelId: string, isDirectMessage?: boolean) => Promise<void>;
+  getMessageReadStatus: (messageId: string, channelId: string, isDirectMessage?: boolean) => 'sent' | 'delivered' | 'read';
+
   // User Actions Menu
   activeUserMenu: { user: User; position: { x: number; y: number } } | null;
   openUserMenu: (user: User, e: React.MouseEvent) => void;
@@ -1399,7 +1403,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     info: (message: string, duration?: number) => addToast('Informação', message, 'info', duration),
   };
 
-  const markChannelRead = (channelId: string) => {
+  const markChannelRead = async (channelId: string) => {
     const readAt = new Date().toISOString();
     setLastReadAtByChannel((prev) => {
       const next = { ...prev, [channelId]: readAt };
@@ -1408,6 +1412,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setCommunities((prev) => prev.map((community) => ({ ...community, channels: community.channels.map((channel) => channel.id === channelId ? { ...channel, unreadCount: 0 } : channel) })));
     setDms((prev) => prev.map((dm) => dm.id === channelId ? { ...dm, unread: false, lastReadAt: readAt } : dm));
+
+    // Insert read receipts for all messages in this channel that the current user hasn't read yet
+    const client = supabase;
+    if (client && currentUser.id) {
+      try {
+        const isDirectMessage = channelId.startsWith('dm-') || dms.some((dm) => dm.id === channelId);
+        const table = isDirectMessage ? 'direct_messages' : 'messages';
+        const idColumn = isDirectMessage ? 'conversation_id' : 'channel_id';
+
+        // Get all message IDs in this channel that aren't from the current user
+        const { data: messageIds } = await client
+          .from(table)
+          .select('id')
+          .eq(idColumn, channelId)
+          .neq('author_id', currentUser.id);
+
+        if (messageIds && messageIds.length > 0) {
+          // Batch insert read receipts
+          const readReceipts = messageIds.map((msg) => ({
+            message_id: msg.id,
+            user_id: currentUser.id,
+            read_at: readAt,
+          }));
+
+          await client
+            .from('message_reads')
+            .upsert(readReceipts, {
+              onConflict: 'message_id,user_id',
+            });
+        }
+      } catch (error) {
+        console.error('[markChannelRead] Error inserting read receipts:', error);
+      }
+    }
+  };
+
+  const markMessageRead = async (messageId: string, channelId: string, isDirectMessage = false) => {
+    const client = supabase;
+    if (!client || !currentUser.id) return;
+
+    try {
+      const table = isDirectMessage ? 'direct_messages' : 'messages';
+      const idColumn = isDirectMessage ? 'id' : 'id';
+
+      // Insert read receipt
+      await client
+        .from('message_reads')
+        .upsert({
+          message_id: messageId,
+          user_id: currentUser.id,
+          read_at: new Date().toISOString(),
+        }, {
+          onConflict: 'message_id,user_id',
+        });
+    } catch (error) {
+      console.error('[markMessageRead] Error:', error);
+    }
+  };
+
+  const getMessageReadStatus = (messageId: string, channelId: string, isDirectMessage = false): 'sent' | 'delivered' | 'read' => {
+    // For now, return 'sent' as default. In a full implementation, this would query the message_reads table
+    // For DMs: 'read' when the other person has read it
+    // For groups: 'read' when ALL members have read it
+    // This is a simplified version - in production you'd want to fetch this data
+    return 'sent';
   };
 
   const markNotificationsRead = () => {
@@ -2925,6 +2994,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clearAllNotifications,
         lastReadAtByChannel,
         markChannelRead,
+        markMessageRead,
+        getMessageReadStatus,
         activeUserMenu,
         openUserMenu,
         closeUserMenu,
