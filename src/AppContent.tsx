@@ -43,7 +43,6 @@ export const AppContent: React.FC = () => {
     isThemeCustomizerOpen,
     isCreateChannelModalOpen,
     activeUserMenu,
-    // Collapsible sidebar states
     isLeftSidebarOpen,
     setIsLeftSidebarOpen,
     isRightSidebarOpen,
@@ -130,19 +129,17 @@ export const AppContent: React.FC = () => {
     <div className="app-shell flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-200">
       <IncomingCallCard />
       <TopBar />
-      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {!isNotFound && (
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            {/* Left Sidebar - Conversations - 260px fixed, bg-[#0C2130] */}
-            {(communities.length > 0 || dms.length > 0) && (
-              <div className={`flex flex-col transition-all duration-300 overflow-hidden bg-[#0C2130] border-r border-slate-800/60 ${
-                isLeftSidebarOpen ? 'w-64' : 'w-16'
-              }`}>
-                <ChannelList onOpenAdmin={openAdminPanel} isCollapsed={!isLeftSidebarOpen} />
-              </div>
-            )}
+            {/* Left Sidebar - Fixed 260px */}
+            <aside className="flex flex-col w-[260px] h-full bg-[#0C2130] border-r border-slate-800/60 shrink-0 overflow-hidden">
+              {(communities.length > 0 || dms.length > 0) && (
+                <ChannelList onOpenAdmin={openAdminPanel} isCollapsed={false} />
+              )}
+            </aside>
 
-            {/* Center Column - Active Chat - flex-1 */}
+            {/* Center Column - Chat View - flex-1 */}
             <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative min-w-0 bg-slate-950">
               {isDirectMessages ? (
                 <DirectMessageView />
@@ -187,17 +184,17 @@ export const AppContent: React.FC = () => {
               {activeCall?.isMinimized && activeCall.isScreenSharing && <ScreenSharePiP />}
             </main>
 
-            {/* Right Sidebar - Context Panel - 240px (w-60), bg-[#0C2130], non-overlaying */}
-            <div className={`flex flex-col transition-all duration-300 overflow-hidden bg-[#0C2130] border-l border-slate-800/60 ${
-              isRightSidebarOpen ? 'w-60' : 'w-0'
-            }`}>
-              {isRightSidebarOpen && isContextPanelOpen && <ContextPanel />}
-            </div>
+            {/* Right Sidebar - Fixed 260px, only rendered when open */}
+            {isRightSidebarOpen && (
+              <aside className="flex flex-col w-[260px] h-full bg-[#0C2130] border-l border-slate-800/60 shrink-0 overflow-hidden">
+                {isContextPanelOpen && <ContextPanel />}
+              </aside>
+            )}
           </div>
         )}
 
         {isNotFound && (
-          <main className="koaline-not-found">
+          <main className="koaline-not-found flex-1 flex items-center justify-center">
             <div>
               <span>404</span>
               <h1>Esta página não foi encontrada</h1>
