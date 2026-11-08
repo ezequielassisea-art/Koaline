@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
+import { User } from '../../types';
 import {
   X,
   Phone,
@@ -14,7 +15,10 @@ import {
   Loader2,
   LogOut,
   Settings,
+  Shield,
 } from 'lucide-react';
+
+const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'offline', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
 
 export const ContextPanel: React.FC = () => {
   const {
@@ -32,18 +36,51 @@ export const ContextPanel: React.FC = () => {
     setIsThemeCustomizerOpen,
     startDirectCall,
     leaveCommunity,
+    members,
+    communities,
   } = useApp();
 
   const user = contextPanelUser || currentUser;
   const isSelf = user.id === currentUser.id;
 
+  // Get community members for the current community
+  const activeCommunity = communities.find((c) => c.id === currentCommunityId);
+  const communityMembers = activeCommunity
+    ? members.filter((m) => m.communityId === currentCommunityId)
+    : [];
+
+  // Build member map from community members with profiles
+  // For now, use existing member data from DMs and currentUser as fallback
   const memberMap = new Map<string, typeof currentUser>();
   [currentUser, ...dms.filter((dm) => !dm.isArchived).map((dm) => dm.user)].forEach((member) => {
     if (member.id) memberMap.set(member.id, member);
   });
-  const panelMembers = [...memberMap.values()];
-  const onlineMembers = panelMembers.filter((member) => member.status === 'online');
-  const offlineMembers = panelMembers.filter((member) => member.status !== 'online');
+
+  // Combine community members with member data
+  const panelMembers = communityMembers.map((cm) => {
+    const existing = memberMap.get(cm.userId);
+    return existing || {
+      ...EMPTY_USER,
+      id: cm.userId,
+      name: 'Membro',
+      handle: 'usuario',
+      avatar: '',
+      status: 'offline' as const,
+      communityRole: cm.role,
+    };
+  });
+
+  // Also add any members from DMs that aren't in community
+  const dmMembers = [...memberMap.values()].filter((m) => !communityMembers.some((cm) => cm.userId === m.id));
+  const allMembers = [...panelMembers, ...dmMembers];
+
+  const totalCount = allMembers.length;
+
+  // Group by role: Admins (owner, admin, moderator), then Online, then Offline
+  const adminMembers = allMembers.filter((m) => m.communityRole && ['owner', 'admin', 'moderator'].includes(m.communityRole));
+  const regularMembers = allMembers.filter((m) => !m.communityRole || !['owner', 'admin', 'moderator'].includes(m.communityRole));
+  const onlineMembers = regularMembers.filter((m) => m.status === 'online');
+  const offlineMembers = regularMembers.filter((m) => m.status !== 'online');
 
   const handleInviteClick = () => {
     try {
@@ -74,45 +111,96 @@ export const ContextPanel: React.FC = () => {
   if (!isContextPanelOpen) return null;
 
   if (!contextPanelUser) {
+    const getRoleIcon = (role?: string) => {
+      if (!role) return null;
+      if (role === 'owner') return <Shield className="w-3.5 h-3.5 text-amber-400" aria-label="Owner" />;
+      if (role === 'admin') return <Shield className="w-3.5 h-3.5 text-indigo-400" aria-label="Admin" />;
+      if (role === 'moderator') return <Shield className="w-3.5 h-3.5 text-sky-400" aria-label="Moderator" />;
+      return null;
+    };
+
     const renderMember = (member: typeof currentUser) => (
-      <button key={member.id} className="member-roster-person" onClick={() => openUserProfile(member)}>
-        {member.avatar ? <img className="member-roster-avatar" src={member.avatar} alt="" /> : <span className="member-roster-avatar member-roster-fallback">{member.name.trim().charAt(0).toUpperCase() || '◇'}</span>}
-        <span className="member-roster-copy"><strong>{member.name || 'Membro'}</strong><small>@{member.handle || 'koaline'}</small></span>
-        <span className={'member-roster-status ' + (member.status === 'online' ? 'is-online' : 'is-offline')} aria-label={member.status === 'online' ? 'Online' : 'Offline'} />
+      <button
+        key={member.id}
+        className="group flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/50 transition-colors w-full text-left"
+        onClick={() => openUserProfile(member)}
+      >
+        {/* Avatar 32px */}
+        <div className="relative flex-shrink-0">
+          {member.avatar ? (
+            <img src={member.avatar} alt="" className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-700" />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-slate-700 ring-1 ring-slate-700 grid place-items-center text-sm font-bold text-white">
+              {member.name.trim().charAt(0).toUpperCase() || '◇'}
+            </div>
+          )}
+          <span
+            className={`absolute bottom-0 right-0 w-2 h-2 rounded-full ring-2 ring-slate-900 ${
+              member.status === 'online' ? 'bg-emerald-500' :
+              member.status === 'idle' ? 'bg-amber-500' :
+              member.status === 'dnd' ? 'bg-rose-500' : 'bg-zinc-400'
+            }`}
+            aria-label={member.status === 'online' ? 'Online' : 'Offline'}
+          />
+        </div>
+
+        {/* Name & Handle */}
+        <div className="flex-1 min-w-0 flex flex-col justify-center">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-semibold text-sm text-white">{member.name || 'Membro'}</span>
+            {getRoleIcon(member.communityRole)}
+          </div>
+          <span className="truncate text-xs text-slate-400">@{member.handle || 'usuario'}</span>
+        </div>
       </button>
     );
 
     return (
       <aside className="member-roster-panel h-full bg-slate-900 border-l border-border flex flex-col z-20 overflow-y-auto animate-in slide-in-from-right duration-200 select-none">
-        <header className="member-roster-header">
-          <div><h2><Users /> Membros</h2><p>{panelMembers.length} {panelMembers.length === 1 ? 'membro ou amigo' : 'membros e amigos'}</p></div>
-          <button className="member-roster-invite" onClick={handleInviteClick} title="Copiar um convite ativo" aria-label="Copiar convite ativo"><Plus /></button>
-          <button
-            className="member-roster-invite text-rose-400 hover:text-rose-300"
-            onClick={async () => {
-              const confirmed = window.confirm('Tem certeza que deseja sair desta comunidade?');
-              if (confirmed) {
-                await leaveCommunity(currentCommunityId);
-                closeContextPanel();
-              }
-            }}
-            title="Sair da Comunidade"
-            aria-label="Sair da Comunidade"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
-          <button className="member-roster-close" onClick={closeContextPanel} title="Fechar painel" aria-label="Fechar painel"><X /></button>
+        <header className="member-roster-header px-4 py-3 border-b border-slate-800/50 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Membros - <span className="text-slate-400 font-normal">{totalCount}</span>
+            </h2>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors" onClick={handleInviteClick} title="Copiar um convite ativo" aria-label="Copiar convite ativo"><Plus className="w-4 h-4" /></button>
+            <button className="p-2 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-slate-800 transition-colors" onClick={async () => { const confirmed = window.confirm('Tem certeza que deseja sair desta comunidade?'); if (confirmed) { await leaveCommunity(currentCommunityId); closeContextPanel(); } }} title="Sair da Comunidade" aria-label="Sair da Comunidade"><LogOut className="w-4 h-4" /></button>
+            <button className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors" onClick={closeContextPanel} title="Fechar painel" aria-label="Fechar painel"><X className="w-4 h-4" /></button>
+          </div>
         </header>
-        <div className="member-roster-groups">
+        <div className="member-roster-groups flex-1 overflow-y-auto px-3 py-3 space-y-4">
+          {adminMembers.length > 0 && (
+            <section>
+              <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 px-1">
+                <Shield className="w-3.5 h-3.5 text-amber-400" />
+                Administradores <small className="font-normal text-slate-400">{adminMembers.length}</small>
+              </h3>
+              <div className="space-y-1">
+                {adminMembers.map(renderMember)}
+              </div>
+            </section>
+          )}
           <section>
-            <h3><span className="member-roster-status is-online" /> Online <small>{onlineMembers.length}</small></h3>
-            {onlineMembers.map(renderMember)}
-            {onlineMembers.length === 0 && <p className="member-roster-empty">Ninguém online agora.</p>}
+            <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 px-1">
+              <span className="w-3.5 h-3.5 rounded-full bg-emerald-500" />
+              Online <small className="font-normal text-slate-400">{onlineMembers.length}</small>
+            </h3>
+            <div className="space-y-1">
+              {onlineMembers.map(renderMember)}
+              {onlineMembers.length === 0 && <p className="text-sm text-slate-500 px-1 py-2">Ninguém online agora.</p>}
+            </div>
           </section>
           <section>
-            <h3><span className="member-roster-status is-offline" /> Offline <small>{offlineMembers.length}</small></h3>
-            {offlineMembers.map(renderMember)}
-            {offlineMembers.length === 0 && <p className="member-roster-empty">Todos estão online.</p>}
+            <h3 className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 px-1">
+              <span className="w-3.5 h-3.5 rounded-full bg-zinc-500" />
+              Offline <small className="font-normal text-slate-400">{offlineMembers.length}</small>
+            </h3>
+            <div className="space-y-1">
+              {offlineMembers.map(renderMember)}
+              {offlineMembers.length === 0 && <p className="text-sm text-slate-500 px-1 py-2">Todos estão online.</p>}
+            </div>
           </section>
         </div>
       </aside>

@@ -189,7 +189,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
   return (
     <div
       id={`message-${message.id}`}
-      className={`koaline-message group relative flex gap-3 px-4 py-2 transition-colors rounded-nest-sm ${isSystemInvite ? 'justify-center' : ''} ${isGrouped ? 'is-grouped' : 'mt-2'} ${
+      className={`koaline-message relative flex gap-3 px-4 py-2 transition-colors rounded-nest-sm ${isSystemInvite ? 'justify-center' : ''} ${isGrouped ? 'is-grouped mt-0.5' : 'mt-0.5'} ${
         message.pinned ? 'bg-indigo-950 border-l-2 border-indigo-500' : ''
       }`}
     >
@@ -255,46 +255,123 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
             </div>
           </div>
         ) : (
-          <div className={`koaline-message-copy leading-relaxed mt-0.5 break-words ${isSelf ? 'is-self' : 'is-other'}`}>
-            {message.replyTo && (
-              <div className="koaline-reply-quote">
-                <Reply className="h-3 w-3 shrink-0" />
-                <span className="truncate"><strong>{message.replyTo.senderName}</strong>: {message.replyTo.content}</span>
+          <div
+            className={`koaline-message-bubble group relative ${isSelf ? 'message-bubble-self' : 'message-bubble-other'}`}
+          >
+            <div className={`koaline-message-copy leading-relaxed break-words ${isSelf ? 'is-self' : 'is-other'}`}>
+              {message.replyTo && (
+                <div className="koaline-reply-quote">
+                  <Reply className="h-3 w-3 shrink-0" />
+                  <span className="truncate"><strong>{message.replyTo.senderName}</strong>: {message.replyTo.content}</span>
+                </div>
+              )}
+              {inviteCard ? (
+                <div className={`my-2 max-w-lg p-5 ${isSystemInvite ? 'w-full rounded-xl border-y border-dashed border-slate-700 bg-slate-900/40 text-center' : 'rounded-2xl border border-[var(--primary)]/60 bg-[var(--surface)] shadow-lg'}`}>
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--primary)]">{isSystemInvite ? `Convite personalizado de ${sender.name}` : 'Convite para comunidade'}</div>
+                  <h3 className="text-lg font-bold text-white">{inviteCard.communityName || communities.find((item) => item.id === inviteCard?.communityId)?.name || 'Comunidade Koaline'}</h3>
+                  {inviteCard.message && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{inviteCard.message}</p>}
+                  <button type="button" onClick={() => void acceptCommunityInvite(inviteCard!.communityId, inviteCard!.notificationId)} className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-110">Entrar na Comunidade</button>
+                </div>
+              ) : imageSource ? (
+                <a href={imageSource} target="_blank" rel="noreferrer" aria-label="Abrir imagem em nova aba" className="inline-block">
+                  <img src={imageSource} alt="Imagem enviada" className="max-w-[300px] max-h-[300px] rounded-xl object-cover cursor-pointer" />
+                </a>
+              ) : audioSource ? (
+                <AudioMessagePlayer src={audioSource} />
+              ) : videoSource ? (
+                <video src={videoSource} controls preload="metadata" className="max-h-[300px] max-w-[300px] rounded-xl object-cover" aria-label="Vídeo enviado" />
+              ) : youtubeVideoId ? (
+                <>
+                  {messageText && <p className="whitespace-pre-wrap">{messageText}</p>}
+                  <button type="button" onClick={() => setIsYouTubeModalOpen(true)} aria-label="Assistir no YouTube" className="relative mt-1 block w-[320px] max-w-full overflow-hidden rounded-xl bg-[var(--bg-elevated)] text-left transition-transform hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <img src={`https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg`} alt="Miniatura do vídeo do YouTube" className="block aspect-video w-full object-cover" />
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors hover:bg-black/35">
+                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/75 text-white shadow-lg">
+                        <Play className="ml-0.5 h-5 w-5 fill-current" />
+                      </span>
+                    </span>
+                    <span className="block px-3 py-2 text-xs font-medium text-primary">Assistir no YouTube</span>
+                  </button>
+                </>
+              ) : content.trim() ? (
+                <p className={`message-content-text whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{renderLinkedText(content, isSelf)}</p>
+              ) : null}
+              <time className="koaline-message-time" dateTime={message.timestamp} title={formatRelativeTime(message.timestamp)}>{timeLabel || ''}</time>
+              {!imageSource && !audioSource && !videoSource && content.length > 400 && <button type="button" className="message-expand-button" onClick={() => setIsExpanded((expanded) => !expanded)}>{isExpanded ? 'Ver menos' : 'Ver mais'}</button>}
+            </div>
+
+            {/* Hover Actions Bar - anchored to bubble top-right */}
+            {!isSystemInvite && (
+              <div className="koaline-message-hover-actions">
+                {/* Quick Emojis */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    title="Adicionar reação"
+                    className="koaline-message-hover-btn"
+                  >
+                    <Smile className="w-3.5 h-3.5" />
+                  </button>
+
+                  {showEmojiPicker && (
+                    <div className="emoji-picker-popover">
+                      {COMMON_EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          onClick={() => {
+                            toggleReaction(message.id, emoji);
+                            setShowEmojiPicker(false);
+                          }}
+                          className="koaline-message-hover-btn p-0.5"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Reply */}
+                <button
+                  onClick={() => onReply(message)}
+                  title="Responder"
+                  className="koaline-message-hover-btn"
+                >
+                  <Reply className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Pin */}
+                {canManagePins && <button
+                  onClick={() => togglePinMessage(message.id)}
+                  title={message.pinned ? 'Desafixar mensagem' : 'Fixar mensagem'}
+                  className={`koaline-message-hover-btn ${message.pinned ? 'text-indigo-400' : ''}`}
+                >
+                  <Pin className="w-3.5 h-3.5" />
+                </button>}
+
+                {/* Edit */}
+                {isSelf && (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    title="Editar mensagem"
+                    className="koaline-message-hover-btn"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {/* Delete */}
+                {isSelf && (
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    title="Apagar mensagem"
+                    className="koaline-message-hover-btn"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             )}
-            {inviteCard ? (
-              <div className={`my-2 max-w-lg p-5 ${isSystemInvite ? 'w-full rounded-xl border-y border-dashed border-slate-700 bg-slate-900/40 text-center' : 'rounded-2xl border border-[var(--primary)]/60 bg-[var(--surface)] shadow-lg'}`}>
-                <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--primary)]">{isSystemInvite ? `Convite personalizado de ${sender.name}` : 'Convite para comunidade'}</div>
-                <h3 className="text-lg font-bold text-white">{inviteCard.communityName || communities.find((item) => item.id === inviteCard?.communityId)?.name || 'Comunidade Koaline'}</h3>
-                {inviteCard.message && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-300">{inviteCard.message}</p>}
-                <button type="button" onClick={() => void acceptCommunityInvite(inviteCard!.communityId, inviteCard!.notificationId)} className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white transition hover:brightness-110">Entrar na Comunidade</button>
-              </div>
-            ) : imageSource ? (
-              <a href={imageSource} target="_blank" rel="noreferrer" aria-label="Abrir imagem em nova aba" className="inline-block">
-                <img src={imageSource} alt="Imagem enviada" className="max-w-[300px] max-h-[300px] rounded-xl object-cover cursor-pointer" />
-              </a>
-            ) : audioSource ? (
-              <AudioMessagePlayer src={audioSource} />
-            ) : videoSource ? (
-              <video src={videoSource} controls preload="metadata" className="max-h-[300px] max-w-[300px] rounded-xl object-cover" aria-label="Vídeo enviado" />
-            ) : youtubeVideoId ? (
-              <>
-                {messageText && <p className="whitespace-pre-wrap">{messageText}</p>}
-                <button type="button" onClick={() => setIsYouTubeModalOpen(true)} aria-label="Assistir no YouTube" className="relative mt-1 block w-[320px] max-w-full overflow-hidden rounded-xl bg-[var(--bg-elevated)] text-left transition-transform hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-indigo-500">
-                  <img src={`https://img.youtube.com/vi/${youtubeVideoId}/hqdefault.jpg`} alt="Miniatura do vídeo do YouTube" className="block aspect-video w-full object-cover" />
-                  <span className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors hover:bg-black/35">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/75 text-white shadow-lg">
-                      <Play className="ml-0.5 h-5 w-5 fill-current" />
-                    </span>
-                  </span>
-                  <span className="block px-3 py-2 text-xs font-medium text-primary">Assistir no YouTube</span>
-                </button>
-              </>
-            ) : content.trim() ? (
-              <p className={`message-content-text whitespace-pre-wrap ${!isExpanded && content.length > 400 ? 'is-collapsed' : ''}`}>{renderLinkedText(content, isSelf)}</p>
-            ) : null}
-            <time className="koaline-message-time" dateTime={message.timestamp} title={formatRelativeTime(message.timestamp)}>{timeLabel || ''}</time>
-            {!imageSource && !audioSource && !videoSource && content.length > 400 && <button type="button" className="message-expand-button" onClick={() => setIsExpanded((expanded) => !expanded)}>{isExpanded ? 'Ver menos' : 'Ver mais'}</button>}
           </div>
         )}
 
@@ -383,79 +460,6 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
           </div>
         )}
       </div>
-
-      {/* Floating Hover Actions Bar */}
-      {!isSystemInvite && <div className="absolute right-4 -top-3 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 border border-slate-700 shadow-xl rounded-nest-pill p-1 flex items-center gap-1 z-10">
-        {/* Quick Emojis */}
-        <div className="relative">
-          <button
-            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-            title="Adicionar reação"
-            className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-amber-400 transition-colors"
-          >
-            <Smile className="w-3.5 h-3.5" />
-          </button>
-
-          {showEmojiPicker && (
-            <div className="absolute right-0 bottom-full mb-1 flex items-center gap-1 p-1 rounded-nest-pill bg-slate-900 border border-slate-700 shadow-xl z-20">
-              {COMMON_EMOJIS.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => {
-                    toggleReaction(message.id, emoji);
-                    setShowEmojiPicker(false);
-                  }}
-                  className="p-1 hover:scale-125 transition-transform text-sm"
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Reply */}
-        <button
-          onClick={() => onReply(message)}
-          title="Responder"
-          className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-indigo-400 transition-colors"
-        >
-          <Reply className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Pin */}
-        {canManagePins && <button
-          onClick={() => togglePinMessage(message.id)}
-          title={message.pinned ? 'Desafixar mensagem' : 'Fixar mensagem'}
-          className={`p-1.5 rounded-full hover:bg-slate-800 transition-colors ${
-            message.pinned ? 'text-indigo-400' : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Pin className="w-3.5 h-3.5" />
-        </button>}
-
-        {/* Edit */}
-        {isSelf && (
-          <button
-            onClick={() => setIsEditing(true)}
-            title="Editar mensagem"
-            className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-sky-400 transition-colors"
-          >
-            <Edit2 className="w-3.5 h-3.5" />
-          </button>
-        )}
-
-        {/* Delete */}
-        {isSelf && (
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            title="Apagar mensagem"
-            className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-rose-400 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>}
     </div>
   );
 };

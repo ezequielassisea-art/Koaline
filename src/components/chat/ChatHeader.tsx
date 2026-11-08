@@ -141,16 +141,14 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
           </button>
         )}
 
-        {/* Right Sidebar Toggle */}
         <button
-          onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
-          title={isRightSidebarOpen ? 'Recolher painel direito' : 'Expandir painel direito'}
-          aria-label={isRightSidebarOpen ? 'Recolher painel direito' : 'Expandir painel direito'}
+          onClick={() => isContextPanelOpen ? closeContextPanel() : openMembersPanel()}
+          title="Painel de membros"
           className={`p-2 rounded-lg transition-colors ${
-            isRightSidebarOpen ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+            isContextPanelOpen ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
           }`}
         >
-          {isRightSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+          <Users className="w-4 h-4" />
         </button>
 
         <button
@@ -161,16 +159,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleSearch, isSearch
           }`}
         >
           <Search className="w-4 h-4" />
-        </button>
-
-        <button
-          onClick={() => isContextPanelOpen ? closeContextPanel() : openMembersPanel()}
-          title="Painel de membros"
-          className={`p-2 rounded-lg transition-colors ${
-            isContextPanelOpen ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Users className="w-4 h-4" />
         </button>
       </div>
     </div>

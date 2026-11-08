@@ -133,17 +133,17 @@ export const AppContent: React.FC = () => {
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {!isNotFound && (
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            {/* Left Sidebar - Conversations */}
+            {/* Left Sidebar - Conversations - 260px fixed, bg-[#0C2130] */}
             {(communities.length > 0 || dms.length > 0) && (
-              <div className={`flex flex-col transition-all duration-300 overflow-hidden ${
+              <div className={`flex flex-col transition-all duration-300 overflow-hidden bg-[#0C2130] border-r border-slate-800/60 ${
                 isLeftSidebarOpen ? 'w-64' : 'w-16'
               }`}>
                 <ChannelList onOpenAdmin={openAdminPanel} isCollapsed={!isLeftSidebarOpen} />
               </div>
             )}
 
-            {/* Center Column - Active Chat */}
-            <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative min-w-0">
+            {/* Center Column - Active Chat - flex-1 */}
+            <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden relative min-w-0 bg-slate-950">
               {isDirectMessages ? (
                 <DirectMessageView />
               ) : communities.length === 0 ? (
@@ -187,9 +187,9 @@ export const AppContent: React.FC = () => {
               {activeCall?.isMinimized && activeCall.isScreenSharing && <ScreenSharePiP />}
             </main>
 
-            {/* Right Sidebar - Context Panel */}
-            <div className={`flex flex-col transition-all duration-300 overflow-hidden ${
-              isRightSidebarOpen ? 'w-72' : 'w-0'
+            {/* Right Sidebar - Context Panel - 240px (w-60), bg-[#0C2130], non-overlaying */}
+            <div className={`flex flex-col transition-all duration-300 overflow-hidden bg-[#0C2130] border-l border-slate-800/60 ${
+              isRightSidebarOpen ? 'w-60' : 'w-0'
             }`}>
               {isRightSidebarOpen && isContextPanelOpen && <ContextPanel />}
             </div>

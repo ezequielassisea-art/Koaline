@@ -2495,19 +2495,113 @@ to {
 
 
 
-.soundboard-float-emoji {
-  position: absolute;
-  z-index: 5;
-  left: 50%;
-  top: 0;
-  pointer-events: none;
-  font-size: 1.35rem;
-  line-height: 1;
-  animation: soundboard-float-up 900ms cubic-bezier(.2,.7,.3,1) forwards;
+.koaline-message-bubble {
+  position: relative;
+  max-width: 85%;
 }
 
-@keyframes soundboard-float-up {
-  0% { opacity: 1; transform: translate(-50%, 0) scale(.85); }
-  35% { opacity: 1; transform: translate(-50%, -20px) scale(1.2); }
-  100% { opacity: 0; transform: translate(-50%, -58px) scale(1.35); }
+.koaline-message-bubble.message-bubble-self {
+  margin-left: auto;
+}
+
+.koaline-message-bubble.message-bubble-other {
+  margin-right: auto;
+}
+
+.koaline-message-bubble:hover .koaline-message-hover-actions {
+  opacity: 1;
+}
+
+.koaline-message-hover-actions {
+  position: absolute;
+  right: 0;
+  top: 0;
+  transform: translate(50%, -50%);
+  opacity: 0;
+  transition: opacity 150ms ease;
+  pointer-events: auto;
+  z-index: 10;
+}
+
+.koaline-message-hover-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.koaline-message-hover-actions button:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.koaline-message-hover-actions .emoji-picker-popover {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  margin-bottom: 4px;
+  padding: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  gap: 4px;
+  z-index: 20;
+}
+
+.koaline-message-hover-actions .emoji-picker-popover button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+.koaline-message-hover-actions .emoji-picker-popover button:hover {
+  background: var(--bg-hover);
+  transform: scale(1.15);
+}
+
+/* Same-author message spacing - 2px margin-top */
+.koaline-message.is-grouped {
+  margin-top: 2px !important;
+}
+
+/* Ensure the message copy inside bubble has proper styling */
+.koaline-message-bubble .koaline-message-copy {
+  padding: 8px 12px;
+  border-radius: 14px;
+  max-width: 100%;
+  word-wrap: break-word;
+}
+
+.koaline-message-bubble.message-bubble-self .koaline-message-copy {
+  background: var(--primary);
+  color: var(--on-primary) !important;
+  border-radius: 14px 4px 14px 14px;
+}
+
+.koaline-message-bubble.message-bubble-other .koaline-message-copy {
+  background: var(--surface);
+  color: var(--text-primary) !important;
+  border-radius: 4px 14px 14px 14px;
+}
+
+.koaline-message-bubble .koaline-message-time {
+  float: right;
+  margin: 4px 0 0 8px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.koaline-message-bubble.message-bubble-self .koaline-message-time {
+  color: var(--on-primary);
+  opacity: 0.7;
 }
