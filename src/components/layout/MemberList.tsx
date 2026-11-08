@@ -19,6 +19,8 @@ import {
   Users,
   Edit3,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const EMPTY_USER: User = { id: '', name: '', handle: '', avatar: '', status: 'offline', level: 1, xp: 0, xpMax: 100, badges: [], socials: [] };
 
@@ -154,22 +156,20 @@ const MemberList: React.FC<{ className?: string }> = ({ className = '' }) => {
   };
 
   const renderMember = (member: typeof currentUser) => (
-    <button
+    <Button
       key={member.id}
-      className="member-item group"
+      className="member-item group w-full text-left justify-start px-2 py-1.5"
       onClick={() => openUserProfile(member)}
       title={member.name}
       aria-label={member.name}
+      variant="ghost"
     >
       {/* Avatar 32px */}
       <div className="relative flex-shrink-0">
-        {member.avatar ? (
-          <img src={member.avatar} alt="" className="member-avatar" />
-        ) : (
-          <div className="member-avatar-fallback">
-            {member.name.trim().charAt(0).toUpperCase() || '◇'}
-          </div>
-        )}
+        <Avatar className="w-8 h-8">
+          <AvatarImage src={member.avatar} alt={member.name} />
+          <AvatarFallback className="text-sm font-semibold">{member.name.trim().charAt(0).toUpperCase() || '◇'}</AvatarFallback>
+        </Avatar>
         <span
           className={`member-status-dot absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-white ${
             member.status === 'online' ? 'bg-emerald-500' :
@@ -197,7 +197,7 @@ const MemberList: React.FC<{ className?: string }> = ({ className = '' }) => {
           </span>
         </div>
       </div>
-    </button>
+    </Button>
   );
 
   if (!isContextPanelOpen && !contextPanelUser) return null;
@@ -215,19 +215,24 @@ const MemberList: React.FC<{ className?: string }> = ({ className = '' }) => {
               className="w-full h-full object-cover opacity-80 rounded-t-2xl"
             />
           )}
-          <button
+          <Button
             onClick={closeContextPanel}
-            className="absolute top-3 right-3 p-1.5 rounded-full bg-gray-100/80 text-gray-700 hover:bg-gray-200 backdrop-blur-sm transition-colors"
+            variant="ghost"
+            size="icon"
+            className="absolute top-3 right-3 h-8 w-8 bg-gray-100/80 text-gray-700 hover:bg-gray-200 backdrop-blur-sm transition-colors"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
         {/* Avatar & Quick Stats */}
         <div className="px-5 pb-5 -mt-12 flex-1 overflow-y-auto">
           <div className="flex items-end justify-between mb-3">
             <div className="relative">
-              {user.avatar ? <img src={user.avatar} alt={user.name} className="w-20 h-20 rounded-full object-cover ring-4 ring-white shadow-xl" /> : <div aria-label={user.name || 'Avatar padrão'} className="w-20 h-20 rounded-full bg-gray-100 ring-4 ring-white shadow-xl grid place-items-center text-xl text-gray-600">{user.name.trim().charAt(0).toUpperCase() || '◇'}</div>}
+              <Avatar className="w-20 h-20 ring-4 ring-white shadow-xl">
+                <AvatarImage src={user.avatar} alt={user.name} />
+                <AvatarFallback className="text-2xl font-semibold text-gray-600 bg-gray-100">{user.name.trim().charAt(0).toUpperCase() || '◇'}</AvatarFallback>
+              </Avatar>
               <span
                 className={`status-presence absolute bottom-1 right-1 w-4 h-4 rounded-full ring-2 ring-white ${
                   user.status === 'online'
@@ -243,20 +248,24 @@ const MemberList: React.FC<{ className?: string }> = ({ className = '' }) => {
 
             {!isSelf && (
               <div className="flex items-center gap-1.5 pb-1">
-                <button
+                <Button
                   onClick={() => startDirectCall(user, 'voice')}
+                  variant="ghost"
+                  size="icon"
                   title="Chamada de voz"
-                  className="p-2 rounded-full bg-gray-100 hover:bg-[#00BFFF]/20 text-[#00BFFF] transition-colors"
+                  className="h-9 w-9 text-[#00BFFF] hover:bg-[#00BFFF]/20 transition-colors"
                 >
                   <Phone className="w-4 h-4" />
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={() => startDirectCall(user, 'video')}
+                  variant="ghost"
+                  size="icon"
                   title="Chamada de vídeo"
-                  className="p-2 rounded-full bg-gray-100 hover:bg-sky-100 text-sky-500 transition-colors"
+                  className="h-9 w-9 text-sky-500 hover:bg-sky-100 transition-colors"
                 >
                   <Video className="w-4 h-4" />
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -286,16 +295,16 @@ const MemberList: React.FC<{ className?: string }> = ({ className = '' }) => {
           {/* Action Buttons */}
           {isSelf ? (
             <div className="grid grid-cols-1 gap-2 mb-5">
-              <button
+              <Button
                 onClick={() => setIsProfileEditorOpen(true)}
                 className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-full bg-[#00BFFF] hover:bg-[#009FD6] text-white font-medium text-xs shadow-md transition-all"
               >
                 <Edit3 className="w-3.5 h-3.5" />
                 <span>Editar Perfil</span>
-              </button>
+              </Button>
             </div>
           ) : (
-            <button
+            <Button
               disabled={isDmLoading}
               onClick={async () => {
                 if (await openDirectMessage(user)) closeContextPanel();
@@ -304,7 +313,7 @@ const MemberList: React.FC<{ className?: string }> = ({ className = '' }) => {
             >
               {isDmLoading ? <div className="w-4 h-4 animate-spin border-2 border-white border-t-transparent rounded-full" /> : <MessageSquare className="w-4 h-4" />}
               <span>{isDmLoading ? 'Carregando conversa…' : 'Enviar Mensagem Direta'}</span>
-            </button>
+            </Button>
           )}
 
           {/* Level & XP */}
@@ -402,19 +411,17 @@ const MemberList: React.FC<{ className?: string }> = ({ className = '' }) => {
 
           {/* User Profile Block at bottom - mt-auto */}
           <div className="mt-auto pt-4 border-t border-gray-100">
-            <button
+            <Button
               onClick={() => setIsProfileEditorOpen(true)}
               className="group w-full flex items-center gap-3 p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors border border-gray-200 text-left"
               title="Editar perfil"
               aria-label="Editar perfil"
+              variant="ghost"
             >
-              {currentUser.avatar ? (
-                <img src={currentUser.avatar} alt={currentUser.name} className="w-8 h-8 rounded-full object-cover ring-1 ring-gray-200 flex-shrink-0" />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-gray-100 ring-1 ring-gray-200 flex-shrink-0 grid place-items-center text-xs font-semibold text-gray-600">
-                  {currentUser.name.trim().charAt(0).toUpperCase() || '◇'}
-                </div>
-              )}
+              <Avatar className="w-8 h-8 ring-1 ring-gray-200 flex-shrink-0">
+                <AvatarImage src={currentUser.avatar} alt={currentUser.name} />
+                <AvatarFallback className="text-xs font-semibold text-gray-600 bg-gray-100">{currentUser.name.trim().charAt(0).toUpperCase() || '◇'}</AvatarFallback>
+              </Avatar>
               <div className="flex-1 min-w-0">
                 <div className="truncate font-semibold text-sm text-gray-900">
                   {currentUser.name.split(' ')[0]}
@@ -424,7 +431,7 @@ const MemberList: React.FC<{ className?: string }> = ({ className = '' }) => {
                 </div>
               </div>
               <Settings className="w-4 h-4 text-gray-400 group-hover:text-[#00BFFF] transition-colors flex-shrink-0" />
-            </button>
+            </Button>
           </div>
         </div>
       </aside>
@@ -442,12 +449,12 @@ const MemberList: React.FC<{ className?: string }> = ({ className = '' }) => {
           <span className="member-count text-sm text-gray-500">({totalCount})</span>
         </div>
         <div className="member-list-actions flex items-center gap-1">
-          <button className="member-list-btn p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" onClick={handleInviteClick} title="Convidar" aria-label="Convidar">
+          <Button className="member-list-btn p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" onClick={handleInviteClick} title="Convidar" aria-label="Convidar" variant="ghost" size="icon">
             <UserPlus className="w-4 h-4" />
-          </button>
-          <button className="member-list-btn p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" onClick={closeContextPanel} title="Fechar" aria-label="Fechar painel">
+          </Button>
+          <Button className="member-list-btn p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" onClick={closeContextPanel} title="Fechar" aria-label="Fechar painel" variant="ghost" size="icon">
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
       </header>
 

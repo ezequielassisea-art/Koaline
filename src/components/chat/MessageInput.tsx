@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { Message, User } from '../../types';
 import { supabase } from '../../services/supabaseClient';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
 const EmojiPickerPopover = React.lazy(() => import('../common/EmojiPickerPopover').then((module) => ({ default: module.EmojiPickerPopover })));
 
 interface MessageInputProps {
@@ -348,12 +350,14 @@ const insertEmoji = (emoji: string) => {
             <Edit2 className="w-3.5 h-3.5 text-amber-400" />
             <span className="font-semibold text-amber-300">Editando mensagem</span>
           </div>
-          <button
+          <Button
             onClick={() => onCancelEdit?.()}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-200"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
           >
             <X className="w-3.5 h-3.5" />
-          </button>
+          </Button>
         </div>
       )}
 
@@ -367,12 +371,14 @@ const insertEmoji = (emoji: string) => {
             </span>
             <span className="text-slate-400 truncate">{replyTarget.content}</span>
           </div>
-          <button
+          <Button
             onClick={onClearReply}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-200"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
           >
             <X className="w-3.5 h-3.5" />
-          </button>
+          </Button>
         </div>
       )}
 
@@ -382,9 +388,9 @@ const insertEmoji = (emoji: string) => {
         <div className="mb-2 flex w-fit items-center gap-2 rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-2 text-xs text-indigo-300">
           {attachment.type === 'image' && attachment.url ? <img src={attachment.url} alt="Prévia do anexo" className="h-10 w-10 rounded-lg object-cover" /> : attachment.type === 'video' && attachment.url ? <video src={attachment.url} className="h-10 w-14 rounded-lg object-cover" /> : <span aria-hidden="true">📎</span>}
           <span className="max-w-48 truncate">{attachment.name} ({attachment.size})</span>
-          <button type="button" aria-label="Remover anexo" onClick={() => setAttachment(null)} className="ml-1 rounded-full p-1 hover:bg-slate-800 hover:opacity-75">
+          <Button type="button" aria-label="Remover anexo" onClick={() => setAttachment(null)} variant="ghost" size="icon" className="h-6 w-6 ml-1">
             <X className="h-3 w-3" />
-          </button>
+          </Button>
         </div>
       )}
 
@@ -393,9 +399,9 @@ const insertEmoji = (emoji: string) => {
           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
           <span>Gravando áudio</span>
           <span className="font-mono text-red-300">{formatRecordingTime}</span>
-          <button type="button" onClick={handleRecordAudio} className="ml-1 inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-500">
+          <Button type="button" onClick={handleRecordAudio} className="ml-1 inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-500 size-sm">
             <StopCircle className="h-3.5 w-3.5" /> Parar e enviar
-          </button>
+          </Button>
         </div>
       )}
 
@@ -458,70 +464,80 @@ const insertEmoji = (emoji: string) => {
           accept="image/*,video/mp4,*/*"
           className="hidden"
         />
-        <button
+        <Button
           onClick={() => fileInputRef.current?.click()}
           title="Anexar arquivo"
-          className="p-2 rounded-full text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
         >
           <Paperclip className="w-4 h-4" />
-        </button>
+        </Button>
 
-        <textarea
+        <Textarea
           ref={textareaRef}
           rows={1}
           value={text}
           onChange={handleTextChange}
-          onSelect={(event) => { cursorPositionRef.current = { start: event.currentTarget.selectionStart, end: event.currentTarget.selectionEnd }; }}
+          onSelect={(event: React.SyntheticEvent<HTMLTextAreaElement>) => { const target = event.currentTarget; cursorPositionRef.current = { start: target.selectionStart, end: target.selectionEnd }; }}
           onKeyDown={handleKeyDown}
           placeholder={placeholderText}
           className="flex-1 bg-transparent border-0 resize-none py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none max-h-32"
         />
 
         <div className="flex items-center gap-1">
-          <button
+          <Button
             onClick={() => {
               setText((prev) => prev + '@');
               setShowMentionAutocomplete(true);
             }}
             title="Mencionar pessoa"
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
           >
             <AtSign className="w-4 h-4" />
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
             onClick={() => { setShowEmojiPicker(!showEmojiPicker); setShowGifPicker(false); }}
             title="Escolher emoji"
             aria-label="Escolher emoji"
             aria-expanded={showEmojiPicker}
-            className="p-1.5 rounded-full text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
           >
             <Smile className="w-4 h-4" />
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
             onClick={() => { if (!showGifPicker) { setGifSearch(''); setGifResults(GIF_OPTIONS); setGifLoading(false); } setShowGifPicker(!showGifPicker); setShowEmojiPicker(false); }}
             title="Escolher GIF"
             aria-label="Escolher GIF"
             aria-expanded={showGifPicker}
-            className="rounded-full px-1.5 py-1 text-[10px] font-bold text-slate-400 transition-colors hover:bg-slate-800 hover:text-indigo-300"
+            variant="ghost"
+            size="sm"
+            className="px-2 py-1 text-[10px] font-bold text-slate-400 transition-colors hover:bg-slate-800 hover:text-indigo-300"
           >
             GIF
-          </button>
+          </Button>
 
-          <button
+          <Button
             type="button"
             onClick={handleRecordAudio}
             title={isRecording ? 'Parar e enviar áudio' : 'Gravar mensagem de áudio'}
             aria-label={isRecording ? 'Parar e enviar áudio' : 'Gravar mensagem de áudio'}
-            className={`rounded-full p-1.5 transition-colors ${isRecording ? 'bg-red-500/15 text-red-400' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
+            variant="ghost"
+            size="icon"
+            className={`h-8 w-8 transition-colors ${isRecording ? 'bg-red-500/15 text-red-400' : ''}`}
           >
             {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          </button>
+          </Button>
 
-          <button
+          <Button
             onClick={handleSend}
             disabled={isReadingAttachment || (!text.trim() && !attachment)}
             title={isEditing ? 'Salvar edição' : 'Enviar mensagem'}
@@ -530,19 +546,22 @@ const insertEmoji = (emoji: string) => {
                 ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30'
                 : 'bg-slate-800 text-slate-500 cursor-not-allowed'
             }`}
+            size="sm"
           >
             <Send className="w-3.5 h-3.5" />
             {isEditing && <span className="text-xs font-medium">Salvar</span>}
-          </button>
+          </Button>
           {isEditing && (
-            <button
+            <Button
               type="button"
               onClick={() => onCancelEdit?.()}
               title="Cancelar edição"
-              className="p-2 rounded-full text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
             >
               <X className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           )}
         </div>
       </div>

@@ -18,6 +18,8 @@ import {
   User,
 } from 'lucide-react';
 import { formatRelativeTime } from '../../utils/time';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const ChannelSidebar: React.FC = () => {
   const {
@@ -134,9 +136,10 @@ const ChannelSidebar: React.FC = () => {
         {/* Footer - User Profile */}
         <div className="border-t border-gray-100 p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-semibold">
-              {currentUser.name.charAt(0).toUpperCase()}
-            </div>
+            <Avatar className="w-10 h-10">
+              <AvatarImage src={currentUser.avatar} alt={currentUser.name} />
+              <AvatarFallback>{currentUser.name.charAt(0).toUpperCase()}</AvatarFallback>
+            </Avatar>
             <div className="flex-1 min-w-0">
               <div className="font-medium text-gray-900 truncate">{currentUser.name}</div>
               <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -145,9 +148,9 @@ const ChannelSidebar: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" onClick={() => setIsProfileEditorOpen(true)} title="Meu Perfil" aria-label="Meu Perfil"><Settings className="w-4 h-4" /></button>
-              <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Configurações" aria-label="Configurações"><Bell className="w-4 h-4" /></button>
-              <button className="p-2 rounded-lg text-rose-400 hover:text-rose-500 hover:bg-rose-50 transition-colors" onClick={() => setIsLoggedIn(false)} title="Sair" aria-label="Sair"><LogOut className="w-4 h-4" /></button>
+              <Button variant="ghost" size="icon" onClick={() => setIsProfileEditorOpen(true)} title="Meu Perfil" aria-label="Meu Perfil"><Settings className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="icon" title="Configurações" aria-label="Configurações"><Bell className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="icon" className="text-rose-400 hover:text-rose-500 hover:bg-rose-50" onClick={() => setIsLoggedIn(false)} title="Sair" aria-label="Sair"><LogOut className="w-4 h-4" /></Button>
             </div>
           </div>
         </div>
@@ -231,13 +234,10 @@ const ChannelSidebar: React.FC = () => {
                       aria-pressed={activeDmId === dm.id}
                     >
                       <div className="relative w-10 h-10 flex-shrink-0">
-                        {dm.user?.avatar ? (
-                          <img src={dm.user.avatar} alt={dm.user.name} className="w-full h-full rounded-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-bold">
-                            {(dm.user?.name || '?').charAt(0).toUpperCase()}
-                          </div>
-                        )}
+                        <Avatar className="w-full h-full">
+                          <AvatarImage src={dm.user?.avatar} alt={dm.user?.name} />
+                          <AvatarFallback className="text-sm font-bold">{(dm.user?.name || '?').charAt(0).toUpperCase()}</AvatarFallback>
+                        </Avatar>
                         <span
                           className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white ${
                             dm.user?.status === 'online' ? 'bg-emerald-500' :
@@ -269,9 +269,10 @@ const ChannelSidebar: React.FC = () => {
         {/* Footer - User Profile */}
         <div className="border-t border-gray-100 p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-semibold">
-              {currentUser.name.charAt(0).toUpperCase()}
-            </div>
+            <Avatar className="w-10 h-10">
+              <AvatarImage src={currentUser.avatar} alt={currentUser.name} />
+              <AvatarFallback>{currentUser.name.charAt(0).toUpperCase()}</AvatarFallback>
+            </Avatar>
             <div className="flex-1 min-w-0">
               <div className="font-medium text-gray-900 truncate">{currentUser.name}</div>
               <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -280,10 +281,10 @@ const ChannelSidebar: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" onClick={() => setIsProfileEditorOpen(true)} title="Meu Perfil" aria-label="Meu Perfil"><User className="w-4 h-4" /></button>
-              <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Configurações" aria-label="Configurações"><Settings className="w-4 h-4" /></button>
-              <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Notificações" aria-label="Notificações"><Bell className="w-4 h-4" /></button>
-              <button className="p-2 rounded-lg text-rose-400 hover:text-rose-500 hover:bg-rose-50 transition-colors" onClick={() => setIsLoggedIn(false)} title="Sair" aria-label="Sair"><LogOut className="w-4 h-4" /></button>
+              <Button variant="ghost" size="icon" onClick={() => setIsProfileEditorOpen(true)} title="Meu Perfil" aria-label="Meu Perfil"><User className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="icon" title="Configurações" aria-label="Configurações"><Settings className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="icon" title="Notificações" aria-label="Notificações"><Bell className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="icon" className="text-rose-400 hover:text-rose-500 hover:bg-rose-50" onClick={() => setIsLoggedIn(false)} title="Sair" aria-label="Sair"><LogOut className="w-4 h-4" /></Button>
             </div>
           </div>
         </div>
@@ -298,22 +299,8 @@ const ChannelSidebar: React.FC = () => {
       <div className="flex items-center justify-between h-12 px-4 border-b border-gray-100">
         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider truncate">{activeCommunity?.name || 'COMUNIDADE'}</h3>
         <div className="flex items-center gap-2">
-          <button
-            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            onClick={() => setIsDirectMessages(true)}
-            title="Mensagens Diretas"
-            aria-label="Mensagens Diretas"
-          >
-            <MessageSquare className="w-4 h-4" />
-          </button>
-          <button
-            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            onClick={() => {}}
-            title="Configurações da comunidade"
-            aria-label="Configurações da comunidade"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
+          <Button variant="ghost" size="icon" onClick={() => setIsDirectMessages(true)} title="Mensagens Diretas" aria-label="Mensagens Diretas"><MessageSquare className="w-4 h-4" /></Button>
+          <Button variant="ghost" size="icon" onClick={() => {}} title="Configurações da comunidade" aria-label="Configurações da comunidade"><Settings className="w-4 h-4" /></Button>
         </div>
       </div>
 
@@ -505,13 +492,10 @@ const ChannelSidebar: React.FC = () => {
       {/* Footer - User Profile */}
       <div className="border-t border-gray-100 p-4">
         <div className="flex items-center gap-3">
-          {currentUser.avatar ? (
-            <img src={currentUser.avatar} alt={currentUser.name} className="w-10 h-10 rounded-full object-cover" />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-semibold">
-              {currentUser.name.charAt(0).toUpperCase()}
-            </div>
-          )}
+          <Avatar className="w-10 h-10">
+            <AvatarImage src={currentUser.avatar} alt={currentUser.name} />
+            <AvatarFallback>{currentUser.name.charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-gray-900 truncate">{currentUser.name}</div>
             <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -520,18 +504,11 @@ const ChannelSidebar: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <button
-              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-              onClick={() => isContextPanelOpen ? closeContextPanel() : openMembersPanel()}
-              title={isContextPanelOpen ? 'Fechar painel de membros' : 'Abrir painel de membros'}
-              aria-label={isContextPanelOpen ? 'Fechar painel de membros' : 'Abrir painel de membros'}
-            >
-              <Users className="w-4 h-4" />
-            </button>
-            <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" onClick={() => setIsProfileEditorOpen(true)} title="Meu Perfil" aria-label="Meu Perfil"><User className="w-4 h-4" /></button>
-            <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Configurações" aria-label="Configurações"><Settings className="w-4 h-4" /></button>
-            <button className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors" title="Notificações" aria-label="Notificações"><Bell className="w-4 h-4" /></button>
-            <button className="p-2 rounded-lg text-rose-400 hover:text-rose-500 hover:bg-rose-50 transition-colors" onClick={() => setIsLoggedIn(false)} title="Sair" aria-label="Sair"><LogOut className="w-4 h-4" /></button>
+            <Button variant="ghost" size="icon" onClick={() => isContextPanelOpen ? closeContextPanel() : openMembersPanel()} title={isContextPanelOpen ? 'Fechar painel de membros' : 'Abrir painel de membros'} aria-label={isContextPanelOpen ? 'Fechar painel de membros' : 'Abrir painel de membros'}><Users className="w-4 h-4" /></Button>
+            <Button variant="ghost" size="icon" onClick={() => setIsProfileEditorOpen(true)} title="Meu Perfil" aria-label="Meu Perfil"><User className="w-4 h-4" /></Button>
+            <Button variant="ghost" size="icon" title="Configurações" aria-label="Configurações"><Settings className="w-4 h-4" /></Button>
+            <Button variant="ghost" size="icon" title="Notificações" aria-label="Notificações"><Bell className="w-4 h-4" /></Button>
+            <Button variant="ghost" size="icon" className="text-rose-400 hover:text-rose-500 hover:bg-rose-50" onClick={() => setIsLoggedIn(false)} title="Sair" aria-label="Sair"><LogOut className="w-4 h-4" /></Button>
           </div>
         </div>
       </div>

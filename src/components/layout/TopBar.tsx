@@ -14,6 +14,7 @@ import { parseAppDate } from '../../utils/time';
 import { audioManager } from '../../services/AudioManager';
 import { supabase } from '../../services/supabaseClient';
 import { InviteModal } from '../admin/InviteModal';
+import { Button } from '@/components/ui/button';
 
 type AppNotification = {
   id: string;
@@ -291,13 +292,15 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
             aria-label="Buscar mensagens, amigos e grupos"
           />
           {searchQuery && (
-            <button
+            <Button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+              variant="ghost"
+              size="icon"
+              className="absolute right-3 top-1/2 -translate-y-1/2 h-8 w-8"
               aria-label="Limpar pesquisa"
             >
               <X className="w-4 h-4" />
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -306,15 +309,17 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
       <div className="flex items-center gap-1.5 sm:gap-2">
         {/* Notifications */}
         <div className="relative" ref={notificationsRef}>
-        <button
+        <Button
           onClick={() => { setIsNotificationsOpen((value) => !value); markNotificationsRead(); }}
           title={notificationCount ? `${notificationCount} notificações não lidas` : 'Nenhuma notificação não lida'}
           aria-label={notificationCount ? `${notificationCount} notificações não lidas` : 'Nenhuma notificação não lida'}
-          className={`relative p-2 rounded-full hover:bg-gray-100 transition-colors ${notificationCount ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+          variant="ghost"
+          size="icon"
+          className={`h-9 w-9 relative transition-colors ${notificationCount ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
         >
           <Bell className="w-4 h-4" />
           {notificationCount > 0 && <span className="notification-badge bg-[#00BFFF] text-white" aria-hidden="true">{notificationCount}</span>}
-        </button>
+        </Button>
         {isNotificationsOpen && (() => {
             const relevantNotifications = [...inviteNotifications, ...notifications.filter(n => n.type === 'dm_message' || n.type === 'mention' || n.type === 'channel_message')]
               .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -349,7 +354,7 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
                       <span className="block text-sm text-gray-900">{inviterName} te convidou para {communityName}</span>
                       {count}
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                    <Button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} variant="ghost" size="icon" className="h-6 w-6 absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></Button>
                   </div>
                 );
               }
@@ -365,7 +370,7 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
                     </button>
                     <span className="mt-1 block text-xs text-gray-500 truncate">{messagePreview}</span>
                     <span className="mt-1 block text-[10px] text-gray-400">{new Date(latestDate).toLocaleString('pt-BR')}</span>
-                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                    <Button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} variant="ghost" size="icon" className="h-6 w-6 absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></Button>
                   </div>
                 );
               }
@@ -383,7 +388,7 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
                     </button>
                     <span className="mt-1 block text-xs text-gray-500 truncate">{messagePreview}</span>
                     <span className="mt-1 block text-[10px] text-gray-400">{new Date(latestDate).toLocaleString('pt-BR')}</span>
-                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                    <Button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} variant="ghost" size="icon" className="h-6 w-6 absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></Button>
                   </div>
                 );
               }
@@ -400,7 +405,7 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
                     </button>
                     <span className="mt-1 block text-xs text-gray-500 truncate">{messagePreview}</span>
                     <span className="mt-1 block text-[10px] text-gray-400">{new Date(latestDate).toLocaleString('pt-BR')}</span>
-                    <button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></button>
+                    <Button onClick={(e) => { e.stopPropagation(); group.forEach(n => deleteNotification(n.id)); }} variant="ghost" size="icon" className="h-6 w-6 absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors opacity-0 group-hover:opacity-100" aria-label="Excluir notificações"><X className="w-3.5 h-3.5" /></Button>
                   </div>
                 );
               }
@@ -411,7 +416,7 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
               <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-2xl border border-gray-200 bg-white shadow-2xl flex flex-col overflow-hidden">
                 <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 flex-shrink-0">
                   <strong className="text-sm text-gray-900">Notificações</strong>
-                  <button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+                  <Button onClick={() => setIsNotificationsOpen(false)} aria-label="Fechar notificações" variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></Button>
                 </div>
                 <div className="flex-1 max-h-80 overflow-y-auto">
                   {relevantNotifications.length === 0 ? (
@@ -421,9 +426,9 @@ export const TopBar: React.FC<{ className?: string }> = ({ className = '' }) => 
                   )}
                 </div>
                 <div className="border-t border-gray-100 p-3 flex-shrink-0">
-                  <button onClick={handleClearAllNotifications} className="w-full py-2 text-sm font-medium text-rose-500 hover:text-rose-600 transition-colors rounded-sm hover:bg-rose-50">
+                  <Button onClick={handleClearAllNotifications} variant="ghost" size="sm" className="w-full py-2 text-sm font-medium text-rose-500 hover:text-rose-600 transition-colors rounded-sm hover:bg-rose-50">
                     Limpar todas
-                  </button>
+                  </Button>
                 </div>
               </div>
             );

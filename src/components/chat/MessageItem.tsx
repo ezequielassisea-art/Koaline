@@ -23,6 +23,11 @@ import {
   Button,
 } from '@/components/ui/button';
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from '@/components/ui/avatar';
+import {
   Smile,
   Reply,
   Edit2,
@@ -214,11 +219,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
           type="button"
           aria-label={`Abrir opções de ${sender.name}`}
           onClick={(event) => openUserMenu(sender, event)}
-          className="flex-shrink-0 mr-2 mt-1 block rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          className="flex-shrink-0 mr-2 mt-1 block focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
         >
-          {sender.avatar
-            ? <img src={sender.avatar} alt="" className="w-10 h-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all ring-1 ring-border shadow-sm" />
-            : <span className="grid w-10 h-10 place-items-center rounded-full bg-slate-700 text-white font-semibold">{senderInitials}</span>}
+          <Avatar className="w-10 h-10 cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all ring-1 ring-border shadow-sm">
+            <AvatarImage src={sender.avatar} alt={sender.name} />
+            <AvatarFallback>{senderInitials}</AvatarFallback>
+          </Avatar>
         </button>
       )}
 
@@ -381,11 +387,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isGrouped = f
           type="button"
           aria-label={`Abrir opções de ${sender.name}`}
           onClick={(event) => openUserMenu(sender, event)}
-          className="flex-shrink-0 ml-2 mt-1 block rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          className="flex-shrink-0 ml-2 mt-1 block focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
         >
-          {sender.avatar
-            ? <img src={sender.avatar} alt="" className="w-10 h-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all ring-1 ring-border shadow-sm" />
-            : <span className="grid w-10 h-10 place-items-center rounded-full bg-slate-700 text-white font-semibold">{senderInitials}</span>}
+          <Avatar className="w-10 h-10 cursor-pointer hover:ring-2 hover:ring-indigo-500 transition-all ring-1 ring-border shadow-sm">
+            <AvatarImage src={sender.avatar} alt={sender.name} />
+            <AvatarFallback>{senderInitials}</AvatarFallback>
+          </Avatar>
         </button>
       )}
 

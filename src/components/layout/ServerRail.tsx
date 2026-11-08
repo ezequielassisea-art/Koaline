@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Hash, MessageSquare, Users } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const ServerRail: React.FC = () => {
   const {
@@ -37,22 +38,26 @@ const ServerRail: React.FC = () => {
   return (
     <nav className="h-full flex flex-col overflow-hidden py-4 gap-3 items-center" role="navigation" aria-label="Comunidades e mensagens diretas">
       {/* Direct Messages Button */}
-      <button
+      <Button
         onClick={handleDirectMessages}
+        variant="ghost"
+        size="icon"
         className={`server-rail-item ${isDirectMessages && !currentCommunityId ? 'active' : ''}`}
         title="Mensagens Diretas"
         aria-label="Mensagens Diretas"
         aria-pressed={isDirectMessages && !currentCommunityId}
       >
-        <MessageSquare />
-      </button>
+        <MessageSquare className="w-5 h-5" />
+      </Button>
 
       {/* Community List */}
       <div className="flex-1 overflow-y-auto w-full flex flex-col items-center gap-3 min-h-0">
         {communities.map((community) => (
-          <button
+          <Button
             key={community.id}
             onClick={() => handleSelectCommunity(community.id)}
+            variant="ghost"
+            size="icon"
             className={`server-rail-item ${currentCommunityId === community.id ? 'active' : ''}`}
             title={community.name}
             aria-label={community.name}
@@ -71,19 +76,21 @@ const ServerRail: React.FC = () => {
                 {community.name.charAt(0).toUpperCase()}
               </div>
             )}
-          </button>
+          </Button>
         ))}
       </div>
 
       {/* Add Community Button */}
-      <button
+      <Button
         onClick={handleCreateCommunity}
+        variant="ghost"
+        size="icon"
         className="server-rail-add flex-shrink-0"
         title="Criar ou entrar em uma comunidade"
         aria-label="Criar ou entrar em uma comunidade"
       >
-        <Plus />
-      </button>
+        <Plus className="w-5 h-5" />
+      </Button>
     </nav>
   );
 };
