@@ -2928,11 +2928,29 @@ button[class*='bg-primary']:hover {
 .auth-logo {
   display: flex;
   justify-content: center;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
 }
 
 .auth-logo .koaline-logo {
-  font-size: 32px;
+  font-size: 4.5rem; /* ~72px - text-6xl equivalent */
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--text-main);
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+}
+
+.auth-logo .koaline-logo span {
+  font-family: inherit !important;
+}
+
+.auth-logo .koaline-logo-exclamation {
+  color: var(--primary);
+  font-size: 4.5rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .auth-title {
