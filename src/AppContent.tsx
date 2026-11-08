@@ -48,6 +48,7 @@ export const AppContent: React.FC = () => {
     setIsLeftSidebarOpen,
     isRightSidebarOpen,
     setIsRightSidebarOpen,
+    dms,
   } = useApp();
 
   const [isAdminPanelOpen, setIsAdminPanelOpen] = React.useState(false);
@@ -133,7 +134,7 @@ export const AppContent: React.FC = () => {
         {!isNotFound && (
           <div className="flex min-h-0 flex-1 overflow-hidden">
             {/* Left Sidebar - Conversations */}
-            {(communities.length > 0 || isDirectMessages) && (
+            {(communities.length > 0 || dms.length > 0) && (
               <div className={`flex flex-col transition-all duration-300 overflow-hidden ${
                 isLeftSidebarOpen ? 'w-80' : 'w-16'
               }`}>

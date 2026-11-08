@@ -80,6 +80,8 @@ export const TopBar: React.FC = () => {
     leaveCommunity,
     isLeftSidebarOpen,
     setIsLeftSidebarOpen,
+    isRightSidebarOpen,
+    setIsRightSidebarOpen,
   } = useApp();
 
 const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
@@ -481,6 +483,20 @@ const [isCommunityDropdownOpen, setIsCommunityDropdownOpen] = useState(false);
           className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-indigo-400 transition-colors"
         >
           <UserPlus className="w-4 h-4" />
+        </button>
+
+        {/* Right Sidebar Toggle */}
+        <button
+          onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+          title={isRightSidebarOpen ? 'Recolher painel direito' : 'Expandir painel direito'}
+          aria-label={isRightSidebarOpen ? 'Recolher painel direito' : 'Expandir painel direito'}
+          className="p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+        >
+          {isRightSidebarOpen ? (
+            <ChevronRight className="w-4 h-4" />
+          ) : (
+            <ChevronLeft className="w-4 h-4" />
+          )}
         </button>
       </div>
       <InviteModal
