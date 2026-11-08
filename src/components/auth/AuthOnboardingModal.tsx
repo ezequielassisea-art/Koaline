@@ -5,7 +5,7 @@ import { AuthLayout } from './AuthLayout';
 import { KoalineLogo } from './KoalineLogo';
 import { Button } from '../common/Button';
 import { SolidCard } from '../common/SolidCard';
-import { Input } from '../common/Input';
+import { Input } from '@/components/ui/input';
 import { requireSupabase } from '../../services/supabaseClient';
 
 type AuthMode = 'home' | 'login' | 'register';
@@ -186,9 +186,53 @@ export const AuthOnboardingModal: React.FC = () => {
       </div>}
 
       {mode === 'login' && <form className="auth-form" onSubmit={finishLogin}>
-        <Input id="auth-login-identifier" label="E-mail" variant="auth" startAdornment={<AtSign />} type="email" autoComplete="username" required value={loginIdentifier} onChange={(event) => setLoginIdentifier(event.target.value)} />
+        <div className="w-full">
+          <label htmlFor="auth-login-identifier" className="block text-sm font-medium text-gray-700 mb-2">E-mail</label>
+          <div className="relative w-full">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+              <AtSign size={20} />
+            </div>
+            <Input
+              id="auth-login-identifier"
+              type="email"
+              placeholder="seu@email.com"
+              className="pl-10 h-12 rounded-xl border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+              autoComplete="username"
+              required
+              value={loginIdentifier}
+              onChange={(event) => setLoginIdentifier(event.target.value)}
+            />
+          </div>
+        </div>
         <div className="auth-label-row"><span className="auth-label">Senha</span><button type="button" className="auth-inline-link" onClick={() => { setResetEmail(loginIdentifier); setResetSent(false); setIsResetModalOpen(true); }}>Esqueceu a senha?</button></div>
-        <Input id="auth-login-password" label="Senha" variant="auth" startAdornment={<LockKeyhole />} type={showPassword ? 'text' : 'password'} autoComplete="current-password" required value={password} onCopy={(event) => event.preventDefault()} onCut={(event) => event.preventDefault()} onChange={(event) => setPassword(event.target.value)} endAdornment={<button type="button" className="auth-icon-button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>} />
+        <div className="w-full">
+          <label htmlFor="auth-login-password" className="block text-sm font-medium text-gray-700 mb-2">Senha</label>
+          <div className="relative w-full">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+              <LockKeyhole size={20} />
+            </div>
+            <Input
+              id="auth-login-password"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="••••••••"
+              className="pl-10 h-12 rounded-xl border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 pr-12"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              onCopy={(event) => event.preventDefault()}
+              onCut={(event) => event.preventDefault()}
+            />
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              onClick={() => setShowPassword(!showPassword)}
+              aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
+        </div>
         <Button type="submit" variant="auth-primary" disabled={isLoading}>{isLoading ? 'Entrando…' : 'Entrar'}<ArrowRight aria-hidden="true" /></Button>
         <p className="auth-switch-copy">Ainda não tem conta? <button type="button" className="auth-inline-link" onClick={enterRegister}>Criar conta</button></p>
         <div className="auth-divider"><span>ou entre com</span></div>
@@ -198,26 +242,139 @@ export const AuthOnboardingModal: React.FC = () => {
       {mode === 'register' && <form className="auth-form" onSubmit={step < 3 ? (event) => { event.preventDefault(); if (step === 1 && (!handleValid || isHandleAvailable !== true)) return; if (step === 2 && !email.trim()) return; setStep(step + 1); } : finishRegister}>
         <button type="button" className="auth-back-button" onClick={back}><ArrowLeft aria-hidden="true" />{step > 1 ? 'Etapa anterior' : 'Voltar'}</button>
         {step === 1 && <>
-          <Input id="auth-handle" label="Nome de usuário" variant="auth" startAdornment={<AtSign />} autoComplete="username" autoFocus required minLength={3} maxLength={20} pattern="[A-Za-z0-9_]{3,20}" value={handle} onChange={(event) => setHandle(event.target.value.replace(/^@/, ''))} aria-describedby="auth-handle-help" aria-invalid={!!handle && (!handleValid || handleTaken)} />
+          <div className="w-full">
+            <label htmlFor="auth-handle" className="block text-sm font-medium text-gray-700 mb-2">Nome de usuário</label>
+            <div className="relative w-full">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                <AtSign size={20} />
+              </div>
+              <Input
+                id="auth-handle"
+                type="text"
+                placeholder="seunome"
+                className="pl-10 h-12 rounded-xl border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                autoComplete="username"
+                autoFocus
+                required
+                minLength={3}
+                maxLength={20}
+                pattern="[A-Za-z0-9_]{3,20}"
+                value={handle}
+                onChange={(event) => setHandle(event.target.value.replace(/^@/, ''))}
+                aria-describedby="auth-handle-help"
+                aria-invalid={!!handle && (!handleValid || handleTaken)}
+              />
+            </div>
+          </div>
           <p id="auth-handle-help" className={`auth-field-hint ${handle && handleValid && isHandleAvailable === true ? 'is-success' : ''}`}>{handleMessage}</p>
           <Button type="submit" variant="auth-primary" disabled={!handleValid || isHandleAvailable !== true || isCheckingHandle}>Continuar<ArrowRight aria-hidden="true" /></Button>
         </>}
         {step === 2 && <>
-          <Input id="auth-register-email" label="Email" variant="auth" startAdornment={<Mail />} type="email" autoComplete="email" autoFocus required value={email} onChange={(event) => setEmail(event.target.value)} />
+          <div className="w-full">
+            <label htmlFor="auth-register-email" className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+            <div className="relative w-full">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                <Mail size={20} />
+              </div>
+              <Input
+                id="auth-register-email"
+                type="email"
+                placeholder="seu@email.com"
+                className="pl-10 h-12 rounded-xl border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                autoComplete="email"
+                autoFocus
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </div>
+          </div>
           {suggestions.length > 0 && <div className="auth-suggestions"><p>Ideias de usuário para seu email</p><div>{suggestions.map((suggestion) => <button key={suggestion} type="button" onClick={() => setHandle(suggestion)} aria-label={`Usar identificador ${suggestion}`}>@{suggestion}</button>)}</div></div>}
           <Button type="submit" variant="auth-primary">Continuar<ArrowRight aria-hidden="true" /></Button>
         </>}
         {step === 3 && <>
-          <Input id="auth-display-name" label="Nome de exibição (opcional)" variant="auth" startAdornment={<UserRound />} autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} />
-          <Input id="auth-register-password" label="Senha" variant="auth" startAdornment={<LockKeyhole />} type={showPassword ? 'text' : 'password'} autoComplete="new-password" minLength={8} required value={password} onCopy={(event) => event.preventDefault()} onCut={(event) => event.preventDefault()} onChange={(event) => setPassword(event.target.value)} endAdornment={<button type="button" className="auth-icon-button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>{showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>} />
+          <div className="w-full">
+            <label htmlFor="auth-display-name" className="block text-sm font-medium text-gray-700 mb-2">Nome de exibição (opcional)</label>
+            <div className="relative w-full">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                <UserRound size={20} />
+              </div>
+              <Input
+                id="auth-display-name"
+                type="text"
+                placeholder="Como você quer ser chamado"
+                className="pl-10 h-12 rounded-xl border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
+                autoComplete="name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </div>
+          </div>
+          <div className="w-full">
+            <label htmlFor="auth-register-password" className="block text-sm font-medium text-gray-700 mb-2">Senha</label>
+            <div className="relative w-full">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                <LockKeyhole size={20} />
+              </div>
+              <Input
+                id="auth-register-password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Mínimo 8 caracteres"
+                className="pl-10 h-12 rounded-xl border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 pr-12"
+                autoComplete="new-password"
+                minLength={8}
+                required
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                onCopy={(event) => event.preventDefault()}
+                onCut={(event) => event.preventDefault()}
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+          </div>
           <div className="auth-strength" aria-live="polite"><span className={`strength-${strength}`} /><span>Força: {strengthLabel || 'digite sua senha'}</span></div>
-          <Input id="auth-confirm-password" label="Repetir senha" variant="auth" startAdornment={<LockKeyhole />} type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" required value={confirmPassword} onCopy={(event) => event.preventDefault()} onCut={(event) => event.preventDefault()} onChange={(event) => setConfirmPassword(event.target.value)} aria-describedby="auth-password-match" endAdornment={<button type="button" className="auth-icon-button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} aria-label={showConfirmPassword ? 'Ocultar senha repetida' : 'Mostrar senha repetida'}>{showConfirmPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}</button>} />
+          <div className="w-full">
+            <label htmlFor="auth-confirm-password" className="block text-sm font-medium text-gray-700 mb-2">Confirmar senha</label>
+            <div className="relative w-full">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                <LockKeyhole size={20} />
+              </div>
+              <Input
+                id="auth-confirm-password"
+                type={showConfirmPassword ? 'text' : 'password'}
+                placeholder="Repita sua senha"
+                className="pl-10 h-12 rounded-xl border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 pr-12"
+                autoComplete="new-password"
+                required
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                onCopy={(event) => event.preventDefault()}
+                onCut={(event) => event.preventDefault()}
+                aria-describedby="auth-password-match"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                aria-label={showConfirmPassword ? 'Ocultar senha repetida' : 'Mostrar senha repetida'}
+              >
+                {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
+          </div>
           <p id="auth-password-match" className={`auth-field-hint ${passwordsMatch ? 'is-success' : ''}`}>{confirmPassword ? passwordsMatch ? 'As senhas conferem.' : 'As senhas ainda não conferem.' : ' '}</p>
           <Button type="submit" variant="auth-primary" disabled={isLoading || !passwordsMatch || strength < 2}>{isLoading ? 'Criando conta…' : 'Criar minha conta'}<ArrowRight aria-hidden="true" /></Button>
         </>}
       </form>}
     </SolidCard>
-    {isResetModalOpen && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="password-reset-title"><form onSubmit={sendPasswordReset} className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-950 p-6 text-white shadow-2xl"><h2 id="password-reset-title" className="text-lg font-bold">Recuperar senha</h2>{resetSent ? <p className="mt-3 text-sm text-emerald-300">Se este e-mail estiver cadastrado, enviaremos um link para redefinir sua senha.</p> : <><p className="mt-2 text-sm text-slate-400">Informe o e-mail associado à sua conta.</p><Input id="password-reset-email" label="E-mail" variant="auth" startAdornment={<Mail />} type="email" autoComplete="email" required value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} /></>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setIsResetModalOpen(false)} disabled={isSendingReset} className="rounded-lg border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">Fechar</button>{!resetSent && <Button type="submit" variant="auth-primary" disabled={isSendingReset || !resetEmail.trim()}>{isSendingReset ? 'Enviando…' : 'Enviar link'}</Button>}</div></form></div>}
+    {isResetModalOpen && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-labelledby="password-reset-title"><form onSubmit={sendPasswordReset} className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-950 p-6 text-white shadow-2xl"><h2 id="password-reset-title" className="text-lg font-bold">Recuperar senha</h2>{resetSent ? <p className="mt-3 text-sm text-emerald-300">Se este e-mail estiver cadastrado, enviaremos um link para redefinir sua senha.</p> : <><p className="mt-2 text-sm text-slate-400">Informe o e-mail associado à sua conta.</p><div className="w-full"><label htmlFor="password-reset-email" className="block text-sm font-medium text-slate-300 mb-2">E-mail</label><div className="relative w-full"><div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"><Mail size={20} /></div><Input id="password-reset-email" type="email" placeholder="seu@email.com" className="pl-10 h-12 rounded-xl border-slate-700 focus:border-indigo-500 focus:ring-indigo-500 bg-slate-900 text-white" autoComplete="email" required value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} /></div></div></>}<div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setIsResetModalOpen(false)} disabled={isSendingReset} className="rounded-lg border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">Fechar</button>{!resetSent && <Button type="submit" variant="auth-primary" disabled={isSendingReset || !resetEmail.trim()}>{isSendingReset ? 'Enviando…' : 'Enviar link'}</Button>}</div></form></div>}
   </AuthLayout>;
 };
 
