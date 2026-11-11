@@ -56,7 +56,7 @@ export const MaintenancePage: React.FC = () => {
     <div className="fixed inset-0 flex items-center justify-center min-h-screen w-full overflow-hidden">
       {/* Video Background - Extreme Blur */}
       <video
-        className="fixed inset-0 w-full h-full object-cover -z-20 blur-3xl"
+        className="fixed inset-0 w-full h-full object-cover -z-20 blur-[100px] scale-125"
         autoPlay
         loop
         muted
@@ -66,7 +66,7 @@ export const MaintenancePage: React.FC = () => {
           e.currentTarget.currentTime = 0;
           e.currentTarget.play();
         }}
-        style={{ filter: 'blur(24px)' }}
+        style={{ filter: 'blur(100px)' }}
       />
       {/* Dark Overlay */}
       <div className="fixed inset-0 bg-[#0f172a]/70 -z-10" />
