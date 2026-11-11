@@ -20,12 +20,10 @@ const phrases = [
 
 export const MaintenancePage: React.FC = () => {
   const [logoStyles, setLogoStyles] = useState<{ font: string; weight: string }[]>(
-    Array.from({ length: 8 }, () => ({ font: fonts[0], weight: 'font-bold' }))
+    Array.from({ length: 8 }, () => ({ font: fonts[0], weight: 'font-extrabold' }))
   );
   const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
   const [phraseOpacity, setPhraseOpacity] = useState(1);
-
-  const phraseRef = useRef<HTMLDivElement>(null);
 
   // Logo animation - change font for each letter every 650ms
   useEffect(() => {
@@ -33,7 +31,7 @@ export const MaintenancePage: React.FC = () => {
       setLogoStyles((prev) =>
         prev.map(() => ({
           font: fonts[Math.floor(Math.random() * fonts.length)],
-          weight: Math.random() > 0.5 ? 'font-bold' : 'font-medium',
+          weight: Math.random() > 0.5 ? 'font-extrabold' : 'font-bold',
         }))
       );
     }, 650);
@@ -56,9 +54,9 @@ export const MaintenancePage: React.FC = () => {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center min-h-screen w-full overflow-hidden">
-      {/* Video Background */}
+      {/* Video Background - Extreme Blur */}
       <video
-        className="fixed inset-0 w-full h-full object-cover -z-20 blur-[12px]"
+        className="fixed inset-0 w-full h-full object-cover -z-20 blur-3xl"
         autoPlay
         loop
         muted
@@ -68,19 +66,20 @@ export const MaintenancePage: React.FC = () => {
           e.currentTarget.currentTime = 0;
           e.currentTarget.play();
         }}
+        style={{ filter: 'blur(24px)' }}
       />
       {/* Dark Overlay */}
-      <div className="fixed inset-0 bg-[#0f172a]/80 -z-10" />
+      <div className="fixed inset-0 bg-[#0f172a]/70 -z-10" />
 
-      {/* Center Card - Glassmorphism */}
-      <div className="relative z-10 w-full max-w-md px-6">
-        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-8 text-center shadow-2xl">
-          {/* Animated Logo */}
-          <div className="flex justify-center gap-0.5 mb-8" style={{ fontSize: 'clamp(2rem, 6vw, 3.5rem)' }}>
+      {/* Center Card - Dark Glassmorphism */}
+      <div className="relative z-10 w-full max-w-lg px-6">
+        <div className="bg-slate-900/60 backdrop-blur-xl border border-white/10 rounded-3xl p-10 text-center shadow-2xl">
+          {/* Animated Logo - White text with blue exclamation */}
+          <div className="flex justify-center gap-0.5 mb-8" style={{ fontSize: 'clamp(2.5rem, 7vw, 4rem)' }}>
             {logoLetters.map((letter, index) => (
               <span
                 key={index}
-                className={`${logoStyles[index].font} ${logoStyles[index].weight} ${
+                className={`${logoStyles[index].font} ${logoStyles[index].weight} text-5xl tracking-tight ${
                   letter === '!' ? 'text-blue-500' : 'text-white'
                 }`}
               >
@@ -89,8 +88,8 @@ export const MaintenancePage: React.FC = () => {
             ))}
           </div>
 
-          {/* Spinning Gear Icon */}
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-500/20 mb-6">
+          {/* Spinning Gear Icon - Centered, Blue */}
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-500/20 mb-6 mx-auto">
             <Settings
               className="w-8 h-8 text-blue-400 animate-spin"
               style={{ animationDuration: '3s' }}
@@ -100,23 +99,22 @@ export const MaintenancePage: React.FC = () => {
           {/* Title */}
           <h1 className="text-2xl font-bold text-white mb-3">Em Manutenção</h1>
 
-          {/* Subtitle */}
-          <p className="text-slate-300 text-base leading-relaxed mb-8">
+          {/* Subtitle - Gray-200 for contrast */}
+          <p className="text-gray-200 text-base leading-relaxed mb-8">
             Estamos trabalhando nos bastidores para melhorar sua experiência.
           </p>
 
-          {/* Animated Phrases */}
+          {/* Animated Phrases - Blue-400, font-semibold */}
           <div
-            ref={phraseRef}
             className="h-8 transition-opacity duration-500 ease-in-out"
             style={{ opacity: phraseOpacity }}
           >
-            <p className="text-blue-400 text-sm font-medium">{phrases[currentPhraseIndex]}</p>
+            <p className="text-blue-400 font-semibold text-sm">{phrases[currentPhraseIndex]}</p>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="mt-8 text-center text-slate-500 text-sm">
+        <div className="mt-8 text-center text-gray-500 text-sm">
           <p>Koaline • Volte mais tarde</p>
         </div>
       </div>
