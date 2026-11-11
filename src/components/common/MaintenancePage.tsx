@@ -114,7 +114,7 @@ export const MaintenancePage: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <div className="mt-8 text-center text-gray-300 text-sm">
+        <div className="mt-8 text-center !text-white text-sm">
           <p>Koaline • Volte mais tarde</p>
         </div>
       </div>
