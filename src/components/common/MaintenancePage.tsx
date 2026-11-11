@@ -89,7 +89,7 @@ export const MaintenancePage: React.FC = () => {
           </div>
 
           {/* Spinning Gear Icon - Centered, White */}
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/10 mb-6 mx-auto">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-500/20 mb-6 mx-auto">
             <Settings
               className="w-8 h-8 text-white animate-spin"
               style={{ animationDuration: '3s' }}
@@ -114,7 +114,7 @@ export const MaintenancePage: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <div className="mt-8 text-center text-white text-sm">
+        <div className="mt-8 text-center text-gray-300 text-sm">
           <p>Koaline • Volte mais tarde</p>
         </div>
       </div>
