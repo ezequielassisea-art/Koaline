@@ -1,22 +1,122 @@
-import React from 'react';
-import { Settings, Loader2 } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { Settings } from 'lucide-react';
+
+const fonts = [
+  'font-[Outfit]',
+  'font-[Dancing_Script]',
+  'font-[Space_Grotesk]',
+  'font-[DM_Serif_Display]',
+  'font-[Inter]',
+  'font-[Poppins]',
+  'font-[JetBrains_Mono]',
+];
+
+const phrases = [
+  'Conectando jogadores...',
+  'Preparando o lobby...',
+  'Construindo novas arenas...',
+  'A próxima geração dos chats gamer está chegando...',
+];
 
 export const MaintenancePage: React.FC = () => {
+  const [logoStyles, setLogoStyles] = useState<{ font: string; weight: string }[]>(
+    Array.from({ length: 8 }, () => ({ font: fonts[0], weight: 'font-bold' }))
+  );
+  const [currentPhraseIndex, setCurrentPhraseIndex] = useState(0);
+  const [phraseOpacity, setPhraseOpacity] = useState(1);
+
+  const phraseRef = useRef<HTMLDivElement>(null);
+
+  // Logo animation - change font for each letter every 650ms
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLogoStyles((prev) =>
+        prev.map(() => ({
+          font: fonts[Math.floor(Math.random() * fonts.length)],
+          weight: Math.random() > 0.5 ? 'font-bold' : 'font-medium',
+        }))
+      );
+    }, 650);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Phrase rotation every 3 seconds with fade transition
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPhraseOpacity(0);
+      setTimeout(() => {
+        setCurrentPhraseIndex((prev) => (prev + 1) % phrases.length);
+        setPhraseOpacity(1);
+      }, 500);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const logoLetters = ['K', 'o', 'a', 'l', 'i', 'n', 'e', '!'];
+
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-slate-50 min-h-screen w-full">
+    <div className="fixed inset-0 flex items-center justify-center min-h-screen w-full overflow-hidden">
+      {/* Video Background */}
+      <video
+        className="fixed inset-0 w-full h-full object-cover -z-20 blur-[12px]"
+        autoPlay
+        loop
+        muted
+        playsInline
+        src="/large.mp4"
+        onEnded={(e) => {
+          e.currentTarget.currentTime = 0;
+          e.currentTarget.play();
+        }}
+      />
+      {/* Dark Overlay */}
+      <div className="fixed inset-0 bg-[#0f172a]/80 -z-10" />
+
+      {/* Center Card - Glassmorphism */}
       <div className="relative z-10 w-full max-w-md px-6">
-        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-10 text-center">
-          <div className="relative inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-100 mb-6">
-            <Loader2 className="w-10 h-10 text-slate-600 animate-spin" />
+        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-8 text-center shadow-2xl">
+          {/* Animated Logo */}
+          <div className="flex justify-center gap-0.5 mb-8" style={{ fontSize: 'clamp(2rem, 6vw, 3.5rem)' }}>
+            {logoLetters.map((letter, index) => (
+              <span
+                key={index}
+                className={`${logoStyles[index].font} ${logoStyles[index].weight} ${
+                  letter === '!' ? 'text-blue-500' : 'text-white'
+                }`}
+              >
+                {letter}
+              </span>
+            ))}
           </div>
 
-          <h1 className="text-2xl font-bold text-slate-900 mb-3">Em Manutenção</h1>
-          <p className="text-slate-600 text-base leading-relaxed">
-            Estamos trabalhando para melhorar sua experiência. Voltamos em breve!
+          {/* Spinning Gear Icon */}
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-500/20 mb-6">
+            <Settings
+              className="w-8 h-8 text-blue-400 animate-spin"
+              style={{ animationDuration: '3s' }}
+            />
+          </div>
+
+          {/* Title */}
+          <h1 className="text-2xl font-bold text-white mb-3">Em Manutenção</h1>
+
+          {/* Subtitle */}
+          <p className="text-slate-300 text-base leading-relaxed mb-8">
+            Estamos trabalhando nos bastidores para melhorar sua experiência.
           </p>
+
+          {/* Animated Phrases */}
+          <div
+            ref={phraseRef}
+            className="h-8 transition-opacity duration-500 ease-in-out"
+            style={{ opacity: phraseOpacity }}
+          >
+            <p className="text-blue-400 text-sm font-medium">{phrases[currentPhraseIndex]}</p>
+          </div>
         </div>
 
-        <div className="mt-8 text-center text-slate-400 text-sm">
+        {/* Footer */}
+        <div className="mt-8 text-center text-slate-500 text-sm">
           <p>Koaline • Volte mais tarde</p>
         </div>
       </div>
